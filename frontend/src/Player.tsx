@@ -5,9 +5,11 @@ import { MediaEditor } from './MediaEditor';
 import { toWebVtt } from './subtitleTimeline';
 import { MediaActions } from './MediaActions';
 import { Icon } from './Icon';
+import { ThemeToggle } from './AppearanceControls';
 import { IconButton, Popover, StatusMessage } from './ui';
 import { formatLabel, resolutionLabel } from './mediaLabels';
-import { PlaybackQueue, type QueueMode } from './PlaybackQueue';
+import { PlaybackQueue } from './PlaybackQueue';
+import { changeAutoplay, useAutoplay } from './autoplay';
 import { usePlaybackDiagnostics } from './usePlaybackDiagnostics';
 import { usePreparationTrace, preparationLabels, type BackendPreparation } from './usePreparationTrace';
 import { preference, savePreference, loadSubtitlePreference as fetchSubtitlePreference } from './preferences';
@@ -60,8 +62,8 @@ function decodeSubtitle(buffer: ArrayBuffer): string {
   catch { return new TextDecoder('gb18030').decode(bytes); }
 }
 
-export function Player({ media, close, playNext, queue, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify }: {
-  media: Media; close: () => void; playNext: (media: Media) => void; update: (value: MediaUpdate) => void;
+export function Player({ media, automatic=false, close, playNext, queue, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify }: {
+  media: Media; automatic?:boolean; close: () => void; playNext: (media: Media, automatic?:boolean) => void; update: (value: MediaUpdate) => void;
   queue?: PlaylistSource;
   favoriteBusy: boolean; changeFavorite: (media: Media) => Promise<void>;
   registerNavigationGuard:(guard:()=>Promise<boolean>)=>()=>void;
@@ -76,7 +78,7 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
   const dragSession = useRef<DragSession | null>(null);
   const suppressStageClick = useRef(false);
   const [request, setRequest] = useState<Request | null>(() =>
-    media.progress > 0 && !media.watched ? null : { start: 0, force_transcode: false, prefer_original: true, quality: 'auto', key: 0 });
+    !automatic && media.progress > 0 && !media.watched ? null : { start: !media.watched?media.progress:0, force_transcode: false, prefer_original: true, quality: 'auto', key: 0 });
   const [phase, setPhase] = useState<'choice' | 'preparing' | 'ready' | 'error' | 'ended'>(request ? 'preparing' : 'choice');
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -149,14 +151,18 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
   const [subtitleLoading,setSubtitleLoading] = useState(false);
   const [subtitleAppearance, setSubtitleAppearance] = useState<SubtitleAppearance>(loadSubtitleAppearance);
   const [nextEpisode, setNextEpisode] = useState<Media | null>(null);
-  const [queueMode,setQueueMode]=useState(()=>preference<QueueMode>('queueMode','sequential'));
-  const [autoNext,setAutoNext]=useState(()=>preference('autoNext',true));
-  useEffect(()=>savePreference('queueMode',queueMode),[queueMode]);
-  useEffect(()=>savePreference('autoNext',autoNext),[autoNext]);
+  const {mode:queueMode,enabled:autoNext,scope:queueScope}=useAutoplay();
+  const autoplayPreferences = useRef({enabled:autoNext,mode:queueMode,scope:queueScope});
+  autoplayPreferences.current={enabled:autoNext,mode:queueMode,scope:queueScope};
+  function autoplayStillValid(intent:typeof autoplayPreferences.current) {
+    const current=autoplayPreferences.current;
+    return current.enabled && current.mode===intent.mode && current.scope===intent.scope;
+  }
   const [nextCountdown, setNextCountdown] = useState(8);
   const [nextCancelled, setNextCancelled] = useState(false);
   const [nextStarting, setNextStarting] = useState(false);
   const [siblings, setSiblings] = useState<QueuePage | null>(null);
+  const navigationSiblings = queue ? siblings : siblings?.requested_scope===queueScope && siblings.current_id===media.id ? siblings : null;
   const navigationBusy = useRef(false);
   const activePlayer = useRef(true);
   useEffect(() => { activePlayer.current = true; return () => { activePlayer.current = false; }; }, []);
@@ -206,6 +212,7 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
   }, []);
   const updateRef = useRef(update);
   const controlsTimer = useRef<number | null>(null);
+  const controlsHovered = useRef(false);
   updateRef.current = update;
 
   const save = useCallback(async (keepalive = false) => {
@@ -551,30 +558,32 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
     // Playback events (including keyboard pause/resume and seek completion)
     // must not reveal controls. Only explicit interaction/menu focus does so.
     if(openSetting) {setControlsVisible(true);return;}
-    if (controlsVisible && !video.current?.paused && phase === 'ready') {
-      controlsTimer.current = window.setTimeout(() => setControlsVisible(false), videoFullscreen || purePlayback ? 850 : 2600);
-    }
+    if (controlsVisible) scheduleControlsHide(videoFullscreen || purePlayback ? 850 : 2600);
   }, [videoFullscreen, purePlayback, phase, isPlaying, openSetting,controlsVisible]);
   useEffect(() => {
     if(phase!=='ended')return;
     setNextEpisode(null);setNextCountdown(8);setNextCancelled(!autoNext);
     if(queueMode==='repeat-one'){setNextEpisode(media);return;}
-    if(queueMode==='sequential' && queue){setNextEpisode(siblings?.next||null);return;}
-    if(queueMode==='sequential' && media.kind!=='episode')return;
     const controller=new AbortController();
-    const url=queueMode==='random'?`/api/media/${media.id}/random${queue?`?playlist_id=${queue.id}`:''}`:`/api/media/${media.id}/next`;
+    // Resolve at the actual end, not from a stale page of a searched queue.
+    const url=queueMode==='random'?`/api/media/${media.id}/random?scope=${queueScope}${queue?`&playlist_id=${queue.id}`:''}`:
+      queue?`/api/playlists/${queue.id}/queue?media_id=${media.id}&page_size=1`:`/api/media/${media.id}/next?scope=${queueScope}`;
     void api<{next:Media|null}>(url,{signal:controller.signal}).then(result=>{if(!controller.signal.aborted)setNextEpisode(result.next);})
       .catch(e=>{if(!controller.signal.aborted)notify(`无法准备下一条：${errorText(e)}`);});
     return ()=>controller.abort();
-  },[phase,media.id,media.kind,queue?.id,siblings?.next?.id,queueMode,autoNext]);
+  },[phase,media.id,queue?.id,queueScope,queueMode,autoNext]);
   useEffect(() => {
-    if (desktopClosing || phase !== 'ended' || !nextEpisode || nextCancelled || nextStarting || nextCountdown <= 0) return;
+    if (desktopClosing || !autoNext || phase !== 'ended' || !nextEpisode || nextCancelled || nextStarting || nextCountdown <= 0) return;
     const timer = window.setTimeout(() => setNextCountdown(value => Math.max(0, value - 1)), 1000);
     return () => window.clearTimeout(timer);
-  }, [desktopClosing, phase, nextEpisode, nextCancelled, nextStarting, nextCountdown]);
+  }, [desktopClosing, autoNext, phase, nextEpisode, nextCancelled, nextStarting, nextCountdown]);
   useEffect(() => {
-    if (!desktopClosing && phase === 'ended' && nextEpisode && nextCountdown === 0 && !nextCancelled) void startNextEpisode();
-  }, [desktopClosing, phase, nextEpisode, nextCountdown, nextCancelled]);
+    if (!desktopClosing && autoNext && phase === 'ended' && nextEpisode && nextCountdown === 0 && !nextCancelled && !nextStarting) {
+      // One attempt per countdown. A failed progress save must leave the player
+      // in place for an explicit retry, not create an automatic retry loop.
+      setNextCancelled(true);void startNextEpisode(true);
+    }
+  }, [desktopClosing, autoNext, phase, nextEpisode, nextCountdown, nextCancelled,nextStarting]);
   useEffect(() => () => { if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current); }, []);
 
   async function back() {
@@ -585,35 +594,49 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
     try { await save(); if (activePlayer.current) close(); }
     catch { navigationBusy.current = false; setClosing(false); }
   }
-  async function switchMedia(next: Media) {
+  async function switchMedia(next: Media, automatic=false) {
     if (desktopQuitting.current || next.id === media.id || next.missing || navigationBusy.current) return;
     if (!canDiscardMetadata()) return;
     navigationBusy.current = true;
+    const intent=autoplayPreferences.current;
     setNextStarting(true);
     video.current?.pause();
-    try { await save(); if (activePlayer.current) playFollowing(next); }
+    try {
+      await save();
+      if(automatic && !autoplayStillValid(intent)){navigationBusy.current=false;setNextStarting(false);return;}
+      if (activePlayer.current) playFollowing(next,automatic);
+    }
     catch { navigationBusy.current = false; setNextStarting(false); }
   }
-  function playFollowing(next:Media) {
+  function playFollowing(next:Media, automatic=false) {
     if (desktopQuitting.current) { navigationBusy.current = false; setNextStarting(false); return; }
     nextPlayerControlsHidden=quietNext.current;
     quietNext.current=false;
-    playNext(next);
+    playNext(next,automatic);
   }
-  async function startNextEpisode() {
+  async function startNextEpisode(automatic=false) {
     if (desktopQuitting.current) return;
-    if(nextEpisode?.id===media.id){setNextCancelled(true);startAt(0);}
-    else if (nextEpisode) await switchMedia(nextEpisode);
+    if(nextEpisode?.id===media.id){
+      if(navigationBusy.current)return;
+      navigationBusy.current=true;setNextStarting(true);
+      const intent=autoplayPreferences.current;
+      try {
+        await save();
+        if(activePlayer.current && !desktopQuitting.current && (!automatic || autoplayStillValid(intent))){setNextCancelled(true);startAt(0);}
+      }catch { /* Save error remains visible; wait for an explicit retry. */ }
+      finally {navigationBusy.current=false;if(activePlayer.current)setNextStarting(false);}
+    }
+    else if (nextEpisode) await switchMedia(nextEpisode,automatic);
   }
   async function nextInMode() {
     if (desktopQuitting.current) return;
-    if(queueMode!=='random'){if(siblings?.next)await switchMedia(siblings.next);return;}
+    if(queueMode!=='random'){if(navigationSiblings?.next)await switchMedia(navigationSiblings.next);return;}
     if(navigationBusy.current)return;
     if(!canDiscardMetadata())return;
     navigationBusy.current=true;setNextStarting(true);video.current?.pause();
     try {
       await save();
-      const result=await api<{next:Media|null}>(`/api/media/${media.id}/random${queue?`?playlist_id=${queue.id}`:''}`);
+      const result=await api<{next:Media|null}>(`/api/media/${media.id}/random?scope=${queueScope}${queue?`&playlist_id=${queue.id}`:''}`);
       if(activePlayer.current){if(result.next)playFollowing(result.next);else notify('没有其他可播放的视频');}
     } catch(e){if(activePlayer.current)notify(`切换失败：${errorText(e)}`);}
     finally{if(activePlayer.current){navigationBusy.current=false;setNextStarting(false);}}
@@ -725,16 +748,27 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
     if (!current || phase !== 'ready') return;
     if (current.paused) void current.play().catch(()=>{}); else current.pause();
   }
+  function scheduleControlsHide(delay:number) {
+    if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
+    controlsTimer.current=null;
+    // Pausing freezes the picture, not the UI idle timer. Hover and open
+    // menus retain controls in either playback state.
+    if (controlsHovered.current || phase !== 'ready' || openSetting) return;
+    controlsTimer.current=window.setTimeout(()=>{
+      controlsTimer.current=null;
+      // Pointer entry may have cancelled a timer already queued by the host.
+      if(!controlsHovered.current)setControlsVisible(false);
+    },delay);
+  }
   function revealControls() {
     quietNext.current=false;
     if(!controlsVisible && video.current && queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);
     setControlsVisible(true);
-    if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
-    if (!video.current?.paused && phase === 'ready' && !openSetting) controlsTimer.current = window.setTimeout(() => setControlsVisible(false), videoFullscreen || purePlayback ? 850 : 2600);
+    scheduleControlsHide(videoFullscreen || purePlayback ? 850 : 2600);
   }
   function hideControlsSoon() {
-    if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
-    if (!video.current?.paused && phase === 'ready' && !openSetting) controlsTimer.current = window.setTimeout(() => setControlsVisible(false), videoFullscreen || purePlayback ? 150 : 500);
+    controlsHovered.current=false;
+    scheduleControlsHide(videoFullscreen || purePlayback ? 150 : 500);
   }
   function changeVolumeByWheel(event: React.WheelEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement;
@@ -891,6 +925,13 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
       if (desktopQuitting.current) return;
       if(event.defaultPrevented || event.isComposing || event.keyCode===229 || document.querySelector('[role="dialog"]')) return;
       if(openSetting) return;
+      // Keep menu/dialog Escape handling first. Explicitly exit our video
+      // fullscreen rather than depending on the host's native Escape handling.
+      // Return immediately so this key cannot also leave pure playback.
+      if(event.code==='Escape' && document.fullscreenElement===videoWrap.current &&
+          !(target instanceof HTMLElement && target.closest('[role="menu"]'))) {
+        event.preventDefault();void document.exitFullscreen().catch(()=>{});return;
+      }
       if(event.code==='Escape' && purePlayback && !document.fullscreenElement && !openSetting &&
           !(target instanceof HTMLElement && target.closest('[role="menu"]'))) {
         event.preventDefault();void togglePurePlayback();return;
@@ -965,9 +1006,9 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
   </>;
   const navigationActions = <>
             {purePlayback && <button aria-label="返回媒体库" title="保存进度并返回媒体库" disabled={closing || nextStarting} onClick={()=>void back()}><Icon name="arrowLeft" size={19}/></button>}
-            <button aria-label="播放上一条" title={queue ? '播放列表上一条' : '同目录上一条'} disabled={nextStarting || closing || phase !== 'ready' || !siblings?.previous}
-              onClick={() => { if (siblings?.previous) void switchMedia(siblings.previous); }}><Icon name="previous" size={19} /></button>
-            <button aria-label="播放下一条" title={queueMode==='random'?'随机下一条 (N)':queue ? '播放列表下一条 (N)' : '同目录下一条 (N)'} disabled={nextStarting || closing || phase !== 'ready' || (queueMode==='random'?(siblings?.playable_count??siblings?.total??0)<2:!siblings?.next)}
+            <button aria-label="播放上一条" title={queue ? '播放列表上一条' : navigationSiblings?.scope==='series'?'同剧集上一集':'同目录上一条'} disabled={nextStarting || closing || phase !== 'ready' || !navigationSiblings?.previous}
+              onClick={() => { if (navigationSiblings?.previous) void switchMedia(navigationSiblings.previous); }}><Icon name="previous" size={19} /></button>
+            <button aria-label="播放下一条" title={queueMode==='random'?'随机下一条 (N)':queue ? '播放列表下一条 (N)' : navigationSiblings?.scope==='series'?'同剧集下一集 (N)':'同目录下一条 (N)'} disabled={nextStarting || closing || phase !== 'ready' || (queueMode==='random'?(navigationSiblings?.playable_count??navigationSiblings?.total??0)<2:!navigationSiblings?.next)}
               onClick={() => void nextInMode()}><Icon name="next" size={19} /></button>
   </>;
   const subtitlePanel = (
@@ -1013,6 +1054,7 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
   return <div className={`player-shell${purePlayback?' is-pure-playback':''}`}>
     <div className="player-top"><button className="ui-button" onClick={() => void back()} disabled={closing || nextStarting}><Icon name="arrowLeft"/>{closing ? '正在保存…' : nextStarting ? '正在切换…' : '返回媒体库'}</button>
       <span>{media.title}</span>
+      <ThemeToggle/>
       <button className="ui-button favorite-action" onClick={() => void changeFavorite(media)} disabled={favoriteBusy} aria-pressed={Boolean(media.favorite)}
         aria-label={favoriteBusy ? '正在保存收藏' : media.favorite ? '★ 已收藏' : '☆ 收藏'}>
         <Icon name="favorite" size={17} filled={Boolean(media.favorite)}/>{favoriteBusy ? '正在保存…' : media.favorite ? '已收藏' : '收藏'}</button>
@@ -1055,9 +1097,9 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
       {phase === 'ready' && buffering && <div className="buffering" role="status"><i />正在缓冲…</div>}
       {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button></div>}
       {phase === 'ended' && <div className="resume"><b>{nextEpisode ? (queue || media.kind!=='episode' ? '本条播放结束' : '本集播放结束') : '播放结束'}</b>
-        {nextEpisode && <><span>{nextEpisode.id===media.id?'单条循环：':queueMode==='random'?'随机下一条：':queue ? '播放列表下一条：' : '下一集：'}{nextEpisode.title}{nextEpisode.season ? ` · 第 ${nextEpisode.season} 季` : ''}{nextEpisode.episode ? ` 第 ${nextEpisode.episode} 集` : ''}</span>
+        {nextEpisode && <><span>{nextEpisode.id===media.id?'单条循环：':queueMode==='random'?'随机下一条：':queue ? '播放列表下一条：' : queueScope==='series'&&media.kind==='episode'?'下一集：':'下一条：'}{nextEpisode.title}{nextEpisode.season ? ` · 第 ${nextEpisode.season} 季` : ''}{nextEpisode.episode ? ` 第 ${nextEpisode.episode} 集` : ''}</span>
           <span>{nextStarting ? '正在切换…' : !autoNext?'自动连播已关闭':nextCancelled ? '自动连播已取消' : `${nextCountdown} 秒后自动播放`}</span>
-          <button disabled={nextStarting} onClick={() => void startNextEpisode()}>{nextEpisode.id===media.id?'立即重新播放':!queue && queueMode==='sequential' && media.kind==='episode'?'立即播放下一集':'立即播放下一条'}</button>
+          <button disabled={nextStarting} onClick={() => void startNextEpisode()}>{nextEpisode.id===media.id?'立即重新播放':!queue && queueMode==='sequential' && queueScope==='series' && media.kind==='episode'?'立即播放下一集':'立即播放下一条'}</button>
           {!nextCancelled && <button className="ghost" disabled={nextStarting} onClick={() => setNextCancelled(true)}>取消自动播放</button>}
         </>}
         <button className="ghost" onClick={() => startAt(0)}>重新播放</button><button className="ghost" onClick={() => void back()}>返回媒体库</button></div>}
@@ -1071,7 +1113,9 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
           </div></div>
         {!screenshotBusy&&<button aria-label="关闭截图提示" onClick={()=>{setScreenshotError('');setSavedScreenshot(null);}}><Icon name="close" size={15}/></button>}
       </div>}
-      <div className={`timeline player-controls${narrowControls ? ' is-narrow' : ''}`} aria-label="播放控制">
+      <div className={`timeline player-controls${narrowControls ? ' is-narrow' : ''}`} aria-label="播放控制"
+        onPointerEnter={event=>{if(event.pointerType==='mouse'){controlsHovered.current=true;revealControls();}}}
+        onPointerLeave={event=>{if(event.pointerType==='mouse'){controlsHovered.current=false;revealControls();}}}>
         <div className="player-progress-row">
           <span>{duration(seek ?? position)}</span>
           <div className="seek-control" style={{'--seek-progress': `${Math.min(100,Math.max(0,(seek ?? position)/Math.max(.1,media.duration-.1)*100))}%`} as CSSProperties} onMouseMove={updateSeekHover} onMouseLeave={() => setSeekHover(null)}>
@@ -1138,13 +1182,13 @@ export function Player({ media, close, playNext, queue, update, favoriteBusy, ch
               disabled={windowModeBusy || !purePlayback && phase!=='ready'} onClick={()=>void togglePurePlayback()}><Icon name={purePlayback?'exitPurePlayback':'purePlayback'} size={20}/></button>
             <button aria-label={pipActive ? '退出画中画' : '画中画'} disabled={phase !== 'ready' || !document.pictureInPictureEnabled}
               title={pipActive ? '退出画中画' : '画中画'} onClick={() => void togglePictureInPicture()}><Icon name={pipActive ? 'exitPip' : 'pip'} size={19} /></button>
-            <button aria-label="全屏" title={videoFullscreen?'退出视频全屏 (F / Esc)':'视频全屏 (F)'} aria-pressed={videoFullscreen} disabled={phase !== 'ready'} onClick={toggleFullscreen}><Icon name={videoFullscreen?'fullscreenExit':'fullscreen'} size={20} /></button>
+            <button aria-label={videoFullscreen?'退出视频全屏':'全屏'} title={videoFullscreen?'退出视频全屏 (F / Esc)':'视频全屏 (F)'} aria-pressed={videoFullscreen} disabled={phase !== 'ready'} onClick={toggleFullscreen}><Icon name={videoFullscreen?'fullscreenExit':'fullscreen'} size={20} /></button>
           </div>
         </div>
       </div>
     </div>
     <PlaybackQueue media={media} queue={queue} busy={nextStarting || closing || phase === 'preparing'}
-      siblings={siblings} setSiblings={setSiblings} play={item => void switchMedia(item)} mode={queueMode} setMode={setQueueMode} autoNext={autoNext} setAutoNext={setAutoNext}/>
+      siblings={siblings} setSiblings={setSiblings} play={item => void switchMedia(item)} mode={queueMode} setMode={mode=>changeAutoplay({mode})} autoNext={autoNext} setAutoNext={enabled=>changeAutoplay({enabled})} scope={queueScope} setScope={scope=>changeAutoplay({scope})}/>
     <aside className="player-info"><h2>{media.title}</h2><p>{formatLabel(media.ext)} · {duration(media.duration)} · {resolutionLabel(media.width, media.height)}</p>
       <details className="shortcut-help"><summary><Icon name="info" size={16}/>快捷键帮助</summary><p>空格 / K：播放暂停 · J / L：±10 秒 · ← / →：±5 秒 · ↑ / ↓：音量 · M：静音 · F：视频全屏 · W：纯净播放 · Esc：退出纯净播放（视频全屏时先退出全屏） · P：画中画 · {screenshotShortcutLabel()}：截图 · N：下一条 · R：旋转 · 滚轮：按指针缩放（Shift+滚轮调音量）</p><small>输入文字或选择菜单时不触发播放快捷键；桌面端纯净播放时，顶部区域可拖动窗口，窗口置顶可独立开关。</small></details>
       <details className="playback-diagnostics">

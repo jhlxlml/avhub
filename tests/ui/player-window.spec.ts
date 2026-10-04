@@ -1,9 +1,19 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
+async function openPlayer(page:Page,url='/?video=2') {
+  await page.goto(url);
+  // Fixture reset can precede the previous context's final progress beacon.
+  // A legitimate resume prompt must be answered, not mistaken for a load hang.
+  const fromStart=page.getByRole('button',{name:'从头开始',exact:true});
+  const fullscreen=page.getByRole('button',{name:'全屏',exact:true});
+  await expect.poll(async()=>await fromStart.isVisible() || await fullscreen.isEnabled()).toBeTruthy();
+  if(await fromStart.isVisible())await fromStart.click();
+}
+
 test('pure playback fills the viewport without system fullscreen or restarting the video',async({page})=>{
-  await page.goto('/?video=2');
+  await openPlayer(page);
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.instance='keep-decoder';v.currentTime=20;});
   const source=await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentSrc);
@@ -33,7 +43,7 @@ test('pure playback fills the viewport without system fullscreen or restarting t
 test('pure playback hides controls quickly, respects open menus and survives next video',async({page,request})=>{
   const list=await(await request.post('/api/playlists',{data:{name:'窗口播放测试'}})).json();
   for(const id of [2,3])await request.post(`/api/playlists/${list.id}/items/${id}`);
-  await page.goto(`/?video=2&playlist=${list.id}`);
+  await openPlayer(page,`/?video=2&playlist=${list.id}`);
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.paused && v.readyState>=2)).toBeTruthy();
   await page.getByRole('button',{name:'纯净播放',exact:true}).click();
   await page.mouse.move(250,250);
@@ -53,12 +63,12 @@ test('pure playback hides controls quickly, respects open menus and survives nex
 });
 
 test('video fullscreen is distinct from pure playback and returns to the window mode',async({page})=>{
-  await page.goto('/?video=2');await expect(page.getByRole('button',{name:'纯净播放',exact:true})).toBeEnabled();
+  await openPlayer(page);await expect(page.getByRole('button',{name:'纯净播放',exact:true})).toBeEnabled();
   await page.locator('video').evaluate((v:HTMLVideoElement)=>v.pause());
   await page.getByRole('button',{name:'纯净播放',exact:true}).click();
   await page.getByRole('button',{name:'全屏',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>Boolean(document.fullscreenElement))).toBeTruthy();
-  await page.getByRole('button',{name:'全屏',exact:true}).click();
+  await page.getByRole('button',{name:'退出视频全屏',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>document.fullscreenElement)).toBeNull();
   await expect(page.locator('.player-shell')).toHaveClass(/is-pure-playback/);
   await page.getByRole('button',{name:'退出纯净播放',exact:true}).click();
@@ -67,7 +77,7 @@ test('video fullscreen is distinct from pure playback and returns to the window 
 
 for(const mode of ['normal','pure','fullscreen'] as const) {
   test(`keyboard playback preserves hidden controls in ${mode} mode`,async({page})=>{
-    await page.goto('/?video=2');
+    await openPlayer(page);
     await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2 && !v.paused)).toBeTruthy();
     if(mode==='pure')await page.getByRole('button',{name:'纯净播放',exact:true}).click();
     if(mode==='fullscreen')await page.getByRole('button',{name:'全屏',exact:true}).click();
@@ -123,7 +133,7 @@ for(const mode of ['normal','pure','fullscreen'] as const) {
 test('keyboard next preserves hidden controls while mouse interaction can restore them',async({page,request})=>{
   const list=await(await request.post('/api/playlists',{data:{name:'安静快捷键测试'}})).json();
   for(const id of [2,3])await request.post(`/api/playlists/${list.id}/items/${id}`);
-  await page.goto(`/?video=2&playlist=${list.id}`);
+  await openPlayer(page,`/?video=2&playlist=${list.id}`);
   await page.getByRole('button',{name:'纯净播放',exact:true}).click();
   await page.mouse.move(250,200);await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/,{timeout:3000});
   await page.keyboard.press('n');await expect(page).toHaveURL(/video=3/);

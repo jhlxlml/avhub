@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorText, json, type Media, type MediaUpdate } from './api';
 import { Icon } from './Icon';
 import { CoverEditor } from './CoverEditor';
+import { StatusMessage } from './ui';
 import './media-editor.css';
 
 export function MediaEditor({ media, update, onDirtyChange }: { media: Media; update: (value: MediaUpdate) => void; onDirtyChange: (dirty: boolean) => void }) {
@@ -14,6 +15,7 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
   const [tags, setTags] = useState(media.tags.join(', '));
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageError, setMessageError] = useState(false);
   const mediaKey = JSON.stringify([media.title, media.kind, String(media.season ?? ''), String(media.episode ?? ''), media.rating == null ? '' : String(media.rating), media.tags.join(', '), media.series_title || media.title]);
   const [baseline, setBaseline] = useState(mediaKey);
   const identity = useRef(media.id);
@@ -41,15 +43,15 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
   async function save(event: FormEvent) {
     event.preventDefault();
     const cleanTitle = title.trim();
-    if (!cleanTitle) { setMessage('标题不能为空'); return; }
+    if (!cleanTitle) { setMessageError(true); setMessage('标题不能为空'); return; }
     const seasonNumber = season === '' ? null : Number(season);
     const episodeNumber = episode === '' ? null : Number(episode);
     if (kind === 'episode' && ((seasonNumber !== null && (!Number.isInteger(seasonNumber) || seasonNumber < 0 || seasonNumber > 9999)) || (episodeNumber !== null && (!Number.isInteger(episodeNumber) || episodeNumber < 0 || episodeNumber > 99999)))) {
-      setMessage('季集号需为非负整数；季 0 表示特别篇，留空表示未设置'); return;
+      setMessageError(true); setMessage('季集号需为非负整数；季 0 表示特别篇，留空表示未设置'); return;
     }
-    if(kind === 'episode' && !seriesTitle.trim()){setMessage('剧名不能为空');return;}
+    if(kind === 'episode' && !seriesTitle.trim()){setMessageError(true);setMessage('剧名不能为空');return;}
     const cleanTags = [...new Set(tags.split(/[,，]/).map(tag => tag.trim()).filter(Boolean))];
-    setSaving(true); setMessage('');
+    setSaving(true); setMessage(''); setMessageError(false);
     try {
       const value = await api<Media>(`/api/media/${media.id}`, json('PATCH', {
         title: cleanTitle, kind,
@@ -65,7 +67,7 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
       onDirtyChange(false);
       update(value);
       setMessage('媒体信息已保存');
-    } catch (error) { setMessage(`保存失败：${errorText(error)}`); }
+    } catch (error) { setMessageError(true); setMessage(`保存失败：${errorText(error)}`); }
     finally { setSaving(false); }
   }
 
@@ -89,7 +91,7 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
       <label>标签<input aria-label="标签" value={tags} placeholder="用逗号分隔，例如：科幻, 收藏" onChange={event => setTags(event.target.value)} /></label>
       <button className="ui-button primary" type="submit" disabled={saving}><Icon name="save" size={16}/>{saving ? '正在保存…' : '保存信息'}</button>
       </fieldset>
-      {message && <span className="editor-message" role="status">{message}</span>}
+      {message && <StatusMessage className="editor-message" kind={messageError?'error':'info'}>{message}</StatusMessage>}
     </form>
   </details>;
 }

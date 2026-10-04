@@ -4,6 +4,12 @@ test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
 async function player(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: '播放 视频 002', exact: true }).click();
+  // A previous context's final progress beacon can arrive after fixture reset.
+  // Accept the legitimate resume choice before checking control readiness.
+  const fromStart=page.getByRole('button',{name:'从头开始',exact:true});
+  const fullscreen=page.getByRole('button',{name:'全屏',exact:true});
+  await expect.poll(async()=>await fromStart.isVisible() || await fullscreen.isEnabled()).toBeTruthy();
+  if(await fromStart.isVisible())await fromStart.click();
   await expect(page.getByRole('button', { name: '全屏', exact: true })).toBeEnabled();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState >= 2)).toBeTruthy();
   await page.locator('video').evaluate((v: HTMLVideoElement) => v.pause());
@@ -72,6 +78,10 @@ test('subtitle popover stays within video fullscreen and Escape preserves fullsc
   await page.keyboard.press('Escape');
   await expect(page.getByRole('region', { name: '字幕设置弹层' })).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
+  await expect(page.getByRole('button',{name:'退出视频全屏',exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect(page.getByRole('button',{name:'全屏',exact:true})).toHaveAttribute('aria-pressed','false');
 });
 
 for (const width of [390, 560, 760, 960]) test(`controls and popovers fit a ${width}px window`, async ({ page }) => {

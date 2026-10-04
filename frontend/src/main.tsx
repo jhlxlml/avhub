@@ -22,9 +22,15 @@ import { MediaThumbnail } from './MediaThumbnail';
 import { BulkEditor } from './BulkEditor';
 import { SeriesLibrary } from './SeriesLibrary';
 import { pageScrollTop, scrollPageTo } from './pageScroll';
+import { initializeAppearance } from './appearance';
+import { initializeAutoplay } from './autoplay';
+import { CoverSizeControl, ThemeToggle } from './AppearanceControls';
+import { AutoScrollbars } from './AutoScrollbars';
 import './styles.css';
 import './library-performance.css';
 import './design-system.css';
+import './appearance.css';
+import './scrollbars.css';
 
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
 
@@ -72,6 +78,7 @@ function App() {
   const [total, setTotal] = useState(0);
   const [roots, setRoots] = useState<Root[]>([]);
   const [selected, setSelected] = useState<Media | null>(null);
+  const [automaticMedia, setAutomaticMedia] = useState<number|null>(null);
   const [settings, setSettings] = useState(false);
   const [playlistsOpen, setPlaylistsOpen] = useState(false);
   const [playlistTarget, setPlaylistTarget] = useState<Media | null>(null);
@@ -101,6 +108,7 @@ function App() {
   const [previewId,setPreviewId]=useState<number|null>(null);
   const [routeLoading,setRouteLoading]=useState(false);
   const router=useWatchRouter(()=>{
+    setAutomaticMedia(null);
     setFilters(readFilters());setLoading(true);setRevision(value=>value+1);
     scroll.current=Number(history.state?.avhubScroll)||0;restore.current=true;
   });
@@ -213,20 +221,20 @@ function App() {
       setRevision(value => value + 1);
     } catch (e) { setNotice(errorText(e)); }
   }
-  function open(m: Media) {scroll.current=pageScrollTop();setQueue(null);setSelected(m);router.navigate(m.id);scrollPageTo(0);}
+  function open(m: Media) {scroll.current=pageScrollTop();setAutomaticMedia(null);setQueue(null);setSelected(m);router.navigate(m.id);scrollPageTo(0);}
   function playQueue(source: PlaylistSource, media: Media) {
     scroll.current = pageScrollTop();
-    setQueue(source);setSelected(media);router.navigate(media.id,source.id);setPlaylistsOpen(false);setPlaylistTarget(null);scrollPageTo(0);
+    setAutomaticMedia(null);setQueue(source);setSelected(media);router.navigate(media.id,source.id);setPlaylistsOpen(false);setPlaylistTarget(null);scrollPageTo(0);
   }
-  function playQueueItem(m: Media) {
-    setSelected(m);router.navigate(m.id,queue?.id||null,true);
+  function playQueueItem(m: Media, automatic=false) {
+    setAutomaticMedia(automatic?m.id:null);setSelected(m);router.navigate(m.id,queue?.id||null,true);
   }
   function toggleSearch() {
     setSearchOpen(open => !open);
     if (!searchOpen) requestAnimationFrame(() => searchInput.current?.focus());
   }
   function close() {
-    restore.current=true;router.close();
+    setAutomaticMedia(null);restore.current=true;router.close();
   }
   useLayoutEffect(() => {
     if (!selected && !loading && restore.current) { scrollPageTo(scroll.current); restore.current = false; }
@@ -241,7 +249,7 @@ function App() {
     {notice && <Toast message={notice} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
     {router.route.mediaId && (!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage></div>}
     {selected && selected.id===router.route.mediaId && <Suspense fallback={<div className="player-loading"><StatusMessage kind="loading">正在打开播放器…</StatusMessage></div>}>
-      <Player key={selected.id} media={selected} close={close} playNext={playQueueItem} queue={queue || undefined} update={updateMedia}
+      <Player key={selected.id} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} update={updateMedia}
         favoriteBusy={favoritePending.includes(selected.id)} changeFavorite={changeFavorite} registerNavigationGuard={router.registerGuard} notify={setNotice} />
     </Suspense>}
     <main hidden={Boolean(router.route.mediaId)||routeLoading}>
@@ -264,6 +272,7 @@ function App() {
           <ScanRecovery job={scan.job} resume={scan.resume} />
           <ThumbnailTasks status={thumbnails.status} changed={thumbnails.changed}/>
           <button className="ui-button refresh-library" onClick={() => void scan.start()} disabled={scan.scanning}><Icon name="refresh" className={scan.scanning?'is-spinning':''}/><span>{scan.scanning ? '正在扫描…' : '刷新媒体库'}</span></button>
+          <ThemeToggle/>
           <button className="ui-icon-button" aria-label="媒体库设置" title="媒体库设置" onClick={() => setSettings(true)}><Icon name="settings"/></button></div>
       </header>
       <div className="app-layout"><section className="library">
@@ -277,8 +286,10 @@ function App() {
           <button className={`advanced-toggle${filters.format || filters.watch !== 'all' || filters.duration ? ' active' : ''}`} aria-expanded={advancedOpen}
             onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/>更多筛选{filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}</button>
           <Button icon="edit" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}>批量整理</Button>
-          <div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
-            aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div></>}
+          </>}
+          <div className="library-view-controls"><CoverSizeControl disabled={!grouped&&filters.layout==='list'}/>
+          {!grouped&&<div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
+            aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div>}</div>
         </div>
         {grouped ? <SeriesLibrary q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
           change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
@@ -310,7 +321,7 @@ function App() {
               <button className="open-video" aria-label={`播放 ${m.title}`} onClick={() => open(m)}>
                 <MediaThumbnail url={m.thumbnail_url} retryKey={revision}/>
                 {previewEnabled && previewId===m.id && !selected && <HoverPreview key={m.id} media={m} />}
-                <span className="play"><Icon name="play" size={24}/></span></button>
+              </button>
               <button className="star" aria-label={m.favorite ? `取消收藏 ${m.title}` : `收藏 ${m.title}`} aria-pressed={Boolean(m.favorite)}
                 title={m.favorite?'取消收藏':'收藏'} disabled={favoritePending.includes(m.id)} onClick={() => void changeFavorite(m)}><Icon name="favorite" size={16} filled={Boolean(m.favorite)}/></button>
               <button className="queue-add" aria-label={`加入播放列表 ${m.title}`} title="加入播放列表" onClick={() => setPlaylistTarget(m)}><Icon name="plus" size={17}/></button>
@@ -344,10 +355,10 @@ function Startup() {
   const [attempt,setAttempt]=useState(0);
   useEffect(()=>{
     let active=true;setError('');
-    void checkServiceBuild().then(initializePreferences).then(()=>{if(active)setReady(true);}).catch(e=>{if(active)setError(errorText(e));});
+    void checkServiceBuild().then(initializePreferences).then(()=>{if(active){initializeAppearance();initializeAutoplay();setReady(true);}}).catch(e=>{if(active)setError(errorText(e));});
     return ()=>{active=false;};
   },[attempt]);
   if(ready)return <App/>;
   return <div className="empty" role={error?'alert':'status'}>{error||'正在载入本地设置…'}{error&&<><button onClick={()=>setAttempt(value=>value+1)}>重试启动</button><Diagnostics/></>}</div>;
 }
-createRoot(document.getElementById('root')!).render(<><WindowChrome/><div id="app-scroll-area"><Startup/></div></>);
+createRoot(document.getElementById('root')!).render(<><AutoScrollbars/><WindowChrome/><div id="app-scroll-area"><Startup/></div></>);

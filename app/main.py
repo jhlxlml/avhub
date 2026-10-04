@@ -39,6 +39,7 @@ from .local_security import local_request_error, SECURITY_HEADERS
 from .build_info import BUILD
 from .diagnostics import report as diagnostics_report
 from . import series_library
+from .playback_queue import selection as playback_selection
 from .library_metadata import MetadataInput, BulkInput, edit as edit_metadata
 from . import covers
 from .scan_jobs import install as install_scan_jobs, ThumbnailJobs, ThumbnailService
@@ -1305,27 +1306,30 @@ def media_folders(root_id: int, folder: str = '', q: str = '', page: int = Query
 
 
 @app.get('/api/media/{media_id}/siblings')
-def media_siblings(media_id: int, page: int | None = Query(None, ge=1), page_size: int = Query(40, ge=1, le=100)):
+def media_siblings(media_id: int, page: int | None = Query(None, ge=1), page_size: int = Query(40, ge=1, le=100),
+                   scope: Literal['series', 'directory'] = 'directory'):
     with read_connection() as db:
         db.execute('BEGIN')
         current = db.execute('SELECT * FROM media WHERE id=? AND missing=0', (media_id,)).fetchone()
         if not current: raise HTTPException(404, '视频不存在或已离线')
-        prefix = directory_prefix(str(Path(current['path']).parent))
-        clause, args = directory_clause(prefix, False)
-        sql = ' FROM media WHERE missing=0 AND root_id IS ? AND ' + clause
-        args = [current['root_id'], *args]
+        clause, args, fields, target_args, effective_scope = playback_selection(current, scope)
+        sql = ' FROM media WHERE missing=0 AND ' + clause
         total = db.execute('SELECT COUNT(*)' + sql, args).fetchone()[0]
         # Stable filename ordering, including duplicate names/titles.
-        before = ' AND (name COLLATE NOCASE < ? OR (name COLLATE NOCASE = ? AND id < ?))'
-        after = ' AND (name COLLATE NOCASE > ? OR (name COLLATE NOCASE = ? AND id > ?))'
-        target_args = [current['name'], current['name'], media_id]
+        ordering = ','.join(fields)
+        target = ','.join('?' for _ in fields)
+        before = f' AND ({ordering}) < ({target})'
+        after = f' AND ({ordering}) > ({target})'
         index = db.execute('SELECT COUNT(*)' + sql + before, [*args, *target_args]).fetchone()[0]
-        previous = db.execute('SELECT *' + sql + before + ' ORDER BY name COLLATE NOCASE DESC,id DESC LIMIT 1', [*args, *target_args]).fetchone()
-        following = db.execute('SELECT *' + sql + after + ' ORDER BY name COLLATE NOCASE,id LIMIT 1', [*args, *target_args]).fetchone()
+        previous = db.execute('SELECT *' + sql + before + ' ORDER BY ' + ','.join(field+' DESC' for field in fields) + ' LIMIT 1', [*args, *target_args]).fetchone()
+        following = db.execute('SELECT *' + sql + after + ' ORDER BY ' + ordering + ' LIMIT 1', [*args, *target_args]).fetchone()
         pages = max(1, (total + page_size-1)//page_size)
         page = min(page if isinstance(page, int) else index//page_size+1, pages)
-        rows = db.execute('SELECT *' + sql + ' ORDER BY name COLLATE NOCASE,id LIMIT ? OFFSET ?', [*args, page_size, (page-1)*page_size])
+        rows = db.execute('SELECT *' + sql + ' ORDER BY ' + ordering + ' LIMIT ? OFFSET ?', [*args, page_size, (page-1)*page_size])
+        group = db.execute('SELECT title FROM series_groups WHERE id=?', (current['series_id'],)).fetchone() if effective_scope == 'series' else None
         return {'items': [row_dict(row) for row in rows], 'total': total, 'index': index,
+                'current_id': media_id, 'requested_scope': scope, 'scope': effective_scope,
+                'name': (group['title'] if group else current['title']) if effective_scope == 'series' else '同目录视频',
                 'page': page, 'pages': pages, 'page_size': page_size,
                 'previous': row_dict(previous) if previous else None, 'next': row_dict(following) if following else None}
 
@@ -1342,7 +1346,9 @@ def media_record(media_id: int):
     return row_dict(row)
 
 @app.get("/api/media/{media_id}/next")
-def next_episode(media_id: int):
+def next_episode(media_id: int, scope: Literal['series', 'directory'] | None = None):
+    if scope is not None:
+        return {'next': media_siblings(media_id, page=None, page_size=1, scope=scope)['next']}
     with connection() as db:
         current = db.execute("SELECT id,title,kind,season,episode,series_id,root_id FROM media WHERE id=? AND missing=0", (media_id,)).fetchone()
         if not current: raise HTTPException(404, "视频不存在或已离线")
@@ -1358,7 +1364,7 @@ def next_episode(media_id: int):
         return {"next": row_dict(row) if row else None}
 
 @app.get('/api/media/{media_id}/random')
-def random_next(media_id:int,playlist_id:int|None=None):
+def random_next(media_id:int,playlist_id:int|None=None,scope:Literal['series','directory']='directory'):
     with connection() as db:
         db.execute('BEGIN')
         current=db.execute('SELECT * FROM media WHERE id=? AND missing=0',(media_id,)).fetchone()
@@ -1370,9 +1376,9 @@ def random_next(media_id:int,playlist_id:int|None=None):
             args=[playlist_id,media_id]
             order=' ORDER BY i.position,i.media_id'
         else:
-            clause,params=directory_clause(directory_prefix(str(Path(current['path']).parent)),False)
-            sql=' FROM media WHERE missing=0 AND id<>? AND root_id IS ? AND '+clause
-            args=[media_id,current['root_id'],*params];order=' ORDER BY name COLLATE NOCASE,id'
+            clause,params,fields,_,_=playback_selection(current,scope)
+            sql=' FROM media WHERE missing=0 AND id<>? AND '+clause
+            args=[media_id,*params];order=' ORDER BY '+','.join(fields)
         total=db.execute('SELECT COUNT(*)'+sql,args).fetchone()[0]
         if not total:return {'next':None,'candidates':0}
         row=db.execute(('SELECT m.*' if playlist_id is not None else 'SELECT *')+sql+order+' LIMIT 1 OFFSET ?',

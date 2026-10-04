@@ -125,3 +125,29 @@ test('hover previews are opt-in, delayed, one at a time and never create playbac
   await page.reload();
   expect(await page.evaluate(()=>localStorage.getItem('avhub.hoverPreview'))).toBe('true');
 });
+
+for(const theme of ['dark','light'])for(const layout of ['grid','list'])
+test(`hover preview stays unobstructed in ${theme} ${layout} and remains clickable`,async({page,request})=>{
+  await request.post('/test/thumbnail-fixture');
+  await request.patch('/api/preferences',{data:{values:{hoverPreview:true,appearance:{theme,coverSize:'standard'}}}});
+  await page.goto(`/?layout=${layout}`);
+  await expect(page.locator('html')).toHaveAttribute('data-theme',theme);
+  const card=page.locator('.card').first();
+  const cover=card.locator('.cover');
+  await expect(card.locator('.thumbnail-ready')).toBeVisible();
+  await cover.hover();
+  const preview=cover.locator('.hover-preview.visible');
+  await expect(preview).toBeVisible();
+  await expect(cover.locator('.play')).toHaveCount(0);
+  for(const element of [preview,card.locator('.open-video'),cover]){
+    await expect(element).toHaveCSS('opacity','1');
+    await expect(element).toHaveCSS('filter','none');
+  }
+  await expect(card.getByRole('button',{name:'取消收藏 视频 001',exact:true})).toBeVisible();
+  await expect(cover.locator('.duration')).toBeVisible();
+  await expect(cover.locator('.progress')).toBeVisible();
+  await cover.screenshot({path:`test-results/hover-preview-${theme}-${layout}.png`});
+  await card.getByRole('button',{name:'播放 视频 001',exact:true}).click();
+  await expect(page.locator('.player-shell')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'视频 001',exact:true})).toBeVisible();
+});

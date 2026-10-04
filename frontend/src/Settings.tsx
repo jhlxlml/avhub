@@ -8,6 +8,7 @@ import { Button, Dialog, StatusMessage } from './ui';
 import { Diagnostics } from './Diagnostics';
 import { type ThumbnailStatus } from './ThumbnailTasks';
 import { ScreenshotSettings } from './ScreenshotSettings';
+import { AutoplaySettings } from './AutoplaySettings';
 
 const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'}];
 
@@ -95,6 +96,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       {roots.length > 20 && <div className="root-pager" aria-label="目录分页"><span>匹配 {matching.length} 个目录 · {page} / {rootPages} 页</span><button disabled={page <= 1} onClick={() => setRootPage(page - 1)}>上一页目录</button><button disabled={page >= rootPages} onClick={() => setRootPage(page + 1)}>下一页目录</button></div>}
       </section>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
+      <AutoplaySettings busy={busy}/>
       <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'}/>
       <section className="settings-section" aria-label="后台封面"><h3><Icon name="camera"/>后台封面</h3>
         <div className="thumbnail-task-summary"><span>待处理 {thumbnailStatus?.pending??0}</span><span>失败 {thumbnailStatus?.failed??0}</span><span>{thumbnailStatus?.paused?'已暂停':thumbnailStatus?.yielding?'播放优先，暂时让路':'独立后台处理'}</span></div>

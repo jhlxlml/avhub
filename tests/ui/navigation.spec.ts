@@ -84,6 +84,7 @@ test('ten thousand actual indexed subdirectories render bounded tiles and can be
 });
 
 test('same-directory queue is folded, paginated, and saves progress before switching', async ({ page, request }) => {
+  await request.patch('/api/preferences',{data:{values:{queueScope:'directory'}}});
   await page.goto('/?q=003');
   await page.getByRole('button', {name:'播放 视频 003',exact:true}).click();
   await expect(page.getByRole('button', {name:'展开待播队列'})).toHaveAttribute('aria-expanded','false');

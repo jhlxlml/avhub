@@ -75,7 +75,7 @@ test('browser mode does not expose page fullscreen; video fullscreen remains ava
   await expect(page.getByRole('button', { name: '应用全屏', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '全屏', exact: true }).click();
   expect(await page.evaluate(() => document.fullscreenElement?.classList.contains('video-wrap'))).toBeTruthy();
-  await page.getByRole('button', { name: '全屏', exact: true }).click();
+  await page.getByRole('button', { name: '退出视频全屏', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
 });
 
@@ -238,7 +238,7 @@ test('remembers selected sidecar subtitle and delay for each video', async ({ pa
 
 test('episode end offers next episode, preserves current progress and supports autoplay cancellation', async ({ page, request }) => {
   const next = await (await request.get('/api/media/2')).json();
-  await page.route('**/api/media/3/next', route => route.fulfill({ json: { next } }));
+  await page.route('**/api/media/3/next?scope=series', route => route.fulfill({ json: { next } }));
   await page.goto('/?view=series');
   await page.getByRole('button', { name: '播放 视频 003', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => Boolean(video.src))).toBeTruthy();

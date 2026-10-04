@@ -4,7 +4,7 @@ const cache:Record<string,unknown>={};
 let pending:Record<string,unknown>={};
 let timer:number|undefined;
 let timestamp=0;
-const globals=['audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','screenshots'];
+const globals=['audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance'];
 const writes=new Set<Promise<boolean>>();
 const message='设置尚未保存到媒体库，请重试；当前会话仍可使用。';
 

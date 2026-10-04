@@ -23,24 +23,38 @@ async function quit() {
 }
 try {
   let page=await launch();const firstPort=Number(new URL(page.url()).port);
+  await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
+  await page.getByRole('button',{name:'调整封面大小',exact:true}).click();
+  await page.getByRole('button',{name:'舒适',exact:true}).click();
+  await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'媒体库设置'}).click();
   await page.getByRole('tab',{name:'播放偏好'}).click();
   await page.getByRole('checkbox',{name:'封面悬停预览'}).check();
+  await page.getByRole('checkbox',{name:'视频连播',exact:true}).uncheck();
+  await page.getByRole('combobox',{name:'连播模式',exact:true}).selectOption('repeat-one');
+  await page.getByRole('combobox',{name:'连播范围',exact:true}).selectOption('directory');
   // Quit without waiting for the 250ms preference debounce. The desktop close
   // handshake must flush the current value before stopping its API.
-  const expected={playbackSpeed:1.5,audio:{volume:.35,muted:true},queueMode:'repeat-one',autoNext:false,'subtitle.7':{id:'',delay:.2}};
+  const expected={playbackSpeed:1.5,audio:{volume:.35,muted:true},queueMode:'repeat-one',queueScope:'directory',autoNext:false,'subtitle.7':{id:'',delay:.2}};
   assert.equal(await page.evaluate(async values=>(await fetch('/api/preferences',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})})).ok,expected),true);
   await quit();
   // Occupy the old port to prove that preferences survive a different origin.
   occupied=createServer();await new Promise((resolve,reject)=>{occupied.once('error',reject);occupied.listen(firstPort,'127.0.0.1',resolve);});
   page=await launch();const secondPort=Number(new URL(page.url()).port);
   assert.notEqual(secondPort,firstPort);
+  await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+  await expect(page.locator('html')).toHaveAttribute('data-cover-size','comfortable');
   await page.getByRole('button',{name:'媒体库设置'}).click();
   await page.getByRole('tab',{name:'播放偏好'}).click();
   assert.equal(await page.getByRole('checkbox',{name:'封面悬停预览'}).isChecked(),true);
   const preferences=await page.evaluate(async()=>{const r=await fetch('/api/preferences');return(await r.json()).values;});
   assert.deepEqual(preferences.audio,expected.audio);assert.equal(preferences.playbackSpeed,1.5);
+  assert.deepEqual(preferences.appearance,{theme:'light',coverSize:'comfortable'});
   assert.equal(preferences.queueMode,'repeat-one');assert.equal(preferences.autoNext,false);
+  assert.equal(preferences.queueScope,'directory');
+  await expect(page.getByRole('checkbox',{name:'视频连播',exact:true})).not.toBeChecked();
+  await expect(page.getByRole('combobox',{name:'连播模式',exact:true})).toHaveValue('repeat-one');
+  await expect(page.getByRole('combobox',{name:'连播范围',exact:true})).toHaveValue('directory');
   const subtitle=await page.evaluate(async()=>{const r=await fetch('/api/preferences/subtitle/7');return(await r.json()).value;});
   assert.deepEqual(subtitle,expected['subtitle.7']);
   // Verify the same handshake saves active playback, not just preferences.

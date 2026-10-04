@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, errorText, type FolderPage, type Root } from './api';
 import { Icon } from './Icon';
+import { Button, StatusMessage } from './ui';
 
 export function FolderBrowser({ root, folder, recursive, change, changeRecursive, revision }: {
   root: Root; folder: string; recursive: boolean; change: (folder: string) => void;
@@ -44,7 +45,7 @@ export function FolderBrowser({ root, folder, recursive, change, changeRecursive
         onChange={event => { setQuery(event.target.value); setPage(1); }} />
         <small>{loading ? '正在加载…' : result ? `本层 ${result.direct_count} 个视频 · 含子目录 ${result.video_count} 个` : ''}</small>
       </div>
-      {error ? <p role="alert">{error} <button onClick={() => setRetry(value => value+1)}>重试目录加载</button></p> :
+      {error ? <div className="folder-error"><StatusMessage kind="error">{error}</StatusMessage><Button icon="refresh" onClick={() => setRetry(value => value+1)}>重试目录加载</Button></div> :
         !loading && result && (result.items.length ? <div className="folder-tiles">{result.items.map(item =>
           <button key={item.folder} aria-label={`打开子目录 ${item.name}`} title={item.folder} onClick={() => change(item.folder)}>
             <Icon name="folder" size={18}/><b>{item.name}</b><small>{item.count} 个视频</small></button>)}</div> :

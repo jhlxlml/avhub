@@ -1,5 +1,5 @@
 export type IconName = 'play'|'pause'|'back'|'forward'|'volume'|'muted'|'rotate'|'zoomReset'|'pip'|'exitPip'|'fullscreen'|'fullscreenExit'|'expand'|'favorite'|'quality'|'speed'|'audio'|'camera'|'close'|'search'|'settings'|'refresh'|'library'|'film'|'series'|'continue'|'history'|'playlist'|'filter'|'grid'|'list'|'folder'|'chevronDown'|'chevronRight'|'chevronLeft'|'chevronUp'|'plus'|'check'|'eye'|'eyeOff'|'copy'|'reveal'|'external'|'trash'|'edit'|'download'|'upload'|'save'|'shield'|'database'|'previous'|'next'|'first'|'last'|'info'|'warning'|'arrowLeft'|'subtitles'|'more'
-  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore';
+  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize';
 
 // One 24px grid, one optical stroke and rounded joins across every surface.
 // Code-native SVGs remain fully offline and inherit the control's state color.
@@ -16,7 +16,7 @@ export function Icon({name,size=18,filled=false,className=''}:{name:IconName;siz
     {name==='zoomReset' && <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5M7.5 10.5h6M4 4v4h4"/></>}
     {(name==='pip'||name==='exitPip') && <><rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="6" height="5" rx=".8" fill={name==='pip'?'currentColor':'none'}/>{name==='exitPip'&&<path d="m8 10-3-3m0 0v3m0-3h3"/>}</>}
     {(name==='fullscreen'||name==='expand') && <path d="M8 4H4v4m12-4h4v4M4 16v4h4m12-4v4h-4"/>}
-    {name==='fullscreenExit' && <path d="M9 4v5H4m16 0h-5V4M4 15h5v5m10 0v-5h-5"/>}
+    {name==='fullscreenExit' && <><path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M4 15h5v5"/><path d="M15 20v-5h5"/></>}
     {name==='favorite' && <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" fill={filled?'currentColor':'none'}/>}
     {name==='quality' && <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9v6m4-6v6M7 12h4m4-3v6h2a3 3 0 0 0 0-6z" strokeWidth="1.4"/></>}
     {name==='speed' && <><path d="M4 18a9 9 0 1 1 16 0M12 13l4-4"/><circle cx="12" cy="13" r="1" fill="currentColor"/></>}
@@ -63,5 +63,8 @@ export function Icon({name,size=18,filled=false,className=''}:{name:IconName;siz
     {name==='minimize' && <path d="M5 12h14"/>}
     {name==='windowMaximize' && <rect x="5" y="5" width="14" height="14" rx="1"/>}
     {name==='windowRestore' && <><path d="M9 7V4h11v11h-3"/><rect x="4" y="9" width="11" height="11" rx="1"/></>}
+    {name==='sun' && <><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></>}
+    {name==='moon' && <path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14z"/>}
+    {name==='coverSize' && <><rect x="3" y="3" width="12" height="9" rx="1.5"/><path d="M5 7h8m-2 8h10m-3-3 3 3-3 3M3 16v5h8"/></>}
   </svg>;
 }

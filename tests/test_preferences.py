@@ -31,6 +31,34 @@ class PortableStateTests(unittest.TestCase):
         m.set_preferences(m.PreferencesInput(values={'playbackSpeed':2},import_only_missing=True))
         self.assertEqual(m.get_preferences()['values'],{'playbackSpeed':1.5,'queueOpen':True})
 
+    def test_appearance_preferences_are_validated_and_read_after_reopening(self):
+        for theme in ('dark','light'):
+            for size in ('compact','standard','comfortable','large'):
+                value={'theme':theme,'coverSize':size}
+                m.set_preferences(m.PreferencesInput(values={'appearance':value}))
+                self.assertEqual(m.get_preferences()['values']['appearance'],value)
+                with m.connection() as db:
+                    self.assertEqual(json.loads(db.execute("SELECT value FROM preferences WHERE key='appearance'").fetchone()[0]),value)
+
+    def test_invalid_appearance_batch_is_atomic(self):
+        for value in (None,True,'light',{}, {'theme':'system','coverSize':'standard'},
+                      {'theme':'light','coverSize':'huge'}, {'theme':'light','coverSize':190},
+                      {'theme':'light','coverSize':'standard','path':'C:/bad'}):
+            with self.assertRaises(HTTPException):
+                m.set_preferences(m.PreferencesInput(values={'hoverPreview':True,'appearance':value}))
+            self.assertEqual(m.get_preferences()['values'],{})
+
+    def test_appearance_is_included_in_database_backup(self):
+        value={'theme':'light','coverSize':'large'}
+        m.set_preferences(m.PreferencesInput(values={'appearance':value}))
+        response=m.create_backup()
+        try:
+            db=sqlite3.connect(response.path)
+            try:
+                self.assertEqual(json.loads(db.execute("SELECT value FROM preferences WHERE key='appearance'").fetchone()[0]),value)
+            finally:db.close()
+        finally:response.background.func(*response.background.args,**response.background.kwargs)
+
     def test_invalid_batch_is_atomic_and_arbitrary_settings_are_rejected(self):
         for value in ({'queueOpen':True,'filePath':'C:/bad'}, {'audio':{'volume':2,'muted':False}}, {'subtitle.1':{'id':'uploaded','delay':float('nan')}}):
             with self.assertRaises(HTTPException):m.set_preferences(m.PreferencesInput(values=value))

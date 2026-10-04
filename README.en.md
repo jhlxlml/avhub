@@ -29,7 +29,7 @@ Two runtime modes are available:
 
 - Prefer original-file playback, try remuxing when needed, and use FFmpeg compatibility transcoding only when required.
 - Resume playback, seeking, volume, playback speed, audio-track selection, text subtitles, subtitle delay, and technical information.
-- Same-folder and playlist queues, sequential playback, shuffle, and repeat-one.
+- Same-series, same-folder and playlist queues with sequential playback, shuffle and repeat-one. Settings → Playback preferences → Video autoplay lets you enable or disable automatic continuation.
 - Video fullscreen, picture-in-picture, and Pure Playback; desktop always-on-top is an independent switch.
 - Rotation, pointer-centered wheel zoom, dragging a zoomed image, and one-click view reset.
 - One-click PNG screenshots with a configurable destination, no save dialog, and no interruption of the current playback state.
@@ -126,7 +126,20 @@ Use `python run.py --no-browser` to skip opening a browser, or `python run.py --
 
 Check the active data directory under Settings → **运行诊断** (Runtime diagnostics). If desktop shutdown reports unsaved data, retry or cancel as prompted. Forced termination or power loss may discard uncommitted changes.
 
+## Appearance and cover size
+
+- Use the sun / moon icon in the top bar to switch between light and dark mode. The player header provides the same toggle. Dark remains the default. Transparent controls and popovers over video retain dark, high-contrast styling without altering video colors.
+- Click the cover-size icon beside the grid / list switch. Use the slider or preset buttons to choose **Compact, Standard, Comfortable, or Large**. Standard preserves the previous layout; column counts adapt to window width.
+- Sizing applies to ordinary video grids and grouped-series covers, not list rows, individual episode rows, or playback queues. The control is disabled in list mode and retains its selection when returning to the grid.
+- Both preferences are stored in the current library's SQLite database, survive restarts and changing Electron ports, and are included in library backups.
+
+These are display-only settings. They do not change query results, filters, sorting, page size, playback quality, or regenerate artwork. Compact mode may bring more lazy-loaded images into view; larger covers make pages taller and may reveal limited thumbnail resolution. Pagination limits and single-video hover previews remain in place; resizing does not load the entire library.
+
 ## Playback and picture quality
+
+Settings → **播放偏好** (Playback preferences) → **视频连播** (Video autoplay) enables or disables automatic continuation and selects sequential, shuffle, or repeat-one. The default scope is the same series in season/episode order; unclassified videos fall back to the exact current folder, excluding subfolders. You can explicitly select same-folder scope. Opening from a playlist uses that playlist and its ordering instead. Shuffle draws from the complete scope, excluding the current and indexed-offline videos; sequential playback stops at the last item.
+
+A cancellable 8-second countdown precedes automatic continuation. Current progress must be saved before switching; a failed save keeps the player on the current item. Automatic continuation resumes unfinished videos and restarts watched videos; manually opening a video retains the resume prompt. Preferences are stored in the local database and shared with the player's queue controls.
 
 An indexed file format is not necessarily a format the browser can decode directly. Supported index extensions are MP4, MKV, AVI, MOV, M4V, WebM, WMV, FLV, TS, MTS, and M2TS. Playback also depends on video and audio codecs, the browser, and the device.
 

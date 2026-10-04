@@ -1,0 +1,17 @@
+/* Keep native gutters constant: appearance must not resize the cover grid. */
+:where(*):not(select) {scrollbar-width:thin;scrollbar-color:transparent transparent}
+:where(*)[data-scrollbar-visible] {scrollbar-color:var(--ui-muted) transparent}
+select {scrollbar-width:auto;scrollbar-color:auto}
+:where(*):not(select)::-webkit-scrollbar {width:10px;height:10px}
+:where(*):not(select)::-webkit-scrollbar-track,
+:where(*):not(select)::-webkit-scrollbar-corner {background:transparent}
+:where(*):not(select)::-webkit-scrollbar-thumb {background:transparent;border:2px solid transparent;background-clip:padding-box;border-radius:20px;transition:background-color .15s}
+:where(*)[data-scrollbar-visible]::-webkit-scrollbar-thumb {background-color:var(--ui-muted)}
+:where(*):not(select)::-webkit-scrollbar-thumb:hover {background-color:var(--ui-secondary)}
+:where(*):not(select)::-webkit-scrollbar-button {display:none}
+@media(prefers-reduced-motion:reduce) {:where(*):not(select)::-webkit-scrollbar-thumb {transition:none}}
+/* System high contrast takes precedence over ornamental hiding. */
+@media(forced-colors:active) {
+  :where(*):not(select) {scrollbar-color:auto!important}
+  :where(*):not(select)::-webkit-scrollbar-thumb {background-color:ButtonText}
+}

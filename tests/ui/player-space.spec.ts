@@ -9,27 +9,35 @@ async function player(page:any) {
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.muted=false;v.volume=.75;});
 }
 const paused=(page:any)=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.paused);
+async function clickControl(page:any,name:string|RegExp) {
+  // Keyboard actions intentionally keep auto-hidden controls hidden. Move the
+  // mouse as a user would before hit-testing a transparent, pointer-disabled bar.
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height/2);
+  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
+  await page.getByRole('button',{name,exact:typeof name==='string'}).click();
+}
 
 for(const mode of ['normal','pure','fullscreen']) {
   test(`Space controls playback after clicking controls in ${mode} mode without reactivating them`,async({page})=>{
     await player(page);
-    if(mode==='pure')await page.getByRole('button',{name:'纯净播放',exact:true}).click();
-    if(mode==='fullscreen')await page.getByRole('button',{name:'全屏',exact:true}).click();
-    await page.getByRole('button',{name:'静音',exact:true}).click();
+    if(mode==='pure')await clickControl(page,'纯净播放');
+    if(mode==='fullscreen')await clickControl(page,'全屏');
+    await clickControl(page,'静音');
     await expect(page.getByRole('button',{name:'取消静音',exact:true})).toBeFocused();
     await page.keyboard.press('Space');await expect.poll(()=>paused(page)).toBe(true);
     expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>v.muted)).toBe(true);
-    await page.getByRole('button',{name:/旋转视频/}).click();await page.keyboard.press('Space');
+    await clickControl(page,/旋转视频/);await page.keyboard.press('Space');
     await expect.poll(()=>paused(page)).toBe(false);
     await expect(page.getByRole('button',{name:'旋转视频，当前 90 度',exact:true})).toHaveCount(1);
     const saved=page.waitForResponse(response=>response.url().includes('/screenshot?')&&response.request().method()==='POST');
     let captures=0;page.on('request',request=>{if(request.url().includes('/screenshot?'))captures++;});
-    await page.getByRole('button',{name:'保存视频截图',exact:true}).click();expect((await saved).ok()).toBe(true);
+    await clickControl(page,'保存视频截图');expect((await saved).ok()).toBe(true);
     await page.keyboard.press('Space');await expect.poll(()=>paused(page)).toBe(true);
     expect(captures).toBe(1);
     // Space over the play button must produce one toggle, not a shortcut plus
     // a second native button click on keyup.
-    await page.getByRole('button',{name:'播放',exact:true}).click();await expect.poll(()=>paused(page)).toBe(false);
+    await clickControl(page,'播放');await expect.poll(()=>paused(page)).toBe(false);
     await page.keyboard.press('Space');await expect.poll(()=>paused(page)).toBe(true);
     expect(await page.evaluate(()=>Boolean(document.fullscreenElement))).toBe(mode==='fullscreen');
     await expect(page.locator('.player-shell')).toHaveClass(mode==='pure'?/is-pure-playback/:/^player-shell$/);

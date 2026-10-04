@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api,errorText,json } from './api';
 import { Button,Dialog,StatusMessage } from './ui';
+import { Icon } from './Icon';
 import './library-tools.css';
 
 export function BulkEditor({ids,close,done}:{ids:number[];close:()=>void;done:(count:number)=>void}) {
@@ -31,7 +32,7 @@ export function BulkEditor({ids,close,done}:{ids:number[];close:()=>void;done:(c
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   }
   return <Dialog label="批量整理媒体信息" closeLabel="关闭批量整理" busy={busy} close={close} className="modal library-tool-dialog">
-    <h2>批量整理</h2><p className="tool-description">仅修改明确选中的 {ids.length} 个视频的库内信息；空项保持不变，不改写源文件。</p>
+    <h2 className="dialog-title"><Icon name="edit" size={22}/>批量整理</h2><p className="tool-description">仅修改明确选中的 {ids.length} 个视频的库内信息；空项保持不变，不改写源文件。</p>
     <fieldset disabled={busy} className="tool-fields">
       <label>类型<select aria-label="批量媒体类型" value={kind} onChange={e=>setKind(e.target.value)}><option value="">保持不变</option><option value="video">未分类视频</option><option value="movie">电影</option><option value="episode">剧集</option></select></label>
       <label>剧名<input aria-label="批量剧名" value={series} maxLength={300} placeholder="留空保持；填写将设为剧集" onChange={e=>setSeries(e.target.value)}/></label>

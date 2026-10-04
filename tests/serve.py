@@ -136,6 +136,16 @@ def two_audio_fixture():
         db.execute('UPDATE media SET path=?,audio_tracks=? WHERE id=2', (str(path),json.dumps(metadata['audio_tracks'])))
     return {'ok':True}
 
+
+@m.app.post('/test/autoplay-fixture')
+def autoplay_fixture():
+    # Make two physically playable same-root clips adjacent in filename order.
+    # Only the temporary index is changed, never the source video files.
+    with m.connection() as db:
+        db.execute("UPDATE media SET name='aaa.mp4' WHERE id=1")
+        db.execute("UPDATE media SET name='aab.mkv' WHERE id=3")
+    return {'ok':True}
+
 @m.app.post('/test/many-roots')
 def many_roots():
     with m.connection() as db:

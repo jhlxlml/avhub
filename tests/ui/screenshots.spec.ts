@@ -6,6 +6,11 @@ test.beforeEach(async({request})=>{await request.post('/test/reset');});
 async function play(page:any) {
   await page.goto('/?q=002');
   await page.getByRole('button',{name:'播放 视频 002',exact:true}).click();
+  // A saved position can arrive from a previous context's final progress write.
+  // Exercise the real resume prompt rather than assume autoplay has started.
+  const resume=page.getByRole('button',{name:'从头开始',exact:true});
+  await expect(resume.or(page.getByRole('button',{name:'暂停',exact:true})).first()).toBeVisible();
+  if(await resume.isVisible())await resume.click();
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.paused&&v.readyState>=2)).toBeTruthy();
 }
 const screenshotResponse=(page:any)=>page.waitForResponse((response:any)=>response.url().includes('/screenshot?')&&response.request().method()==='POST');
