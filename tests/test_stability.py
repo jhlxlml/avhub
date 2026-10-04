@@ -161,6 +161,63 @@ class LibraryTests(unittest.TestCase):
             self.assertEqual(result['url'], '/media/1/file')
             self.assertEqual(source.read_bytes(), b'original video bytes')
 
+    def test_remux_preroll_keeps_requested_timeline_and_source_bytes(self):
+        with tempfile.TemporaryDirectory(prefix='avhub-preroll-') as folder:
+            source = Path(folder) / 'sample.ts'
+            original = b'untouched original video'
+            source.write_bytes(original)
+            with m.connection() as db:
+                db.execute("UPDATE media SET path=?,ext='.ts',video_codec='h264',audio_tracks=? WHERE id=1",
+                           (str(source), '[{"index":1,"codec":"aac"}]'))
+            for start, preroll, expected in [(20, 2, 18), (20, 10, 10), (1, 2, 0), (20, 0, 20), (200, 2, 117.9)]:
+                with self.subTest(start=start, preroll=preroll), patch.object(m.playback, 'create',
+                        return_value={'token':'session', 'offset':expected}) as create:
+                    result = m.start_playback(1, m.PlaybackInput(start=start, seek_preroll=preroll))
+                    self.assertAlmostEqual(create.call_args.args[2], expected)
+                    self.assertEqual(result['start'], min(start, 119.9))
+                    self.assertEqual(result['offset'], expected)
+                    self.assertTrue(create.call_args.kwargs['copy_video'])
+                    self.assertTrue(create.call_args.kwargs['copy_audio'])
+            self.assertEqual(source.read_bytes(), original)
+        for invalid in [-1, 11, float('nan'), float('inf')]:
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                m.PlaybackInput(seek_preroll=invalid)
+
+    def test_indexed_ts_is_opt_in_and_never_intercepts_audio_selection_or_transcoding(self):
+        with tempfile.TemporaryDirectory(prefix='avhub-ts-policy-') as folder:
+            source=Path(folder)/'source.ts';source.write_bytes(b'unchanged video')
+            with m.connection() as db:
+                db.execute("UPDATE media SET path=?,ext='.ts',video_codec='h264',audio_tracks=? WHERE id=1",
+                           (str(source),'[{"index":1,"codec":"aac"}]'))
+            with patch.object(m.playback,'create_indexed_ts',return_value={'token':'indexed','delivery':'indexed-ts','offset':0}) as index, \
+                    patch.object(m.playback,'create',return_value={'token':'legacy'}) as legacy:
+                result=m.start_playback(1,m.PlaybackInput(start=90,indexed_ts=True))
+                self.assertEqual(result['start'],90);self.assertEqual(result['offset'],0)
+                self.assertEqual(result['delivery'],'indexed-ts');index.assert_called_once();legacy.assert_not_called()
+                for body in [m.PlaybackInput(),m.PlaybackInput(indexed_ts=True,audio_track_index=1),
+                             m.PlaybackInput(indexed_ts=True,force_transcode=True),
+                             m.PlaybackInput(indexed_ts=True,quality='480p')]:
+                    m.start_playback(1,body)
+                self.assertEqual(index.call_count,1);self.assertEqual(legacy.call_count,4)
+            self.assertEqual(source.read_bytes(),b'unchanged video')
+
+    def test_indexed_remux_only_handles_lossless_fallback_and_retains_audio_selection(self):
+        with tempfile.TemporaryDirectory(prefix='avhub-remux-policy-') as folder:
+            source=Path(folder)/'sample.mkv';source.write_bytes(b'unchanged original')
+            with m.connection() as db:db.execute("UPDATE media SET path=?,ext='.mkv',video_codec='h264',audio_tracks=? WHERE id=1",
+                (str(source),'[{"index":1,"codec":"aac"},{"index":2,"codec":"ac3"}]'))
+            with patch.object(m.playback,'create_indexed_remux',return_value={'token':'index','delivery':'indexed-remux','offset':0}) as indexed, \
+                    patch.object(m.playback,'create',return_value={'token':'legacy'}) as legacy:
+                result=m.start_playback(1,m.PlaybackInput(indexed_remux=True,prefer_original=True))
+                self.assertEqual(result['mode'],'direct');indexed.assert_not_called();legacy.assert_not_called()
+                result=m.start_playback(1,m.PlaybackInput(indexed_remux=True,skip_direct=True,start=90,audio_track_index=2))
+                self.assertEqual(result['delivery'],'indexed-remux');self.assertEqual(result['start'],90)
+                self.assertEqual(indexed.call_args.kwargs['audio_track_index'],2);self.assertFalse(indexed.call_args.kwargs['copy_audio'])
+                for body in [m.PlaybackInput(),m.PlaybackInput(indexed_remux=True,force_transcode=True),
+                             m.PlaybackInput(indexed_remux=True,quality='720p')]:m.start_playback(1,body)
+                self.assertEqual(indexed.call_count,1);self.assertEqual(legacy.call_count,3)
+            self.assertEqual(source.read_bytes(),b'unchanged original')
+
     def test_failed_direct_is_skipped_and_explicit_quality_overrides_original_preference(self):
         with tempfile.TemporaryDirectory(prefix='avhub-playback-policy-') as folder:
             source = Path(folder) / 'sample.mp4'
@@ -234,6 +291,16 @@ class SessionTests(unittest.TestCase):
         self.manager.sweep()
         self.assertEqual(self.manager.status(token)['state'], 'failed')
         self.assertTrue(self.process.terminated)
+
+    def test_completed_stream_status_stops_waiting_for_unpublishable_tail(self):
+        token = self.create()
+        folder = self.manager.sessions[token].folder
+        (folder / 'index.m3u8').write_text('#EXTM3U')
+        (folder / 'segment_000000.ts').write_bytes(b'segment')
+        self.assertFalse(self.manager.status(token)['complete'])
+        self.process.code = 0
+        self.assertTrue(self.manager.status(token)['complete'])
+        self.assertEqual(self.manager.status(token)['state'], 'ready')
 
     def test_ffmpeg_error_and_missing_executable(self):
         token = self.create()

@@ -11,6 +11,8 @@ import { formatLabel, resolutionLabel } from './mediaLabels';
 import { PlaybackQueue } from './PlaybackQueue';
 import { changeAutoplay, useAutoplay } from './autoplay';
 import { usePlaybackDiagnostics } from './usePlaybackDiagnostics';
+import { usePlaybackFeedback } from './usePlaybackFeedback';
+import { useSeekFrame } from './useSeekFrame';
 import { usePreparationTrace, preparationLabels, type BackendPreparation } from './usePreparationTrace';
 import { preference, savePreference, loadSubtitlePreference as fetchSubtitlePreference } from './preferences';
 import { setWindowMode, useWindowMode } from './windowMode';
@@ -18,9 +20,9 @@ import { saveScreenshot,screenshotKey,screenshotShortcutLabel,revealScreenshot,t
 import './screenshots.css';
 import './playback.css';
 
-type Session = { mode?: 'direct' | 'remux' | 'hls'; state: 'preparing' | 'ready' | 'failed'; token?: string; url?: string; offset: number; start?: number; error?: string; reason?: string; color?:PlaybackColor; window_start?:number; window_end?:number; preparation?: BackendPreparation };
+type Session = { mode?: 'direct' | 'remux' | 'hls'; state: 'preparing' | 'ready' | 'failed'; token?: string; url?: string; offset: number; start?: number; complete?:boolean; delivery?:'indexed-ts'|'indexed-remux'; error?: string; reason?: string; color?:PlaybackColor; window_start?:number; window_end?:number; preparation?: BackendPreparation };
 type Quality = 'auto' | '1080p' | '720p' | '480p';
-type Request = { start: number; force_transcode: boolean; prefer_original: boolean; skip_direct?: boolean; autoplay?: boolean; quality: Quality; audio_track_index?: number; key: number };
+type Request = { start: number; force_transcode: boolean; prefer_original: boolean; skip_direct?: boolean; indexed_ts?:boolean; indexed_remux?:boolean; autoplay?: boolean; quality: Quality; audio_track_index?: number; key: number };
 type SubtitleSource = { id: string; name: string; extension: string; text: string; assConverted?: boolean };
 type DragSession = { pointerId: number; startX: number; startY: number; panX: number; panY: number };
 const TEXT_SUBTITLE_CODECS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']);
@@ -71,6 +73,18 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const videoWrap = useRef<HTMLDivElement>(null);
+  const wheelAction = useRef<(event:WheelEvent) => void>(() => {});
+  useEffect(() => {
+    const wrap = videoWrap.current;
+    if (!wrap) return;
+    const handleWheel = (event:WheelEvent) => {
+      // React delegates wheel events passively; cancel scrolling here instead.
+      event.preventDefault();
+      wheelAction.current(event);
+    };
+    wrap.addEventListener('wheel', handleWheel, {passive:false});
+    return () => wrap.removeEventListener('wheel', handleWheel);
+  }, []);
   const [videoWrapSize, setVideoWrapSize] = useState({ width: 0, height: 0 });
   const [zoom, setZoom] = useState(1);
   const [zoomPan, setZoomPan] = useState({ x: 0, y: 0 });
@@ -125,11 +139,13 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const [quality, setQuality] = useState<Quality>('auto');
   const [playbackMode, setPlaybackMode] = useState<'direct' | 'remux' | 'hls' | null>(null);
   const [playbackReason, setPlaybackReason] = useState('');
+  const [indexedPlayback,setIndexedPlayback]=useState(false);
+  const [indexedRemuxPlayback,setIndexedRemuxPlayback]=useState(false);
   const [playbackColor,setPlaybackColor]=useState<PlaybackColor|null>(null);
   const preparation = usePreparationTrace();
   const [audioTrack, setAudioTrack] = useState('');
   const [openSetting, setOpenSetting] = useState<'quality' | 'audio' | 'speed' | 'subtitles' | 'more' | null>(null);
-  const [buffering, setBuffering] = useState(false);
+  const feedback = usePlaybackFeedback(video,phase,request?.key??0);
   const [position, setDisplayedPosition] = useState(media.progress);
   const positionRef = useRef(position);
   const setPosition = useCallback((value:number) => {
@@ -172,10 +188,13 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   useEffect(()=>()=>{subtitleRequest.current++;subtitleController.current?.abort();},[]);
   const token = useRef<string | null>(null);
   const offset = useRef(0);
+  const seekFrame=useSeekFrame(video,offset);
   const hls = useRef(false);
   const hlsInstance = useRef<Hls | null>(null);
   const hlsAvailableEnd = useRef(0);
   const hlsAvailableStart = useRef(0);
+  const indexedTsFailed = useRef(false);
+  const indexedRemuxFailed = useRef(false);
   const cacheRecoveries = useRef(0);
   const transcode = useRef(false);
   const originalFailed = useRef(false);
@@ -269,6 +288,9 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
 
   useEffect(() => {
     if (!request) return;
+    const currentRequest=request;
+    const requestedStart=request.start;
+    let playbackStart=requestedStart;
     const v = video.current!;
     let disposed = false;
     let instance: Hls | null = null;
@@ -297,6 +319,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       hlsInstance.current = null;
       diagnostics.abortTiming();
       setError(message); setPhase('error');
+      seekFrame.clear();
     };
     const fallback = () => {
       if (disposed || desktopQuitting.current || fallbackStarted) return;
@@ -325,8 +348,14 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       clearTimeout(browserLoadTimer);
       trace.finish();
       diagnostics.observeFrame();
-      if (!hls.current) v.currentTime = request.start;
-      else if (request.autoplay === false && v.buffered.length && v.currentTime < v.buffered.start(0)) v.currentTime = v.buffered.start(0) + .01;
+      if (!hls.current) {
+        if(Math.abs(v.currentTime-playbackStart)>.05)v.currentTime = playbackStart;
+      }
+      else {
+        const point=Math.max(0,playbackStart-offset.current);
+        if(point>v.currentTime+.05)v.currentTime=point;
+        else if(request.autoplay===false&&v.buffered.length&&v.currentTime<v.buffered.start(0))v.currentTime=v.buffered.start(0)+.01;
+      }
       sourceChanging.current = false;
       setPhase('ready');
       // If the browser blocks autoplay, its normal play button remains available.
@@ -348,6 +377,8 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     sourceChanging.current = true;
     setPhase('preparing'); setError(''); setPosition(request.start); setPlaybackMode(null); setPlaybackReason('');
     setPlaybackColor(null);
+    setIndexedPlayback(false);
+    setIndexedRemuxPlayback(false);
 
     async function start() {
       const previousCreation = playbackTasks.creation;
@@ -362,14 +393,21 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         // Client-known ownership also retires a creation whose response timed
         // out. The backend rejects a late creation after this token is retired.
         sessionToken = crypto.randomUUID().replaceAll('-', '');
-        let session = await api<Session>(`/api/media/${media.id}/playback`, { ...json('POST', { ...request, client_token: sessionToken }), signal: creationController.signal });
+        // Stream-copy seeks can discard video up to the next keyframe. Keep a
+        // bounded decode lead-in (including common 10s GOPs), not a re-encode.
+        let session = await api<Session>(`/api/media/${media.id}/playback`, { ...json('POST', { ...currentRequest,
+          indexed_ts:currentRequest.indexed_ts??!indexedTsFailed.current,indexed_remux:currentRequest.indexed_remux??!indexedRemuxFailed.current,
+          seek_preroll:10, client_token: sessionToken }), signal: creationController.signal });
         sessionToken = session.token || null;
         if (disposed) { await stop(); return; }
         trace.backend(session.preparation);
+        playbackStart=session.start??requestedStart;
         trace.advance('stream');
         releaseCreation();
         token.current = sessionToken;
         setPlaybackMode(session.mode || 'direct');
+        setIndexedPlayback(session.delivery==='indexed-ts');
+        setIndexedRemuxPlayback(session.delivery==='indexed-remux');
         setPlaybackReason(session.reason || '');
         setPlaybackColor(session.color || null);
         hls.current = session.mode === 'hls' || session.mode === 'remux';
@@ -377,15 +415,31 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         offset.current = session.offset;
         setSubtitleOffset(session.offset);
         const started = Date.now();
-        while (session.state === 'preparing' && sessionToken) {
+        while (sessionToken && (session.state==='preparing'||session.state==='ready'&&!session.complete&&hls.current&&
+               session.window_end!==undefined&&session.window_end<playbackStart+.05)) {
           if (Date.now() - started > 95000) throw new Error('播放流准备超时，请重试');
-          await new Promise(resolve => setTimeout(resolve, 200));
+          // Local lossless remuxes often publish their first segment in <200ms.
+          // Poll briefly at startup, then back off for genuinely slow encoders.
+          await new Promise(resolve => setTimeout(resolve, Date.now()-started<1000?60:200));
           if (disposed) return;
           session = await api<Session>(`/api/playback/${sessionToken}`, { signal: creationController.signal });
           if (disposed) return;
         }
+        if (session.state === 'failed' && session.delivery==='indexed-ts') {
+          indexedTsFailed.current=true;
+          setRequest({...currentRequest,indexed_ts:false,key:currentRequest.key+1});
+          return;
+        }
+        if(session.state==='failed'&&session.delivery==='indexed-remux') {
+          indexedRemuxFailed.current=true;
+          setRequest({...currentRequest,indexed_remux:false,key:currentRequest.key+1});return;
+        }
         if (session.state === 'failed') throw new Error(session.error || '播放流生成失败');
         if (!session.url) throw new Error('未获取到可播放的视频');
+        // A stale duration may place a near-end request past the actual tail.
+        // A finished encoder cannot publish more data; seek its final frame.
+        if(hls.current&&session.complete&&session.window_end!==undefined)
+          playbackStart=Math.min(playbackStart,Math.max(session.offset,session.window_end-.1));
         trace.advance('attach');
         const watchBrowserLoad = () => {
           trace.advance('browser');
@@ -401,7 +455,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           const { default: HlsRuntime } = await import('hls.js');
           if (disposed) return;
           if (HlsRuntime.isSupported()) {
-            instance = new HlsRuntime({ startPosition: 0, autoStartLoad: true,
+            instance = new HlsRuntime({ startPosition: Math.max(0,playbackStart-session.offset), autoStartLoad: true,
               backBufferLength: 30, maxBufferLength: 30, maxMaxBufferLength: 90,
               liveSyncDuration: 120 });
             hlsInstance.current = instance;
@@ -434,7 +488,17 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
                 return;
               }
               if (!data.fatal) return;
-              if (!transcode.current) fallback();
+              if (session.delivery==='indexed-ts' && !indexedTsFailed.current) {
+                indexedTsFailed.current=true;
+                setRequest({...request,start:played.current?v.currentTime+offset.current:request.start,
+                  indexed_ts:false,autoplay:sourceChanging.current?request.autoplay!==false:!v.paused,key:request.key+1});
+              }
+              else if(session.delivery==='indexed-remux'&&!indexedRemuxFailed.current) {
+                indexedRemuxFailed.current=true;
+                setRequest({...request,start:played.current?v.currentTime+offset.current:request.start,
+                  indexed_remux:false,autoplay:sourceChanging.current?request.autoplay!==false:!v.paused,key:request.key+1});
+              }
+              else if (!transcode.current) fallback();
               else fail('转码视频播放失败，请重试或检查文件');
             });
             watchBrowserLoad();
@@ -663,6 +727,12 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     const v = video.current!;
     if (!Number.isFinite(target)) return;
     target = Math.max(0, Math.min(Math.max(0, media.duration - .1), target));
+    if(!sourceChanging.current&&Math.abs(v.currentTime+offset.current-target)<.05) {
+      if(seekTimer.current!==null)clearTimeout(seekTimer.current);
+      seekTimer.current=null;queuedSeek.current=null;
+      seekFrame.clear();setPosition(target);return;
+    }
+    seekFrame.begin(target);
     if (!sourceChanging.current && !hls.current) {
       if (Math.abs(v.currentTime + offset.current - target) < .05) return;
       diagnostics.beginSeek(target, 'original');
@@ -770,22 +840,20 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     controlsHovered.current=false;
     scheduleControlsHide(videoFullscreen || purePlayback ? 150 : 500);
   }
-  function changeVolumeByWheel(event: React.WheelEvent<HTMLDivElement>) {
-    const target = event.target as HTMLElement;
-    if (phase !== 'ready' || target.closest('.player-controls') || target.closest('.video-canvas') && !event.shiftKey) return;
-    event.preventDefault();
+  function changeVolumeByWheel(event: WheelEvent) {
+    if (!event.deltaY) return;
     const current = video.current;
     if (!current) return;
     current.volume = Math.max(0, Math.min(1, current.volume + (event.deltaY < 0 ? .05 : -.05)));
     if (current.volume > 0) current.muted = false;
   }
-  function zoomAtPointer(event: React.WheelEvent<HTMLDivElement>) {
-    if (phase !== 'ready' || event.shiftKey || !videoWrap.current) return;
-    event.preventDefault();
+  function zoomAtPointer(event: WheelEvent) {
+    if (!videoWrap.current || !event.deltaY) return;
     const bounds = videoWrap.current.getBoundingClientRect();
     const x = event.clientX - bounds.left - videoWrap.current.clientLeft;
     const y = event.clientY - bounds.top - videoWrap.current.clientTop;
-    const next = Math.max(1, Math.min(5, zoom * Math.exp(-event.deltaY * .002)));
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? videoWrap.current.clientHeight : 1);
+    const next = Math.max(1, Math.min(5, zoom * Math.exp(-delta * .002)));
     if (next <= 1.001) {
       setZoom(1);
       setZoomPan({ x: 0, y: 0 });
@@ -801,6 +869,18 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     });
     setZoom(next);
   }
+  wheelAction.current = event => {
+    const panel = (event.target as Element).closest<HTMLElement>('.setting-popover');
+    if (panel) {
+      // Scroll long settings inside the player, never chain into the page.
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? panel.clientHeight : 1;
+      panel.scrollTop += event.deltaY * unit;
+      return;
+    }
+    if (phase !== 'ready') return;
+    if (event.shiftKey) changeVolumeByWheel(event);
+    else zoomAtPointer(event);
+  };
   function resetZoom() { setZoom(1); setZoomPan({ x: 0, y: 0 }); }
   function beginVideoDrag(event: React.PointerEvent<HTMLDivElement>) {
     if (zoom <= 1 || !event.isPrimary || event.button !== 0) return;
@@ -988,7 +1068,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       await setWindowMode({purePlayback:!purePlayback,...(!purePlayback && videoAspectRatio!==undefined?{videoAspectRatio}:{})});
     } catch(e) {notify(`无法切换纯净播放：${errorText(e)}`);}
   }
-  const playbackModeLabel = playbackMode === 'direct' ? '原文件直放' : playbackMode === 'remux' ? '视频无损重封装' : playbackMode === 'hls' ? '兼容转码' : '正在尝试原片';
+  const playbackModeLabel = indexedPlayback ? 'TS 索引直读' : indexedRemuxPlayback ? '索引按需封装' : playbackMode === 'direct' ? '原文件直放' : playbackMode === 'remux' ? '视频无损重封装' : playbackMode === 'hls' ? '兼容转码' : '正在尝试原片';
   const elapsedLabel = (milliseconds: number) => milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(2)} 秒`;
   const seekRouteLabel = diagnostics.lastSeek ? { original: '原片按需读取', segments: '已有分段复用', restart: '重新准备播放流' }[diagnostics.lastSeek.route] : '';
   const sourceColor=playbackColor?.source || media.video_color || {};
@@ -1062,39 +1142,40 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     {saveError && <div className="notice" role="alert">{saveError} <button onClick={() => void save().catch(() => {})}>重试保存</button><button onClick={close}>直接返回</button></div>}
     <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}`} ref={videoWrap}
       style={{ '--player-height': `${videoWrapSize.height}px` } as CSSProperties}
-      onMouseMove={revealControls} onMouseLeave={hideControlsSoon} onWheel={changeVolumeByWheel}
+      onMouseMove={revealControls} onMouseLeave={hideControlsSoon}
       onPointerDownCapture={revealControls}
       onFocusCapture={event=>{if((event.target as HTMLElement).matches(':focus-visible'))revealControls();}}
       onClick={event => { if (suppressStageClick.current) { suppressStageClick.current = false; event.preventDefault(); return; } const target = event.target as HTMLElement; if (target === video.current || target === videoWrap.current || target.closest('.video-canvas')) togglePlayback(); }}
       onDoubleClick={event => { if (suppressStageClick.current) { suppressStageClick.current = false; event.preventDefault(); return; } const target = event.target as HTMLElement; if ((target === video.current || target === videoWrap.current || target.closest('.video-canvas')) && phase === 'ready') toggleFullscreen(); }}>
-      <div className={`video-canvas${zoom > 1 ? ' is-zoomed' : ''}${isDraggingVideo ? ' is-dragging' : ''}`} onWheel={zoomAtPointer}
+      <div className={`video-canvas${zoom > 1 ? ' is-zoomed' : ''}${isDraggingVideo ? ' is-dragging' : ''}`}
         onPointerDown={beginVideoDrag} onPointerMove={moveVideoDrag} onPointerUp={endVideoDrag} onPointerCancel={endVideoDrag}
         style={{ transform: `translate(${zoomPan.x}px, ${zoomPan.y}px) scale(${zoom})` }}>
       <video ref={video} className={rotation % 180 ? 'video-rotated-quarter' : undefined}
         style={{ transform: `translate(-50%, -50%) rotate(${rotation}deg)`, ...(rotation % 180 && videoWrapSize.width && videoWrapSize.height ? {
           width: `${videoWrapSize.height}px`, height: `${videoWrapSize.width}px`, maxWidth: 'none', maxHeight: 'none',
         } : {}) }} playsInline preload="auto"
-        onPlaying={() => { played.current = true; ended.current = false; setBuffering(false); setIsPlaying(true); }}
+        onPlaying={() => { played.current = true; ended.current = false; setIsPlaying(true); }}
         onLoadedData={() => { if (request?.autoplay === false && !sourceChanging.current) { played.current = true; setPosition(video.current!.currentTime + offset.current); void save().catch(() => {}); } }}
-        onWaiting={() => { if (phase === 'ready') setBuffering(true); }}
-        onStalled={() => { if (phase === 'ready') setBuffering(true); }}
-        onCanPlay={() => setBuffering(false)}
         onVolumeChange={() => { if (video.current) { setVolume(video.current.volume); setMuted(video.current.muted); } }}
         onTimeUpdate={() => { if (played.current && queuedSeek.current === null && video.current) {
           positionRef.current=video.current.currentTime+offset.current;
           if(controlsVisible)setDisplayedPosition(positionRef.current);
         } }}
-        onPause={() => { if(video.current&&queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);setIsPlaying(false); setBuffering(false); if (!desktopQuitting.current) void save().catch(() => {}); }}
+        onPause={() => { if(video.current&&queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);setIsPlaying(false); if (!desktopQuitting.current) void save().catch(() => {}); }}
         onSeeked={() => { if (!desktopQuitting.current) void save().catch(() => {}); }}
         onEnded={() => { ended.current = true; void save().catch(() => {}); }}>
         {subtitleUrl && <track key={subtitleUrl} kind="subtitles" src={subtitleUrl} default />}
       </video>
+      <canvas ref={seekFrame.canvas} className="seek-frame" hidden aria-hidden="true"
+        style={{transform:`translate(-50%, -50%) rotate(${rotation}deg)`,...(rotation%180&&videoWrapSize.width&&videoWrapSize.height?{
+          width:`${videoWrapSize.height}px`,height:`${videoWrapSize.width}px`,maxWidth:'none',maxHeight:'none',
+        }:{})}} />
       <style>{`.video-wrap video::cue { font-size: ${subtitleAppearance.size}px; color: ${subtitleAppearance.color}; background-color: rgba(0,0,0,${subtitleAppearance.background}); text-shadow: 0 1px 3px #000, 1px 0 3px #000, -1px 0 3px #000; }`}</style>
       </div>
       {phase === 'choice' && <div className="resume"><b>继续上次观看？</b><span>上次看到 {duration(media.progress)}</span>
         <button onClick={() => startAt(media.progress, false, 'auto', undefined, true)}>继续播放</button><button className="ghost" onClick={() => startAt(0, false, 'auto', undefined, true)}>从头开始</button></div>}
-      {phase === 'preparing' && <div className="resume" role="status"><b>正在准备播放…</b><span>兼容视频直接播放，其他格式按需封装或转换</span></div>}
-      {phase === 'ready' && buffering && <div className="buffering" role="status"><i />正在缓冲…</div>}
+      {feedback.preparing && <div className="resume" role="status"><b>正在准备播放…</b><span>兼容视频直接播放，其他格式按需封装或转换</span></div>}
+      {feedback.buffering && <div className="buffering" role="status"><i />正在缓冲…</div>}
       {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button></div>}
       {phase === 'ended' && <div className="resume"><b>{nextEpisode ? (queue || media.kind!=='episode' ? '本条播放结束' : '本集播放结束') : '播放结束'}</b>
         {nextEpisode && <><span>{nextEpisode.id===media.id?'单条循环：':queueMode==='random'?'随机下一条：':queue ? '播放列表下一条：' : queueScope==='series'&&media.kind==='episode'?'下一集：':'下一条：'}{nextEpisode.title}{nextEpisode.season ? ` · 第 ${nextEpisode.season} 季` : ''}{nextEpisode.episode ? ` 第 ${nextEpisode.episode} 集` : ''}</span>

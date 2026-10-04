@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import test_stability
@@ -69,6 +70,35 @@ class PlaylistPagingTests(unittest.TestCase):
         self.assertNotIn('items',m.rename_playlist(1,m.PlaylistInput(name='rename'),compact=True))
         self.assertNotIn('items',m.add_playlist_item(1,2,compact=True))
         self.assertEqual(self.detail()['revision'],0)  # Duplicate insertion does not change order.
+
+    def test_cover_and_total_duration_are_stable_across_search_and_pages(self):
+        with m.connection() as db:db.execute('UPDATE media SET duration=120')
+        for options in ({},{'page':250},{'q':'09999'},{'q':'no-match'}):
+            page=self.detail(**options)
+            self.assertEqual(page['cover_media']['id'],1)
+            self.assertEqual(page['total_duration'],1200000)
+            self.assertLessEqual(len(page['items']),40)
+            self.assertNotIn('path',page['cover_media'])
+        with m.connection() as db:db.execute('UPDATE media SET missing=1 WHERE id=1')
+        self.assertEqual(self.detail()['cover_media']['id'],2)
+
+    def test_shuffle_start_reaches_full_list_and_skips_offline(self):
+        with patch.object(m.random,'randrange',return_value=9998) as choose:
+            result=m.playlist_queue(1,page=None,page_size=40,shuffle=True)
+        choose.assert_called_once_with(9999)
+        self.assertEqual(result['current']['id'],10000)
+        self.assertEqual(result['page'],250)
+        self.assertEqual(len(result['items']),40)
+
+    def test_empty_and_all_offline_lists_have_explicit_cover_and_safe_start(self):
+        with m.connection() as db:db.execute('DELETE FROM playlist_items')
+        self.assertIsNone(self.detail()['cover_media'])
+        self.assertEqual(self.detail()['total_duration'],0)
+        with self.assertRaises(HTTPException):m.playlist_queue(1,page=None,page_size=40,shuffle=True)
+        with m.connection() as db:
+            db.execute('INSERT INTO playlist_items VALUES(1,41,1)')
+        self.assertEqual(self.detail()['cover_media']['id'],41)
+        with self.assertRaises(HTTPException):m.playlist_queue(1,page=None,page_size=40,shuffle=True)
 
 
 class AssConversionTests(unittest.TestCase):

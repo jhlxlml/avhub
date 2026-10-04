@@ -616,6 +616,9 @@ def storage_cleanup(value:StorageCleanupInput):
 class PlaybackInput(BaseModel):
     client_token: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
     start: float = Field(default=0, ge=0, allow_inf_nan=False)
+    seek_preroll: float = Field(default=0, ge=0, le=10, allow_inf_nan=False)
+    indexed_ts: bool = False
+    indexed_remux: bool = False
     force_transcode: bool = False
     prefer_original: bool = False
     skip_direct: bool = False
@@ -1612,13 +1615,14 @@ def move_playlist_item(playlist_id: int, media_id: int, body: PlaylistMoveInput)
 
 @app.get('/api/playlists/{playlist_id}/queue')
 def playlist_queue(playlist_id: int, media_id: int | None = None, page: int | None = Query(None, ge=1),
-                   page_size: int = Query(40, ge=1, le=100), q: str = ''):
+                   page_size: int = Query(40, ge=1, le=100), q: str = '', shuffle: bool = False):
     with connection() as db:
         db.execute('BEGIN')
         if media_id is None:
-            playlist_summary(db,playlist_id)
+            summary = playlist_summary(db,playlist_id)
             first = db.execute('''SELECT m.id FROM playlist_items i JOIN media m ON m.id=i.media_id
-                WHERE i.playlist_id=? AND m.missing=0 ORDER BY i.position,i.media_id LIMIT 1''',(playlist_id,)).fetchone()
+                WHERE i.playlist_id=? AND m.missing=0 ORDER BY i.position,i.media_id LIMIT 1 OFFSET ?''',
+                (playlist_id,random.randrange(summary['playable_count']) if shuffle and summary['playable_count'] else 0)).fetchone()
             if not first: raise HTTPException(404, '播放列表中没有可播放视频')
             media_id = first['id']
         return playlist_page_query(db,playlist_id,row_dict,page,page_size,q,media_id)
@@ -1657,6 +1661,7 @@ def media_file(media_id: int):
     with connection() as db: row = db.execute("SELECT path FROM media WHERE id=? AND missing=0",(media_id,)).fetchone()
     if not row: raise HTTPException(404)
     return original_file_response(row["path"])
+
 
 @app.get("/media/{media_id}/subtitle")
 def subtitle(media_id: int, path: str):
@@ -1774,13 +1779,30 @@ def start_playback(media_id: int, body: PlaybackInput):
     if not body.force_transcode and body.quality == 'auto' and remux_playable(item):
         audio = selected_audio(item, body.audio_track_index)
         copy_audio = audio is None or audio.get("codec", "").lower() == "aac"
+        if (body.indexed_ts and item['ext'].lower() == '.ts' and body.audio_track_index is None and copy_audio):
+            started=time.perf_counter()
+            result=playback.create_indexed_ts(source, executable('ffprobe'), scan_process,
+                        video_color=item.get('video_color'),client_token=body.client_token)
+            stages['task_ms']=round((time.perf_counter()-started)*1000,2)
+            return measured({'mode':'remux', 'start':start,
+                             'reason':'TS 关键帧索引直读，随机跳播复用同一解码器', **result})
+        if body.indexed_remux and item['ext'].lower() in {'.mkv','.mp4','.m4v','.mov','.avi','.flv'}:
+            started=time.perf_counter()
+            result=playback.create_indexed_remux(source,executable('ffprobe'),executable('ffmpeg'),scan_process,
+                audio_track_index=body.audio_track_index,copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token)
+            stages['task_ms']=round((time.perf_counter()-started)*1000,2)
+            return measured({'mode':'remux','start':start,
+                'reason':'关键帧索引按需封装，跳播不重建视频源；保留原视频编码',**result})
         reason = ("切换音轨，保留原视频编码" if body.audio_track_index is not None else
                   "浏览器原片播放失败，保留原视频编码重新封装" if body.skip_direct else "保留原视频编码转换封装")
         started=time.perf_counter()
-        result=playback.create(source, executable("ffmpeg"), start,
+        # Copy-mode output may begin at the next keyframe. Include a short
+        # decode lead-in, then let the browser seek to the requested position.
+        # Older clients retain the original zero-preroll contract.
+        result=playback.create(source, executable("ffmpeg"), max(0,start-body.seek_preroll),
                         audio_track_index=body.audio_track_index, copy_video=True, copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token)
         stages['task_ms']=round((time.perf_counter()-started)*1000,2)
-        return measured({'mode':'remux','reason':reason,**result})
+        return measured({'mode':'remux','reason':reason,'start':start,**result})
     max_height = {'1080p':1080, '720p':720, '480p':480}.get(body.quality)
     color=item.get('video_color') or {}
     stat=source.stat()
@@ -1820,6 +1842,23 @@ def hls_file(token: str, name: str):
         # body. A single opened snapshot keeps the HTTP response consistent.
         content = playback.manifest(token)
         return Response(content, media_type='application/vnd.apple.mpegurl', headers={'Cache-Control':'no-store'})
+    indexed_fragment = playback.remux_fragment(token,name) or playback.indexed_fragment(token, name)
+    if indexed_fragment is not None:
+        source,prefix,length=indexed_fragment
+        def release_indexed():playback.release_fragment(token,source)
+        def indexed_chunks():
+            remaining=length
+            try:
+                if prefix:yield prefix
+                while remaining:
+                    chunk=source.read(min(1024*1024,remaining))
+                    if not chunk:break
+                    remaining-=len(chunk)
+                    yield chunk
+            finally:release_indexed()
+        return StreamingResponse(indexed_chunks(),media_type='video/mp2t',
+                headers={'Cache-Control':'private, no-cache','Content-Length':str(len(prefix)+length)},
+                background=BackgroundTask(release_indexed))
     source = playback.open_fragment(token, name)
     size = os.fstat(source.fileno()).st_size
     def chunks():

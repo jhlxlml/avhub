@@ -207,9 +207,10 @@ test('audio switching preserves paused/playing states and default audio can retu
   const changed = page.waitForResponse(r => r.url().endsWith('/api/media/2/playback') && r.request().method() === 'POST');
   await page.getByRole('combobox', { name: '音轨', exact: true }).selectOption('2');
   const response = await (await changed).json();
-  expect(response.offset).toBe(20); expect(response.mode).toBe('remux');
+  expect(response.offset).toBe(10);expect(response.start).toBe(20);expect(response.mode).toBe('remux');
   await ready(page);
   expect(await page.locator('video').evaluate((v: HTMLVideoElement) => v.paused)).toBe(true);
+  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement,offset:number)=>Math.abs(v.currentTime+offset-20),response.offset)).toBeLessThan(.5);
   await page.locator('video').evaluate((v: HTMLVideoElement) => v.play());
   await page.mouse.move(300, 280);
   await page.getByRole('button', { name: '音轨', exact: true }).click();

@@ -19,6 +19,8 @@ from .video_color import transcode_color
 from .hls_cache import parse_manifest, window_manifest
 from .cache_owner import orphaned
 from .process_owner import own_encoder
+from .indexed_ts import IndexedTs, build_index, fingerprint
+from .indexed_remux import IndexedRemux, build_remux_index
 
 HLS_SEGMENT_SECONDS = 2
 TRANSCODE_SEGMENT_SECONDS = 1
@@ -28,8 +30,8 @@ TRANSCODE_SEGMENT_SECONDS = 1
 class Session:
     token: str
     folder: Path
-    process: subprocess.Popen
-    log: BinaryIO
+    process: subprocess.Popen | None
+    log: BinaryIO | None
     offset: float
     created: float
     touched: float
@@ -45,6 +47,7 @@ class Session:
     worker: threading.Thread | None = None
     expired_files: set[str] = field(default_factory=set)
     owner: object | None = None
+    indexed: IndexedTs | None = None
 
 
 class PlaybackManager:
@@ -143,7 +146,59 @@ class PlaybackManager:
                 worker.start()
             return self.status(token)
 
+    def create_indexed_ts(self, source: Path, ffprobe: str, run, *, video_color=None, client_token=None):
+        return self._create_indexed(source,IndexedTs(source),
+            lambda event:build_index(source,self.cache.parent/'ts-index',ffprobe,run,event),
+            video_color=video_color,client_token=client_token)
+
+    def create_indexed_remux(self,source,ffprobe,ffmpeg,run,*,audio_track_index=None,copy_audio=True,video_color=None,client_token=None):
+        indexed=IndexedRemux(source,ffmpeg=ffmpeg,run=run,audio_index=audio_track_index,copy_audio=copy_audio,
+                             budget=min(self.cache_target,256*1024**2))
+        return self._create_indexed(source,indexed,
+            lambda event:build_remux_index(source,self.cache.parent/'remux-index',ffprobe,run,event),
+            video_color=video_color,client_token=client_token)
+
+    def _create_indexed(self,source,indexed,build,*,video_color=None,client_token=None):
+        with self.lock:
+            now = time.monotonic()
+            self.cancelled_creations = {key: expiry for key, expiry in self.cancelled_creations.items() if expiry > now}
+            if client_token and client_token in self.cancelled_creations:
+                raise HTTPException(409, '已取消本次播放准备，请重新播放')
+            if client_token and (not re.fullmatch(r'[a-f0-9]{32}', client_token) or client_token in self.sessions):
+                raise HTTPException(409, '播放请求标识无效或已使用')
+            if len(self.sessions) >= 2: raise HTTPException(409, '已有两个播放任务，请先关闭其他播放器')
+            token = client_token or uuid.uuid4().hex
+            folder = self.cache / token
+            created_folder=False
+            try:
+                folder.mkdir()
+                created_folder=True
+                (folder / 'owner.json').write_text(json.dumps({'pid': os.getpid()}), encoding='utf-8')
+            except OSError as exc:
+                if created_folder:self._remove_folder(folder)
+                raise HTTPException(503, '无法创建播放索引，请检查缓存目录权限') from exc
+            if isinstance(indexed,IndexedRemux):indexed.folder=folder
+            session = Session(token, folder, None, None, 0, now, now, indexed=indexed)
+            session.color = {'source': video_color or {}, 'label':('原视频编码按需封装 · 不重编码画面' if isinstance(indexed,IndexedRemux) else '原始 TS 按关键帧直读 · 不改视频/音频编码'),
+                             'warning':'显示效果仍取决于浏览器、显卡与显示器支持'}
+            self.sessions[token] = session
+            def index():
+                try:
+                    data = build(session.indexed.cancelled)
+                    with self.lock:
+                        if self.sessions.get(token) is session and not session.indexed.cancelled.is_set():
+                            session.indexed.data = data
+                            session.window_end = data['duration']
+                except Exception as exc:
+                    with self.lock:
+                        if self.sessions.get(token) is session:
+                            session.error = f'关键帧索引不可用，需兼容封装：{str(exc)[:200]}'
+            session.worker = threading.Thread(target=index, name=f'avhub-keyframe-index-{token[:8]}', daemon=True)
+            session.worker.start()
+            return self.status(token)
+
     def _maintain(self, session: Session):
+        if session.indexed: return
         # Check before the first manifest too: a failing decoder can fill its
         # error log without ever publishing a playable segment.
         log = session.folder / 'ffmpeg.log'
@@ -261,6 +316,14 @@ class PlaybackManager:
                 session.playhead = max(0, position - session.offset)
                 self.condition.notify_all()
             self._check_cache(session)
+            if session.indexed:
+                state = 'failed' if session.error else 'ready' if session.indexed.data is not None else 'preparing'
+                return {'token':token, 'state':state, 'offset':0, 'delivery':'indexed-remux' if isinstance(session.indexed,IndexedRemux) else 'indexed-ts',
+                        'complete':state == 'ready', 'error':session.error, 'color':session.color,
+                        'url':f'/media/hls/{token}/index.m3u8' if state == 'ready' else None,
+                        'window_start':0, 'window_end':session.window_end,
+                        'cache_bytes':session.indexed.cache_bytes if isinstance(session.indexed,IndexedRemux) else 0,
+                        'cache_target_bytes':self.cache_target, 'throttled':False}
             code = session.process.poll()
             manifest = session.folder / "index.m3u8"
             ready = manifest.is_file() and any(session.folder.glob("segment_*.ts"))
@@ -276,7 +339,7 @@ class PlaybackManager:
                 if session.color and 'HDR → SDR' in session.color['label'] and '无法映射时' not in session.error:
                     session.error += '；HDR 兼容映射需要 FFmpeg 的 zscale/tonemap，无法映射时不会回退为未处理的 HDR 转码'
             state = "failed" if session.error else "ready" if ready else "preparing"
-            return {"token": token, "state": state, "offset": session.offset,
+            return {"token": token, "state": state, "offset": session.offset, 'complete': code == 0,
                     "url": f"/media/hls/{token}/index.m3u8" if state == "ready" else None,
                     "error": session.error, 'color':session.color,
                     'window_start': session.offset + session.window_start, 'window_end': session.offset + session.window_end,
@@ -285,6 +348,10 @@ class PlaybackManager:
     def manifest(self, token: str) -> bytes:
         with self.lock:
             session = self._get(token)
+            if session.indexed:
+                session.touched = time.monotonic()
+                if session.error or session.indexed.data is None: raise HTTPException(503, session.error or '关键帧索引尚未完成')
+                return session.indexed.manifest()
             path = self.file(token, 'index.m3u8')
             try: return window_manifest(path.read_bytes(), session.first_sequence)
             except FileNotFoundError as exc: raise HTTPException(404, '播放任务已结束') from exc
@@ -310,7 +377,63 @@ class PlaybackManager:
             try: return self.file(token, name).open('rb')
             except OSError as exc: raise HTTPException(410, '播放分片已回收，请重新取流') from exc
 
+    def indexed_fragment(self, token: str, name: str):
+        with self.lock:
+            session = self._get(token)
+            if not session.indexed or isinstance(session.indexed,IndexedRemux): return None
+            match=re.fullmatch(r'segment_(\d{6})\.ts', name)
+            if not match or session.indexed.data is None: raise HTTPException(404)
+            index=int(match[1])
+            if index >= len(session.indexed.data['fragments']): raise HTTPException(404)
+            try:
+                if fingerprint(session.indexed.source) != session.indexed.data['source']:
+                    raise HTTPException(409, '源视频已变更，请刷新后重新播放')
+            except OSError as exc: raise HTTPException(404, '源视频不可访问，请检查磁盘连接') from exc
+            session.touched = time.monotonic()
+            _, length, position, _ = session.indexed.data['fragments'][index]
+            reader=None
+            try:
+                reader=session.indexed.source.open('rb')
+                reader.seek(position)
+            except OSError as exc:
+                if reader:reader.close()
+                raise HTTPException(404, '源视频不可访问') from exc
+            prefix=bytes.fromhex(session.indexed.data['headers']) if index else b''
+            return reader,prefix,length
+
+    def remux_fragment(self,token,name):
+        with self.lock:
+            session=self._get(token)
+            if not isinstance(session.indexed,IndexedRemux):return None
+            match=re.fullmatch(r'segment_(\d{6})\.ts',name)
+            if not match or session.indexed.data is None or int(match[1])>=len(session.indexed.data['fragments']):raise HTTPException(404)
+            session.touched=time.monotonic()
+            indexed=session.indexed
+        # Never hold the manager lock while FFmpeg seeks/remuxes one GOP.
+        try:reader=indexed.open_fragment(int(match[1]))
+        except Exception as exc:raise HTTPException(503,f'按需封装不可用：{str(exc)[:300]}') from exc
+        finally:
+            # Cancellation can arrive while FFmpeg still owns a Windows .tmp
+            # handle. Retry cleanup immediately once that short task releases it,
+            # rather than leaving the folder until the next ten-second sweep.
+            with self.lock:
+                if indexed.cancelled.is_set():self._remove_folder(session.folder)
+        with self.lock:
+            if self.sessions.get(token) is not session:
+                reader.close();self._remove_folder(session.folder);raise HTTPException(410,'播放任务已结束')
+        return reader,b'',os.fstat(reader.fileno()).st_size
+
+    def release_fragment(self,token,reader):
+        try:reader.close()
+        finally:
+            with self.lock:
+                folder=self.cache/token
+                if folder in self.pending_removals:self._remove_folder(folder)
+
     def _stop_process(self, session: Session):
+        if session.indexed:
+            session.indexed.cancelled.set()
+            return
         try:
             if session.process.poll() is None:
                 session.process.terminate()
@@ -370,6 +493,11 @@ class PlaybackManager:
                 self._check_cache(session)
                 if session.error:
                     continue
+                if session.indexed:
+                    if session.indexed.data is None and now - session.created > 35:
+                        session.error = '关键帧索引准备超时'
+                        self._stop_process(session)
+                    continue
                 ready = (session.folder / "index.m3u8").is_file()
                 if not ready and now - session.created > 90:
                     session.error = "播放流准备超时，请重试"
@@ -378,7 +506,9 @@ class PlaybackManager:
 
     def close(self):
         with self.lock:
+            workers = [session.worker for session in self.sessions.values() if session.indexed and session.worker]
             for token in list(self.sessions):
                 self.stop(token)
             for folder in tuple(self.pending_removals):
                 self._remove_folder(folder)
+        for worker in workers: worker.join(timeout=2)

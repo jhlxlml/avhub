@@ -31,6 +31,7 @@ import './library-performance.css';
 import './design-system.css';
 import './appearance.css';
 import './scrollbars.css';
+import './playlists.css';
 
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
 
@@ -85,7 +86,15 @@ function App() {
   const [queue, setQueue] = useState<PlaylistSource | null>(null);
   const [searchOpen, setSearchOpen] = useState(() => Boolean(readFilters().q));
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState('');
+  const [notification, setNotification] = useState({message:'', autoDismissMs:0, id:0});
+  const notice = notification.message;
+  const setNotice = useCallback((message:string) => {
+    setNotification(current => ({message, autoDismissMs:0, id:current.id+1}));
+  }, []);
+  const playlistAdded = useCallback((message:string) => {
+    // A fresh identity restarts the timer even when the same video is added again.
+    setNotification(current => ({message, autoDismissMs:4000, id:current.id+1}));
+  }, []);
   const [requestError, setRequestError] = useState('');
   const [revision, setRevision] = useState(0);
   const [bulkMode, setBulkMode] = useState(false);
@@ -246,7 +255,7 @@ function App() {
   function changePage(page: number) { setFilters(f => ({ ...f, page })); scrollPageTo(0); }
   const title = views.find(v => v.id === filters.view)!.label;
   return <>
-    {notice && <Toast message={notice} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
+    {notice && <Toast key={notification.id} message={notice} autoDismissMs={notification.autoDismissMs} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
     {router.route.mediaId && (!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage></div>}
     {selected && selected.id===router.route.mediaId && <Suspense fallback={<div className="player-loading"><StatusMessage kind="loading">正在打开播放器…</StatusMessage></div>}>
       <Player key={selected.id} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} update={updateMedia}
@@ -343,8 +352,8 @@ function App() {
       </section></div>
       {bulkOpen && <BulkEditor ids={picked} close={() => setBulkOpen(false)} done={count => { setBulkOpen(false); setPicked([]); setRevision(value => value + 1); setNotice(`已整理 ${count} 个视频，源文件未修改`); }}/ >}
       {settings && <Settings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
-      {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={setNotice} />}
-      {playlistTarget && <Playlists addMedia={playlistTarget} close={() => setPlaylistTarget(null)} play={playQueue} added={setNotice} />}
+      {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={playlistAdded} />}
+      {playlistTarget && <Playlists addMedia={playlistTarget} close={() => setPlaylistTarget(null)} play={playQueue} added={playlistAdded} />}
     </main>
   </>;
 }

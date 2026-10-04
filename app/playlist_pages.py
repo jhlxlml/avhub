@@ -5,7 +5,8 @@ from .folders import like_literal
 
 def summary(db, playlist_id):
     row = db.execute('''SELECT p.*,COUNT(m.id) AS count,
-        COALESCE(SUM(m.missing=0),0) AS playable_count FROM playlists p
+        COALESCE(SUM(m.missing=0),0) AS playable_count,
+        COALESCE(SUM(m.duration),0) AS total_duration FROM playlists p
         LEFT JOIN playlist_items i ON i.playlist_id=p.id LEFT JOIN media m ON m.id=i.media_id
         WHERE p.id=? GROUP BY p.id''', (playlist_id,)).fetchone()
     if not row: raise HTTPException(404, '播放列表不存在')
@@ -14,6 +15,11 @@ def summary(db, playlist_id):
 
 def page_query(db, playlist_id, convert, page=1, size=40, q='', current_id=None):
     info = summary(db, playlist_id)
+    # Keep the cover stable across search/page changes; read only one member.
+    cover = db.execute('''SELECT m.* FROM playlist_items i JOIN media m ON m.id=i.media_id
+        WHERE i.playlist_id=? ORDER BY m.missing,i.position,i.media_id LIMIT 1''',(playlist_id,)).fetchone()
+    info['cover_media'] = {key:value for key,value in convert(cover).items()
+                           if key in ('id','title','thumbnail_url')} if cover else None
     base = ' FROM playlist_items i JOIN media m ON m.id=i.media_id WHERE i.playlist_id=?'
     select = 'SELECT m.*,i.position AS playlist_position'
     before = ' AND (i.position,i.media_id) < (?,?)'

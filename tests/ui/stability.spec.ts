@@ -507,10 +507,11 @@ test('random seeks in already-published MKV and TS HLS segments reuse the active
     const restart = page.getByRole('button', { name: '从头开始', exact: true });
     if (await restart.isVisible()) await restart.click();
     await expect(page.getByRole('button', { name: '画质', exact: true }))
-      .toHaveAttribute('title', /无损重封装/, { timeout: 20000 });
+      .toHaveAttribute('title', /无损重封装|TS 索引直读|索引按需封装/, { timeout: 20000 });
     await expect.poll(() => page.locator('video').evaluate((video: HTMLVideoElement) => !video.paused)).toBeTruthy();
     await page.locator('.playback-diagnostics summary').click();
-    // Let FFmpeg publish later segments, then simulate a browser that only exposes its short buffered range.
+    // Legacy FFmpeg publishes later segments; indexed VOD already has the full
+    // time map. Both must work when browser seekable only exposes a short buffer.
     await page.waitForTimeout(1000);
     await page.locator('video').evaluate((video: HTMLVideoElement) => {
       Object.defineProperty(video, 'seekable', {
@@ -575,7 +576,7 @@ test('failed original is not tried twice and falls back to lossless video remux 
   expect(requests[1].skip_direct).toBeTruthy();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime > 0)).toBeTruthy();
   await expect(page.getByRole('button', { name: '画质', exact: true }))
-    .toHaveAttribute('title', '播放：原片优先 · 视频无损重封装');
+    .toHaveAttribute('title', /播放：原片优先 · (视频无损重封装|索引按需封装)/);
   expect(fileRequests).toBe(1);
   expect(requests).toHaveLength(2);
 });
@@ -626,8 +627,9 @@ test('TS fallback seeks before the current stream offset without retrying the fa
     await route.fulfill({ status: 404, body: 'force original fallback' });
   });
   await page.route('**/api/media/5/playback', async route => {
-    starts.push(route.request().postDataJSON());
-    await route.continue();
+    // Exercise the still-supported legacy fallback; indexed VOD is tested separately.
+    const body={...route.request().postDataJSON(),indexed_ts:false};starts.push(body);
+    await route.continue({postData:JSON.stringify(body)});
   });
   await page.goto('/?q=005');
   await page.getByRole('button', { name: '播放 视频 005', exact: true }).click();
@@ -728,11 +730,15 @@ test('failed transcode is visible and released, retry creates only one task', as
 });
 
 test('transcoded resume starts at saved position; closing tab saves and stops task', async ({ page, request }) => {
+  // Really exercise transcoding: MKV is now often native, where currentTime
+  // already equals 45 at metadata and the old >.2 condition closed too early.
+  await page.route('**/api/media/3/playback',route=>route.continue({postData:JSON.stringify({
+    ...route.request().postDataJSON(),force_transcode:true})}));
   await request.put('/api/media/3/progress', { data: { progress: 45, watched: false, updated_at: 1 } });
   await page.goto('/?view=series');
   await page.getByRole('button', { name: '播放 视频 003', exact: true }).click();
   await page.getByRole('button', { name: '继续播放', exact: true }).click();
-  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused && v.currentTime > .2)).toBeTruthy();
+  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused && v.readyState>=2 && v.currentTime > .2)).toBeTruthy();
   await page.close();
   await expect.poll(async () => (await (await request.get('/api/media/3')).json()).progress).toBeGreaterThan(45);
   await expect.poll(async () => (await (await request.get('/test/sessions')).json())).toEqual({ count: 0, folders: 0 });

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--kind', choices=['avhub', 'reference'], default='avhub')
     parser.add_argument('--source')
+    parser.add_argument('--source-index')
+    parser.add_argument('--source-id',type=int,default=1)
     parser.add_argument('--reference-root')
+    parser.add_argument('--container',choices=['mkv','avi','mov','mp4','webm'])
+    parser.add_argument('--audio',choices=['copy','ac3'],default='copy')
+    parser.add_argument('--legacy-delivery',action='store_true')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='avhub-seek-benchmark-') as temporary:
         folder = Path(temporary)
@@ -25,8 +31,16 @@ def main():
         os.environ.pop('AVHUB_SESSION_TOKEN', None)
         from app import main as avhub
         import uvicorn
-        source = Path(args.source).resolve() if args.source else folder / 'benchmark.mkv'
-        if not args.source:
+        if args.source_index:
+            db=sqlite3.connect(Path(args.source_index).resolve().as_uri()+'?mode=ro',uri=True)
+            try:
+                row=db.execute('SELECT path FROM media WHERE id=?',(args.source_id,)).fetchone()
+            finally:db.close()
+            if not row:raise ValueError('Benchmark source ID is not in the read-only index')
+            source=Path(row[0]).resolve()
+        else:
+            source = Path(args.source).resolve() if args.source else folder / 'benchmark.mkv'
+        if not args.source and not args.source_index:
             subprocess.run([avhub.executable('ffmpeg'), '-v', 'error', '-f', 'lavfi', '-i',
                             'testsrc2=s=640x360:r=25', '-f', 'lavfi', '-i', 'sine=frequency=440',
                             '-t', '120', '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '50',
@@ -34,6 +48,16 @@ def main():
         if not source.is_file():
             raise ValueError('Benchmark source does not exist')
         original = source.stat()
+        original_source=source
+        if args.container:
+            derived=folder/f'derived.{args.container}'
+            subprocess.run([avhub.executable('ffmpeg'),'-v','error','-nostdin','-y','-i',str(source),
+                '-map','0:v:0','-map','0:a:0?','-c:v','copy','-c:a',args.audio,str(derived)],check=True,timeout=60)
+            source=derived
+        if args.legacy_delivery:
+            from starlette.responses import FileResponse
+            from app.media_delivery import MediaFileResponse
+            MediaFileResponse.__call__=FileResponse.__call__
         metadata = avhub.probe(source)
         if not metadata['video_codec'] or metadata['duration'] < 5:
             raise ValueError('Benchmark requires a valid video at least five seconds long')
@@ -48,7 +72,7 @@ def main():
                     VALUES(1,?,1,?,'播放基准样本',?,?,?,?,?,?,?,?,0,0)''',
                            (str(source), source.name, source.suffix, metadata['duration'], metadata['width'],
                             metadata['height'], metadata['video_codec'], json.dumps(metadata['audio_tracks']),
-                            json.dumps(metadata['subtitles']), original.st_size))
+                            json.dumps(metadata['subtitles']), source.stat().st_size))
                 if preview: db.execute('UPDATE media SET thumbnail=? WHERE id=1', (preview,))
             app = avhub.app
         else:
@@ -74,7 +98,7 @@ def main():
             sys.modules[config.__name__] = config
             module = importlib.import_module('benchmark_reference.main')
             module.db.upsert_media({
-                'path':str(source), 'name':'播放基准样本', 'size':original.st_size,
+                'path':str(source), 'name':'播放基准样本', 'size':source.stat().st_size,
                 'mtime':original.st_mtime, 'duration':metadata['duration'], 'width':metadata['width'],
                 'height':metadata['height'], 'video_codec':metadata['video_codec'],
                 'audio_codec':next((track['codec'] for track in metadata['audio_tracks']), None),
@@ -95,13 +119,13 @@ def main():
 
         print(json.dumps({'url':f'http://127.0.0.1:{port}', 'source':str(source),
                           'duration':metadata['duration'], 'codec':metadata['video_codec'],
-                          'source_size':original.st_size, 'kind':args.kind}), flush=True)
+                          'source_size':source.stat().st_size, 'kind':args.kind}), flush=True)
         try:
             server.run(sockets=[listener])
         finally:
             avhub.playback.close()
             listener.close()
-            current = source.stat()
+            current = original_source.stat()
             if (current.st_size, current.st_mtime_ns) != (original.st_size, original.st_mtime_ns):
                 raise RuntimeError('Source metadata changed during benchmark')
 

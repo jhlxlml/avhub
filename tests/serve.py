@@ -136,6 +136,34 @@ def two_audio_fixture():
         db.execute('UPDATE media SET path=?,audio_tracks=? WHERE id=2', (str(path),json.dumps(metadata['audio_tracks'])))
     return {'ok':True}
 
+@m.app.post('/test/indexed-ts-fixture')
+def indexed_ts_fixture():
+    target=Path(temp.name)/'indexed.ts'
+    if not target.exists():
+        subprocess.run([m.executable('ffmpeg'),'-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=25',
+            '-f','lavfi','-i','sine=frequency=440','-t','120','-c:v','libx264','-preset','ultrafast',
+            '-g','50','-c:a','aac','-f','mpegts',str(target)],check=True,timeout=15)
+    with m.connection() as db:db.execute('UPDATE media SET path=? WHERE id=5',(str(target),))
+    return {'ok':True}
+
+
+@m.app.post('/test/indexed-remux-fixture')
+def indexed_remux_fixture(container:str='mkv',audio:str='aac'):
+    if container not in {'mkv','avi','mov','mp4','flv'} or audio not in {'aac','ac3','mp3'}:
+        raise m.HTTPException(400,'invalid test fixture')
+    target=Path(temp.name)/f'indexed-{audio}.{container}'
+    if not target.exists():
+        command=[m.executable('ffmpeg'),'-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=25',
+            '-f','lavfi','-i','sine=frequency=440','-f','lavfi','-i','sine=frequency=880',
+            '-t','120','-map','0:v','-map','1:a']
+        if container!='flv':command.extend(['-map','2:a'])
+        command.extend(['-c:v','libx264','-preset','fast','-g','250','-bf','3','-c:a',audio,str(target)])
+        subprocess.run(command,check=True,timeout=20)
+    metadata=m.probe(target)
+    with m.connection() as db:db.execute('UPDATE media SET path=?,ext=?,duration=?,audio_tracks=? WHERE id=3',
+        (str(target),target.suffix,metadata['duration'],json.dumps(metadata['audio_tracks'])))
+    return {'ok':True}
+
 
 @m.app.post('/test/autoplay-fixture')
 def autoplay_fixture():

@@ -7,7 +7,8 @@ test('rapid paused HLS seeks coalesce to the final target and remain paused', as
   await request.put('/api/media/5/progress', {data:{progress:60,watched:false,updated_at:1}});
   const starts: Array<{start:number;autoplay?:boolean}> = [];
   await page.route('**/media/5/file', route => route.fulfill({status:404,body:'force remux'}));
-  await page.route('**/api/media/5/playback', route => { starts.push(route.request().postDataJSON()); return route.continue(); });
+  // Explicitly exercise the retained legacy windowed fallback/cancellation path.
+  await page.route('**/api/media/5/playback', route => { const body={...route.request().postDataJSON(),indexed_ts:false};starts.push(body);return route.continue({postData:JSON.stringify(body)}); });
   await page.goto('/?q=005');
   await page.getByRole('button', {name:'播放 视频 005',exact:true}).click();
   await page.getByRole('button', {name:'继续播放',exact:true}).click();
@@ -22,6 +23,7 @@ test('rapid paused HLS seeks coalesce to the final target and remain paused', as
   expect(starts).toHaveLength(3);
   expect(starts[2]).toMatchObject({start:20,autoplay:false});
   expect(await page.locator('video').evaluate((v:HTMLVideoElement) => v.paused)).toBeTruthy();
+  await expect(page.locator('.seek-frame')).toBeHidden();
   await expect.poll(async () => (await (await request.get('/api/media/5')).json()).progress).toBeGreaterThanOrEqual(20);
   await page.getByRole('button', {name:'返回媒体库',exact:false}).click();
   await expect.poll(async () => (await (await request.get('/test/sessions')).json())).toEqual({count:0,folders:0});
@@ -34,8 +36,8 @@ test('a new seek during late task creation retires the stale session before crea
   let staleCreated = false;
   await page.route('**/media/5/file', route => route.fulfill({status:404,body:'force remux'}));
   await page.route('**/api/media/5/playback', async route => {
-    starts.push(route.request().postDataJSON());
-    const response = await route.fetch();
+    const body={...route.request().postDataJSON(),indexed_ts:false};starts.push(body);
+    const response = await route.fetch({postData:JSON.stringify(body)});
     counts.push((await (await request.get('/test/sessions')).json()).count);
     if (starts.length === 3) { staleCreated=true; await new Promise(resolve => setTimeout(resolve,700)); }
     await route.fulfill({response});

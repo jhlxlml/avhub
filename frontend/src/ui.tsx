@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { useModalDialog } from './useModalDialog';
 
@@ -37,7 +37,14 @@ export function EmptyState({ icon, title, description, children }: { icon: IconN
   return <div className="empty"><div className="empty-icon"><Icon name={icon} size={27}/></div><h2>{title}</h2><p>{description}</p>{children}</div>;
 }
 
-export function Toast({ message, close, children }: { message: string; close: () => void; children?: ReactNode }) {
+export function Toast({ message, close, autoDismissMs = 0, children }: { message: string; close: () => void; autoDismissMs?: number; children?: ReactNode }) {
+  const latestClose = useRef(close);
+  latestClose.current = close;
+  useEffect(() => {
+    if (autoDismissMs <= 0) return;
+    const timer = window.setTimeout(() => latestClose.current(), autoDismissMs);
+    return () => window.clearTimeout(timer);
+  }, [message, autoDismissMs]);
   return <div className="toast" role="alert"><Icon name="info"/><span className="toast-message">{message}</span>{children}<IconButton icon="close" label="关闭提示" onClick={close}/></div>;
 }
 

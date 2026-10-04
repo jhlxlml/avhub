@@ -19,6 +19,7 @@ Two runtime modes are available:
 
 - Multiple local directories, added through a native folder picker or a typed path; per-directory scans, incremental library refresh, and interrupted-scan recovery.
 - Grid, list, and folder browsing; all videos, movies, series, continue watching, favorites, history, and playlists.
+- Playlists pair a cover summary with horizontal video rows, with search, reordering, renaming, ordered or random starts, bounded pagination, and dark/light and narrow-window layouts.
 - Search titles, filenames, and tags; filter and sort by directory, format, duration, and watched status.
 - Infer series, seasons, and episodes from local names and folders; manually edit titles, types, episode numbers, tags, and ratings.
 - Generate artwork from video frames, import custom artwork, capture a cover at a chosen video position, and batch-edit metadata.
@@ -152,6 +153,10 @@ Compatibility determines the playback path:
 Keeping 4K resolution does not mean lossless output. Compatibility transcoding is lossy. HDR / high-bit-depth conversion may produce SDR / 8-bit output and cannot retain all original dynamic range or bit depth. Unsupported Dolby Vision conversions are explicitly rejected rather than labeled as original-quality playback.
 
 HEVC direct playback depends on browser, OS, and hardware support. Random seeking in MKV / TS may still require preparation when remuxing or transcoding. AVHub does not integrate MPV or another native playback engine, so native-player decoding and seeking performance cannot be guaranteed for every file.
+
+Compatible H.264 / AAC TS files can use **indexed TS playback**: the first playback builds a keyframe index cached in `data/ts-index/`. Later seeks read original-file ranges on demand while reusing the decoder, without copying or re-encoding the whole video. Initial indexing adds startup time; unusual timelines, nonstandard containers, and audio-track changes retain the compatibility fallback. See the [TS seeking and blank-frame validation report](docs/TS-INDEXED-PLAYBACK-2026-10-04.md) (Chinese).
+
+When remuxing is necessary, compatible H.264 MKV, AVI, MOV, MP4/M4V and FLV files can use **indexed on-demand remuxing**. Seeks prepare only the required keyframe interval without reloading the video source; video encoding and resolution are preserved, while unsupported audio is converted separately. Indexes live in `data/remux-index/`. Each session targets at most 256MB of fragments, with temporary overruns possible for oversized GOPs or open readers. Original playback remains preferred, and obsolete file reads are cancelled and closed promptly. Unsupported indexes retain the compatibility fallback. See the [multi-format seeking validation report](docs/MULTIFORMAT-SEEK-2026-10-04.md) (Chinese).
 
 Embedded text subtitles and external SRT / VTT / ASS / SSA are supported. ASS / SSA is converted to WebVTT, without guaranteed preservation of complex styling or effects. Image-based subtitles such as PGS / VobSub are not currently supported.
 

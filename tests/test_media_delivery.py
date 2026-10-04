@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import anyio
+from unittest.mock import patch
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -80,3 +82,30 @@ class MediaDeliveryTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(HTTPException) as error:
                 original_file_response(path)
             self.assertEqual(error.exception.status_code, 404)
+
+    async def test_cancelled_open_ended_ranges_stop_reading_and_close_handle(self):
+        # Model ASGI 2.3 Uvicorn: send silently accepts bytes after disconnect.
+        # A response without a disconnect listener reads through to EOF here.
+        for header in [None,'bytes=10-', 'bytes=0-1048575,1048576-2559999']:
+            disconnected=anyio.Event();reads=[];opened=[]
+            original=anyio.open_file
+            async def tracked_open(*args,**kwargs):
+                file=await original(*args,**kwargs);opened.append(file)
+                read=file.read
+                async def tracked_read(size=-1):
+                    reads.append(size);return await read(size)
+                file.read=tracked_read
+                return file
+            async def receive():
+                await disconnected.wait();return {'type':'http.disconnect'}
+            async def send(message):
+                if message['type']=='http.response.body' and message.get('body'):
+                    disconnected.set()
+                    await anyio.sleep(.02)
+            scope={'type':'http','method':'GET','asgi':{'spec_version':'2.3'},
+                   'headers':[(b'range',header.encode())] if header else []}
+            with patch('anyio.open_file',tracked_open):
+                await original_file_response(self.source)(scope,receive,send)
+            self.assertLessEqual(len(reads),1)
+            self.assertEqual(len(opened),1)
+            self.assertTrue(opened[0].wrapped.closed)
