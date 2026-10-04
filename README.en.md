@@ -1,0 +1,300 @@
+# AVHub
+
+English · [简体中文](README.md)
+
+AVHub is an offline local video library and player for Windows. It brings multiple video directories into one interface, lets you browse by folder or by movie and series, and remembers favorites, playlists, and viewing progress.
+
+Videos stay in their original locations. The app does not offer operations to move, rename, or delete source videos. Indexes, artwork, settings, and viewing records are stored separately. Once dependencies are installed or a portable build is ready, everyday scanning and playback work offline, without online artwork or metadata scraping.
+
+Two runtime modes are available:
+
+- **Electron desktop app**: a standalone window with always-on-top, aspect-ratio-adaptive borderless Pure Playback, and desktop folder operations.
+- **Browser app**: a Python-powered local server accessed through Edge / Chrome. It cannot pin or automatically resize the browser window.
+
+**The application UI is currently Chinese.** This English README does not imply English UI support. The repository primarily contains source code, not FFmpeg executables, generated web assets, personal library data, or portable EXEs.
+
+## Features
+
+### Library
+
+- Multiple local directories, added through a native folder picker or a typed path; per-directory scans, incremental library refresh, and interrupted-scan recovery.
+- Grid, list, and folder browsing; all videos, movies, series, continue watching, favorites, history, and playlists.
+- Search titles, filenames, and tags; filter and sort by directory, format, duration, and watched status.
+- Infer series, seasons, and episodes from local names and folders; manually edit titles, types, episode numbers, tags, and ratings.
+- Generate artwork from video frames, import custom artwork, capture a cover at a chosen video position, and batch-edit metadata.
+- Server-side pagination and on-demand directory / series data. An independent thumbnail queue supports pause and resume and yields to playback.
+- Relocate unavailable directories while retaining associated user metadata. Removing a library directory does not delete its videos.
+
+### Player
+
+- Prefer original-file playback, try remuxing when needed, and use FFmpeg compatibility transcoding only when required.
+- Resume playback, seeking, volume, playback speed, audio-track selection, text subtitles, subtitle delay, and technical information.
+- Same-folder and playlist queues, sequential playback, shuffle, and repeat-one.
+- Video fullscreen, picture-in-picture, and Pure Playback; desktop always-on-top is an independent switch.
+- Rotation, pointer-centered wheel zoom, dragging a zoomed image, and one-click view reset.
+- One-click PNG screenshots with a configurable destination, no save dialog, and no interruption of the current playback state.
+- Keyboard actions do not reveal already-hidden controls; text inputs, menus, and settings are protected from playback shortcuts.
+
+### Data and diagnostics
+
+- SQLite persistence for indexes, favorites, tags, playlists, progress, and preferences.
+- Database backup and full-library backup / restore, including custom artwork and optionally thumbnails.
+- Storage previews and cache cleanup, scan and artwork task status, playback diagnostics, and desktop logs.
+- Loopback-only service and request validation; the desktop app adds session validation and restricted native operations.
+
+## Use an existing portable build
+
+If you already have a portable EXE built from this project, put it in a writable directory and double-click it to start desktop mode. Python, Node.js, and FFmpeg do not need separate installation. The first launch may take time to extract the app and start the local service.
+
+The library defaults to `AVHub-data/` beside the EXE. Do not delete it as if it were temporary cache. Follow “First use” below to add video directories. The source repository itself does not include this EXE.
+
+## Run from source
+
+Run the following commands in PowerShell from the project root. Initial dependency installation needs internet access; everyday use can be offline afterward.
+
+### 1. Prerequisites
+
+| Dependency | Requirement |
+| --- | --- |
+| OS | Windows; the portable desktop build targets x64 |
+| Python | 3.10 or newer; the current local validation environment uses 3.13 |
+| Node.js | 22.12 or newer, satisfying the currently locked frontend and Electron dependencies |
+| FFmpeg / FFprobe | Windows executables in the project `bin/` directory or on PATH |
+| Browser | Edge / Chrome for browser mode; Electron includes Chromium |
+| PowerShell 7 | Required for the current Windows packaging script, not for ordinary startup |
+
+If you do not already have the source:
+
+```powershell
+git clone https://github.com/jhlxlml/avhub.git
+cd avhub
+```
+
+The app prefers `bin/ffmpeg.exe` and `bin/ffprobe.exe`, falling back to PATH. A build used for compatibility transcoding should support H.264 / AAC; HDR tone mapping also requires the relevant `zscale` / `tonemap` filters.
+
+**For packaging, both executables must be in `bin/`; PATH alone is insufficient.** Keep `bin/FFmpeg-LICENSE.txt` and `bin/FFmpeg-BUILD-INFO.txt` consistent with the actual FFmpeg build you use.
+
+### 2. Install dependencies
+
+A virtual environment is recommended:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+npm ci
+```
+
+If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in the current terminal, then activate again. This changes the policy only for the current process.
+
+Use `npm ci` to install from `package-lock.json` rather than unintentionally upgrading dependencies. Subsequent Python, test, and packaging commands should use the same Python environment.
+
+### 3. Start desktop mode
+
+```powershell
+npm run electron:dev
+```
+
+This builds the web UI and Electron main process, then opens the desktop window. Electron manages the local backend and chooses an available port; do not start a separate `run.py` server for this mode.
+
+If Electron cannot locate the intended Python interpreter, set it explicitly in the current terminal:
+
+```powershell
+$env:AVHUB_PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
+npm run electron:dev
+```
+
+### 4. Start browser mode
+
+```powershell
+npm run build
+python run.py
+```
+
+The default URL is `http://127.0.0.1:8765`. Startup opens the system's default browser. After installing dependencies and building the UI, you can also double-click [启动AVHub.bat](启动AVHub.bat). That launcher starts browser mode only; it does not install dependencies or build assets.
+
+Use `python run.py --no-browser` to skip opening a browser, or `python run.py --port 8870` if the default port is occupied.
+
+## First use
+
+1. Open Settings → **媒体目录** (Media directories). Choose “浏览本地文件夹” (Browse local folder), or enter a path and add it. Multiple directories are supported.
+2. Click “刷新媒体库” (Refresh library) in the top bar, or “扫描此目录” (Scan this directory) in Settings. Adding a directory does not itself complete a scan.
+3. Indexed videos appear progressively, while artwork continues generating in the background. A slow first scan or incomplete artwork is not necessarily a scan failure.
+4. Browse through top-level categories, directory filters, or the folder browser. The series view groups episodes by series and season; edit incorrect classifications manually.
+5. Open a video, organize favorites and playlists, and return through “继续观看” (Continue watching). Playback progress is saved automatically.
+6. If a directory moves, a drive letter changes, or a disk goes offline, check its status under Media directories. Use “重新定位” (Relocate) when needed, then refresh the index.
+
+Check the active data directory under Settings → **运行诊断** (Runtime diagnostics). If desktop shutdown reports unsaved data, retry or cancel as prompted. Forced termination or power loss may discard uncommitted changes.
+
+## Playback and picture quality
+
+An indexed file format is not necessarily a format the browser can decode directly. Supported index extensions are MP4, MKV, AVI, MOV, M4V, WebM, WMV, FLV, TS, MTS, and M2TS. Playback also depends on video and audio codecs, the browser, and the device.
+
+Compatibility determines the playback path:
+
+1. **Direct play**: serves the original file with byte-range requests, without re-encoding.
+2. **Remux**: copies compatible video streams into a browser-playable container; audio may be transcoded separately.
+3. **Compatibility transcode**: produces H.264 HLS when required. Automatic quality aims to retain source resolution; lower-resolution presets are also available.
+
+Keeping 4K resolution does not mean lossless output. Compatibility transcoding is lossy. HDR / high-bit-depth conversion may produce SDR / 8-bit output and cannot retain all original dynamic range or bit depth. Unsupported Dolby Vision conversions are explicitly rejected rather than labeled as original-quality playback.
+
+HEVC direct playback depends on browser, OS, and hardware support. Random seeking in MKV / TS may still require preparation when remuxing or transcoding. AVHub does not integrate MPV or another native playback engine, so native-player decoding and seeking performance cannot be guaranteed for every file.
+
+Embedded text subtitles and external SRT / VTT / ASS / SSA are supported. ASS / SSA is converted to WebVTT, without guaranteed preservation of complex styling or effects. Image-based subtitles such as PGS / VobSub are not currently supported.
+
+## Keyboard and mouse controls
+
+On the playback page:
+
+| Action | Key |
+| --- | --- |
+| Play / pause | Space, K |
+| Seek backward / forward 10 seconds | J / L |
+| Seek backward / forward 5 seconds | ← / → |
+| Adjust volume | ↑ / ↓ |
+| Mute | M |
+| Video fullscreen | F |
+| Pure Playback | W |
+| Exit Pure Playback | Esc; exit video fullscreen first if active |
+| Picture-in-picture | P |
+| Save screenshot | **C** |
+| Next video | N |
+| Rotate image | R |
+
+The mouse wheel zooms around the pointer. Drag the image while zoomed, and use the reset icon to restore the default view. Shift + wheel adjusts volume.
+
+After clicking a playback control, Space still plays or pauses instead of activating that button again. Text fields, open menus, and settings keep their own keyboard behavior.
+
+**Pure Playback** hides library and page information. Desktop mode also adapts the window to the video's aspect ratio, with controls overlaid on the image, and restores the previous window when exiting. Browser mode changes only the page layout; it cannot resize or pin the browser window. Black bars encoded into the video itself are not automatically cropped.
+
+## Screenshots
+
+Open Settings → **播放偏好** (Playback preferences) → **视频截图** (Video screenshots), choose a destination, and click “保存截图设置” (Save screenshot settings). An empty path uses `screenshots/` under the active data directory. A custom directory must already exist and be writable.
+
+Click the camera icon or press **C** to save a PNG. Filenames include the video title, playback position, and capture time; successive captures do not overwrite one another. There is no save dialog. Playing videos keep playing, and paused videos stay paused. Desktop mode can open the destination folder; browser mode can copy its path.
+
+Screenshots capture the **currently decoded image** at its decoded dimensions, excluding controls, text-subtitle overlays, and display-layer zoom or rotation. Subtitles burned into the source remain visible. During transcoded playback, the screenshot captures the transcoded output, not guaranteed original HDR / 10-bit data. Paused frame-by-frame selection is not currently available. **C is the only screenshot shortcut.**
+
+## Data, backup, and migration
+
+Runtime modes use different default directories and do not automatically share a library:
+
+| Runtime | Default location |
+| --- | --- |
+| Source browser mode | `data/` in the project root |
+| Source Electron mode | `data/` under Electron's user configuration directory; see Runtime diagnostics for the exact path |
+| Electron portable EXE | `AVHub-data/` next to the EXE, falling back to Electron's user configuration directory if unwritable |
+| Custom location | Set `AVHUB_DATA_DIR` before startup; it overrides the defaults above |
+
+The data directory contains `library.db`, thumbnails, custom artwork, and playback caches. Desktop mode also stores Chromium profile data and logs. Screenshots default to this directory but can use a separate location.
+
+For example, run browser mode with a dedicated data directory:
+
+```powershell
+$env:AVHUB_DATA_DIR = 'D:\AVHubData'
+python run.py
+```
+
+- **Database backup** contains SQLite data only, not artwork, videos, or screenshots.
+- **Full-library backup** includes the database and custom artwork, with optional thumbnails. It excludes source videos, screenshots, and temporary HLS caches.
+- Back up the current library before restoring. Do not run multiple backend instances against one data directory.
+- To move a portable build, fully exit the app and move the EXE together with `AVHub-data/`. External video paths must remain accessible or be relocated in Settings.
+- A custom screenshot destination does not move automatically with the portable directory. Back up screenshots separately.
+- Settings' cache cleanup handles only app-managed cleanable data, not source videos or user screenshots.
+
+## Development and tests
+
+### Web hot reload
+
+After installing dependencies, build once and start the backend:
+
+```powershell
+npm run build
+python run.py --no-browser
+```
+
+In another terminal at the project root:
+
+```powershell
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies `/api`, `/media`, and `/thumbs` to `127.0.0.1:8765`; use the default backend port for this setup. Restart the service after Python backend changes.
+
+### Common verification commands
+
+Use the Python environment containing the installed dependencies. UI tests use locally installed Microsoft Edge; media tests require FFmpeg.
+
+```powershell
+npm run build
+npm run build:electron
+npm run test:backend
+npm run test:ui
+npm run test:electron
+npm run test:electron:screenshots
+npm run test:electron:window
+npm run test:electron:shutdown
+```
+
+Additional desktop checks, seeking benchmarks, and large-library benchmarks are listed in [package.json](package.json) and [scripts/](scripts/). Distinguish synthetic index queries, real disk scans, and real playback measurements; no single benchmark represents every video. Long HEVC playback and real HDR / 10-bit display and conversion have not yet received sufficient real-media validation.
+
+## Build a Windows portable app
+
+Packaging is unnecessary for everyday development. For distribution, prepare a Windows x64 environment with Python, Node.js, `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and matching license documentation.
+
+Run in **PowerShell 7**:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
+```
+
+The script installs runtime and build dependencies, builds the web UI and Electron code, packages the Python backend with PyInstaller, and produces a portable EXE. Dependency downloads require internet access. The resulting app bundles its runtime components; users do not need to install Python, Node.js, or FFmpeg separately for everyday use.
+
+Output:
+
+```text
+dist/electron/AVHub-portable-<version>-x64.exe
+```
+
+The current `package.json` version is `0.2.0`. Existing EXEs do not load updated workspace source; rebuild the package to update the distributed app.
+
+If `pwsh` is not recognized, install PowerShell 7 and reopen the terminal. Windows' built-in `powershell.exe` is commonly version 5.1 and is not equivalent to `pwsh`. The current script contains UTF-8 Chinese text, which can cause parsing errors under 5.1. Investigate build errors rather than mistaking an existing old EXE for a successful new build.
+
+## Project layout
+
+```text
+avhub/
+├─ frontend/src/          React + TypeScript UI and player
+├─ electron/src/          Desktop window, backend lifecycle, native bridge
+├─ electron/assets/       App icons
+├─ app/                   FastAPI, SQLite, scanning, playback, data services
+│  └─ static/             Generated web assets (not tracked by Git)
+├─ bin/                   FFmpeg executables and license documentation
+├─ scripts/               Packaging, build identity, performance tools
+│  └─ build-windows.ps1   Windows portable build entry point
+├─ tests/                 Backend and Playwright regression tests
+├─ docs/                  Iteration, audit, and targeted validation records
+├─ run.py                 Browser / backend entry point
+├─ requirements.txt       Python runtime dependencies
+├─ requirements-build.txt Python packaging dependencies
+└─ package.json           Frontend, desktop, and verification commands
+```
+
+React / TypeScript implements the UI, with hls.js for HLS playback. FastAPI binds only to `127.0.0.1`; SQLite stores metadata, FFprobe analyzes media, and FFmpeg generates images, remuxes, and transcodes. Electron manages desktop window capabilities and application lifecycle.
+
+## Troubleshooting and limitations
+
+- **Blank page, build mismatch, or updates not appearing**: fully exit old instances, run `npm run build`, and restart. For source desktop mode, use `npm run electron:dev`. Generated web assets are not tracked by Git.
+- **Scan, artwork, or transcoding fails**: check FFmpeg / FFprobe paths, folder permissions, disk availability, and thumbnail queue status. Inspect Runtime diagnostics.
+- **The library appears empty**: check the active runtime and data directory. Source browser, source desktop, and portable modes have different defaults.
+- **A file still seeks slowly or does not play**: inspect the actual playback path, codecs, and errors in diagnostics. Remuxing, transcoding, keyframe structure, and hardware capabilities can all affect playback.
+- **Videos are missing after restore or migration**: backups do not include source videos. Restore their accessibility or relocate the directory in Settings, then refresh.
+- **Offline operation, platform, and privacy**: everyday functions do not depend on external services, but initial dependency installation and build downloads are not offline. Data and diagnostics can include local paths and video titles; redact reports before sharing them publicly.
+
+MPV integration, online artwork scraping, account sync, casting, and mobile remote control are not provided. macOS / Linux are not current formally supported desktop portable targets. Complete compatibility with HDR, Dolby Vision, complex subtitles, and every browser combination is not guaranteed.
+
+See [docs/](docs/) for historical records. Withdrawn designs in those records are not current features; this README describes the current source.
+
+## License
+
+The project uses [GNU GPL v3](LICENSE). Third-party components, including FFmpeg, retain their own licenses. See [bin/FFmpeg-BUILD-INFO.txt](bin/FFmpeg-BUILD-INFO.txt) and [bin/FFmpeg-LICENSE.txt](bin/FFmpeg-LICENSE.txt). When distributing a portable build, verify the actual third-party build, its license, and corresponding source information.
