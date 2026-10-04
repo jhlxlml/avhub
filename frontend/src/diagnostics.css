@@ -1,0 +1,8 @@
+.runtime-diagnostics summary {display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--ui-text);font-weight:600;padding:8px 0}
+.diagnostic-actions {display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.diagnostic-fields {display:grid;grid-template-columns:110px minmax(0,1fr);gap:10px 16px;font-size:13px;line-height:1.5}
+.diagnostic-fields dt {color:var(--ui-muted)}
+.diagnostic-fields dd {margin:0;min-width:0;overflow-wrap:anywhere;color:var(--ui-secondary)}
+.diagnostic-fields code {font-size:12px;white-space:normal}
+@media(max-width:480px) {.diagnostic-fields {grid-template-columns:1fr;gap:4px}.diagnostic-fields dd {margin-bottom:8px}}
+.diagnostic-db-timing { display:contents; }

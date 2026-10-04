@@ -1,0 +1,4 @@
+fastapi>=0.115,<1.0
+# Original-file seeking relies on this tested Range/HEAD/If-Range implementation.
+starlette>=1.6,<2.0
+uvicorn[standard]>=0.32,<1.0

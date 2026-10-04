@@ -1,0 +1,10 @@
+# Stable UTF-8 source line endings; do not re-encode file contents.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.webp binary

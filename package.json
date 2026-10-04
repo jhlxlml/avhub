@@ -1,0 +1,65 @@
+{
+  "name": "avhub",
+  "private": true,
+  "version": "0.2.0",
+  "main": "electron/dist/main.js",
+  "scripts": {
+    "prebuild": "node scripts/write-build-info.mjs",
+    "predev": "node scripts/write-build-info.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "build:electron": "tsc -p electron/tsconfig.json",
+    "electron:dev": "npm run build && npm run build:electron && electron .",
+    "package:windows": "electron-builder --win portable --x64",
+    "preview": "vite preview",
+    "test:ui": "playwright test",
+    "test:backend": "python -m unittest discover -s tests -p test_*.py",
+    "benchmark:seek": "npm run build && node scripts/benchmark-seek.mjs",
+    "benchmark:library": "python scripts/benchmark-library.py",
+    "benchmark:scan": "python scripts/benchmark-scan.py",
+    "test:electron": "npm run build && npm run build:electron && node electron/test/smoke.mjs",
+    "test:electron:icon": "npm run build && npm run build:electron && node electron/test/icon.mjs",
+    "test:electron:preferences": "npm run build && npm run build:electron && node electron/test/preferences.mjs",
+    "test:electron:screenshots": "npm run build && npm run build:electron && node electron/test/screenshots.mjs",
+    "test:electron:window": "npm run build && npm run build:electron && node electron/test/window-mode.mjs",
+    "test:electron:permissions": "npm run build:electron && node electron/test/permission-policy.mjs",
+    "test:electron:logs": "npm run build:electron && node electron/test/logs.mjs",
+    "test:electron:data-commit": "npm run build && npm run build:electron && node electron/test/data-commit.mjs",
+    "test:electron:shutdown": "npm run build && npm run build:electron && node electron/test/shutdown-policy.mjs && node electron/test/shutdown.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@vitejs/plugin-react": "latest",
+    "hls.js": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "electron": "44.4.3",
+    "electron-builder": "26.16.1",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest"
+  },
+  "build": {
+    "appId": "local.avhub.desktop",
+    "productName": "AVHub",
+    "directories": { "output": "dist/electron" },
+    "files": ["electron/dist/**/*", "package.json", "app/build-info.json"],
+    "extraResources": [{
+      "from": "build/backend-dist/AVHubServer",
+      "to": "backend",
+      "filter": ["**/*"]
+    }, {
+      "from": "electron/assets",
+      "to": "icons",
+      "filter": ["avhub.png"]
+    }],
+    "win": {
+      "icon": "electron/assets/avhub.ico",
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "artifactName": "AVHub-portable-${version}-${arch}.${ext}"
+    }
+  }
+}

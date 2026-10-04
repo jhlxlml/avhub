@@ -1,0 +1,44 @@
+.desktop-shell,.desktop-shell body {height:100%;overflow:hidden}
+.desktop-shell body {padding-top:0}
+.desktop-shell #app-scroll-area {position:fixed;inset:32px 0 0;overflow:auto;overscroll-behavior-y:contain}
+.desktop-shell:not(.pure-playback) .modal-backdrop {top:32px}
+.desktop-shell main>header,.desktop-shell .player-top {top:0}
+.desktop-shell #app-scroll-area>main,.desktop-shell #app-scroll-area .player-shell {min-height:100%}
+.desktop-shell.pure-playback #app-scroll-area {inset:0;overflow:hidden}
+.desktop-titlebar {position:fixed;inset:0 0 auto;z-index:75;height:32px;display:flex;align-items:center;background:var(--ui-bg);border-bottom:1px solid var(--ui-divider);color:var(--ui-muted);user-select:none}
+.window-drag-area {flex:1;height:100%;min-width:0;display:flex;align-items:center;gap:8px;padding:0 12px;-webkit-app-region:drag;app-region:drag;font-size:11px}
+.window-drag-area .ui-icon {color:var(--ui-accent)}
+.window-drag-area .ui-icon {flex:none}
+.window-drag-area>span {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.desktop-titlebar>button {display:grid;place-items:center;width:44px;height:32px;min-height:32px;padding:0;border:0;border-radius:0;background:transparent;color:var(--ui-secondary);-webkit-app-region:no-drag;app-region:no-drag}
+.desktop-titlebar>button:hover {background:var(--ui-hover)}
+.desktop-titlebar>.window-pin[aria-pressed="true"] {color:var(--ui-accent);background:color-mix(in srgb,var(--ui-accent) 12%,var(--ui-bg))}
+.desktop-titlebar>.window-pin[aria-pressed="true"]:hover {background:color-mix(in srgb,var(--ui-accent) 20%,var(--ui-bg))}
+.desktop-titlebar>button:focus-visible {outline:2px solid var(--ui-accent);outline-offset:-3px}
+.desktop-titlebar>.window-close:hover {background:#c53c4e;color:#fff}
+.desktop-titlebar small {font-size:11px;color:var(--ui-danger)}
+.pure-playback body {padding-top:0;overflow:hidden}
+.player-shell.is-pure-playback {padding:0;min-height:100dvh}
+.player-shell.is-pure-playback>.player-top,.player-shell.is-pure-playback>.player-info,.player-shell.is-pure-playback>.playback-queue {display:none}
+.player-shell.is-pure-playback>.video-wrap {position:fixed;inset:0;z-index:25;width:100%;height:100dvh;min-height:0;max-height:none;aspect-ratio:auto;margin:0;border:0;border-radius:0;box-shadow:none}
+.player-shell.is-pure-playback>.notice {position:fixed;z-index:80;left:12px;right:12px;bottom:100px;margin:0}
+.pure-playback .desktop-titlebar {height:48px;padding:8px;gap:6px;background:transparent;border:0;opacity:0;transition:opacity .15s}
+.pure-playback.controls-visible .desktop-titlebar,.pure-playback .desktop-titlebar:hover,.pure-playback .desktop-titlebar:has(button:focus-visible) {opacity:1}
+.pure-playback .desktop-titlebar .window-drag-area {padding:0 4px;text-shadow:0 1px 3px #000;color:#fff}
+.pure-playback .desktop-titlebar>button {flex:none;width:32px;height:32px;min-width:32px;min-height:32px;border:0;border-radius:50%;background:#070b12b8;color:#fff;filter:drop-shadow(0 1px 2px #0009);transition:background .14s,color .14s,transform .14s}
+.pure-playback .desktop-titlebar>button .ui-icon {filter:drop-shadow(0 1px 2px #000)}
+.pure-playback .desktop-titlebar>button:hover:not(:disabled) {background:#18243ad9;transform:scale(1.06)}
+.pure-playback .desktop-titlebar>button:active:not(:disabled) {transform:scale(.94)}
+.pure-playback .desktop-titlebar>.window-pin[aria-pressed="true"] {color:var(--ui-accent);background:#070b12da}
+.pure-playback .desktop-titlebar>.window-pin[aria-pressed="true"]:hover {background:#18243ad9}
+.pure-playback .desktop-titlebar>button.window-close:hover:not(:disabled) {background:#c53c4e}
+.native-video-fullscreen .desktop-titlebar {display:none}
+.player-shell .player-controls button[aria-pressed="true"] {color:var(--ui-accent);background:#070b12da}
+.player-shell.is-pure-playback .video-wrap.controls-hidden .player-controls:focus-within {opacity:0!important;transform:translateY(12px);pointer-events:none!important}
+.player-shell.is-pure-playback .video-wrap.controls-hidden,.player-shell.is-pure-playback .video-wrap.controls-hidden .video-canvas {cursor:none}
+@media(max-width:1050px) {
+  .player-shell .player-control-row {flex-wrap:wrap;row-gap:5px}
+  .player-shell .player-settings {margin-left:auto}
+  .player-shell .player-end-actions {margin-left:auto}
+}
+@media(prefers-reduced-motion:reduce) {.pure-playback .desktop-titlebar,.pure-playback .desktop-titlebar>button{transition:none}.pure-playback .desktop-titlebar>button:hover:not(:disabled),.pure-playback .desktop-titlebar>button:active:not(:disabled){transform:none}}

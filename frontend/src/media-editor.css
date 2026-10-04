@@ -1,0 +1,10 @@
+.media-editor{margin-top:22px;border-top:1px solid #2a3852;padding-top:14px}
+.media-editor summary{cursor:pointer;color:#dce6fa;font-weight:600}
+.media-editor form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+.media-editor label{display:grid;gap:6px;color:#aebbd1;font-size:13px}
+.media-editor label:first-child,.media-editor label:last-of-type{grid-column:1/-1}
+.media-editor input,.media-editor select{min-width:0;width:100%;background:#0c1322;border:1px solid #35435c;border-radius:7px;padding:9px;color:#eef2ff}
+.media-editor button{justify-self:start;background:#e76f60}
+.episode-fields{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.editor-message{align-self:center;color:#aebbd1;font-size:13px}
+@media(max-width:600px){.media-editor form{grid-template-columns:1fr}.media-editor label:first-child,.media-editor label:last-of-type,.episode-fields{grid-column:1}}
