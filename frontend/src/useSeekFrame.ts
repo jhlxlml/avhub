@@ -7,10 +7,14 @@ export function useSeekFrame(video:RefObject<HTMLVideoElement|null>,offset:RefOb
   const target=useRef<number|null>(null);
   const callback=useRef<number|null>(null);
   const presented=useRef(false);
+  const seekConfirmed=useRef(false);
+  const requestedSeek=useRef(false);
   const timer=useRef<number|undefined>(undefined);
   const clear=()=>{
     target.current=null;
     presented.current=false;
+    seekConfirmed.current=false;
+    requestedSeek.current=false;
     if(canvas.current)canvas.current.hidden=true;
     if(callback.current!==null)video.current?.cancelVideoFrameCallback?.(callback.current);
     callback.current=null;window.clearTimeout(timer.current);
@@ -26,7 +30,14 @@ export function useSeekFrame(video:RefObject<HTMLVideoElement|null>,offset:RefOb
       callback.current=null;
       if(target.current===null)return;
       // Paused seeks can present their only frame before readyState/seeked settles.
-      if(Math.abs(frame.mediaTime+offset.current-target.current)<.35){presented.current=true;settle();}
+      // On busy decoders the first delivered callback can be several frames
+      // beyond the exact target. A witnessed seeked at the requested point plus
+      // an actual frame at the current playback cursor is equally valid proof.
+      // Do not accept a stale pre-seek frame just because seeked has fired.
+      if(Math.abs(frame.mediaTime+offset.current-target.current)<.35||
+          (seekConfirmed.current&&!element.seeking&&Math.abs(frame.mediaTime-element.currentTime)<.35)) {
+        presented.current=true;settle();
+      }
       else observe();
     });
   };
@@ -42,6 +53,8 @@ export function useSeekFrame(video:RefObject<HTMLVideoElement|null>,offset:RefOb
     }
     target.current=point;
     presented.current=false;
+    seekConfirmed.current=false;
+    requestedSeek.current=false;
     if(callback.current!==null)element.cancelVideoFrameCallback?.(callback.current);
     callback.current=null;
     window.clearTimeout(timer.current);
@@ -51,9 +64,18 @@ export function useSeekFrame(video:RefObject<HTMLVideoElement|null>,offset:RefOb
   };
   useEffect(()=>{
     const element=video.current;if(!element)return;
+    const seeking=()=>{
+      if(target.current!==null&&Math.abs(element.currentTime+offset.current-target.current)<.35)
+        requestedSeek.current=true;
+    };
     const seeked=()=>{
       if(target.current!==null&&!element.seeking&&element.readyState>=2&&
-          Math.abs(element.currentTime+offset.current-target.current)<.35) {
+          (Math.abs(element.currentTime+offset.current-target.current)<.35||
+            requestedSeek.current&&Math.abs(element.currentTime+offset.current-target.current)<1.5)) {
+        // MSE can move the requested point over a short buffered-range gap.
+        // Only allow this after witnessing the original seek, and still wait
+        // for a decoded frame matching the settled cursor before hiding canvas.
+        seekConfirmed.current=true;
         if(typeof element.requestVideoFrameCallback==='function'){settle();observe();}else clear();
       }
     };
@@ -62,9 +84,10 @@ export function useSeekFrame(video:RefObject<HTMLVideoElement|null>,offset:RefOb
       // callback. Re-arm at the new metadata before its paused frame arrives.
       if(target.current===null)return;
       if(callback.current!==null)element.cancelVideoFrameCallback?.(callback.current);
-      callback.current=null;presented.current=false;observe();
+      callback.current=null;presented.current=false;seekConfirmed.current=false;requestedSeek.current=false;observe();
     };
     element.addEventListener('seeked',seeked);
+    element.addEventListener('seeking',seeking);
     element.addEventListener('loadedmetadata',metadata);
     element.addEventListener('loadeddata',observe);
     element.addEventListener('canplay',settle);
@@ -72,6 +95,7 @@ export function useSeekFrame(video:RefObject<HTMLVideoElement|null>,offset:RefOb
     element.addEventListener('ended',clear);
     return()=>{
       clear();element.removeEventListener('seeked',seeked);element.removeEventListener('loadeddata',observe);
+      element.removeEventListener('seeking',seeking);
       element.removeEventListener('loadedmetadata',metadata);
       element.removeEventListener('canplay',settle);
       element.removeEventListener('error',clear);element.removeEventListener('ended',clear);

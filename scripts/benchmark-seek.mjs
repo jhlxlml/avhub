@@ -20,6 +20,15 @@ const container=option('--container',undefined);
 const audio=option('--audio','copy');
 const measureBlank = args.includes('--measure-blank');
 const withoutRetention = args.includes('--without-frame-retention');
+const probeOriginal = args.includes('--probe-original-container');
+const burst = args.includes('--burst');
+const legacyCancellation = args.includes('--legacy-fragment-cancellation');
+const completeTsIndex = args.includes('--complete-ts-index');
+const traceFrames=args.includes('--trace-frames');
+const legacyTsProbe=args.includes('--legacy-ts-probe');
+const warmTsIndex=args.includes('--warm-ts-index');
+const playFor=Number(option('--play-for','0'));
+if(!Number.isFinite(playFor)||playFor<0||playFor>120)throw new Error('--play-for must be 0..120 seconds');
 if (!['auto','remux'].includes(mode)) throw new Error('--mode must be auto or remux');
 const processes = [];
 let browser;
@@ -31,6 +40,9 @@ async function start(kind, mediaSource) {
   if (reference) command.push('--reference-root', path.resolve(reference));
   if (kind==='avhub'&&container)command.push('--container',container,'--audio',audio);
   if (kind==='avhub'&&legacyDelivery)command.push('--legacy-delivery');
+  if (kind==='avhub'&&legacyCancellation)command.push('--legacy-fragment-cancellation');
+  if (kind==='avhub'&&legacyTsProbe)command.push('--legacy-ts-probe');
+  if (kind==='avhub'&&warmTsIndex)command.push('--warm-ts-index');
   const child = spawn(process.env.AVHUB_PYTHON || 'python', command, { cwd:project, windowsHide:true, stdio:['ignore','pipe','pipe'] });
   const record = { child, url:null, error:'', exited:false };
   processes.push(record);
@@ -70,6 +82,8 @@ async function measure(server) {
   const avhub = server.kind === 'avhub';
   const selector = avhub ? '.video-wrap video' : '#video';
   const result = { application:server.kind, status:'ok', mode:'original', firstFrameMs:null, decodedSize:null, seeks:[], summary:null };
+  let playbackRequests=0;
+  page.on('request',r=>{if(new URL(r.url()).pathname==='/api/media/1/playback')playbackRequests++;});
   const network=await page.context().newCDPSession(page);
   await network.send('Network.enable');
   const mediaRequests=new Set();let receivedBytes=0;
@@ -80,8 +94,19 @@ async function measure(server) {
     if(mediaRequests.has(event.requestId))receivedBytes+=event.dataLength;
   });
   try {
-    await page.addInitScript(measureBlank => {
-      window.__seekBenchmark = { began:0, first:null, events:[], indicators:[], visual:[] };
+    await page.addInitScript(({measureBlank,traceFrames}) => {
+      window.__seekBenchmark = { began:0, first:null, events:[], indicators:[], visual:[], frames:[] };
+      if(traceFrames)document.addEventListener('loadedmetadata',event=>{
+        if(!(event.target instanceof HTMLVideoElement))return;
+        const video=event.target;let previous=null,count=0;
+        const record=(_,frame)=>{
+          const target=document.querySelector('output[aria-label="跳播耗时"]')?.getAttribute('data-target');
+          if(target!==previous){previous=target;count=0;}
+          if(count++<12)window.__seekBenchmark.frames.push({target,time:video.currentTime,mediaTime:frame.mediaTime,seeking:video.seeking,
+            held:!document.querySelector('.seek-frame')?.hidden});
+          video.requestVideoFrameCallback(record);
+        };video.requestVideoFrameCallback(record);
+      },true);
       for(const name of ['waiting','stalled','seeking','seeked','loadstart','emptied'])document.addEventListener(name,event=>{
         if(event.target instanceof HTMLVideoElement)window.__seekBenchmark.events.push({name,at:performance.now(),time:event.target.currentTime,ready:event.target.readyState});
       },true);
@@ -127,8 +152,9 @@ async function measure(server) {
           if (window.__seekBenchmark.first === null) window.__seekBenchmark.first = performance.now() - window.__seekBenchmark.began;
         });
       }, true);
-    },measureBlank);
-    if (avhub && (mode === 'remux'||legacyTs||legacyRemux)) await page.route('**/api/media/1/playback', route => route.continue({ postData:JSON.stringify({ ...route.request().postDataJSON(), ...(mode==='remux'?{prefer_original:false,skip_direct:true}:{}), ...(legacyTs?{indexed_ts:false}:{}), ...(legacyRemux?{indexed_remux:false}:{}) }) }));
+    },{measureBlank,traceFrames});
+    let routed=0;
+    if (avhub && (mode === 'remux'||legacyTs||legacyRemux||probeOriginal||completeTsIndex)) await page.route('**/api/media/1/playback', route => route.continue({ postData:JSON.stringify({ ...route.request().postDataJSON(), ...(mode==='remux'?{prefer_original:false,skip_direct:true}:{}), ...(legacyTs?{indexed_ts:false}:{}), ...(legacyRemux?{indexed_remux:false}:{}), ...(completeTsIndex?{progressive_ts:false}:{}), ...(probeOriginal&&routed++===0?{prefer_original:true,skip_direct:false}:{}) }) }));
     await page.goto(server.url);
     if(avhub&&withoutRetention)await page.addStyleTag({content:'.video-wrap .seek-frame{display:none!important}'});
     if (avhub) await page.getByRole('button', {name:'播放 播放基准样本',exact:true}).waitFor();
@@ -143,8 +169,29 @@ async function measure(server) {
       result.mode = await page.getByRole('button', {name:'画质',exact:true}).getAttribute('title');
       await page.locator('.playback-diagnostics summary').click();
     }
+    if(playFor) {
+      const before=await page.locator(selector).evaluate(v=>({time:v.currentTime,at:performance.now()}));
+      await page.waitForTimeout(playFor*1000);
+      const after=await page.locator(selector).evaluate(v=>({time:v.currentTime,paused:v.paused,ready:v.readyState,at:performance.now()}));
+      result.continuous={seconds:playFor,advanced:after.time-before.time,paused:after.paused,ready:after.ready,
+        ...(await page.evaluate(since=>{
+          const state=window.__seekBenchmark;
+          return {loadingIndicators:state.indicators.filter(i=>i.start>=since).length,
+            loadingVisibleMs:Math.round(state.indicators.reduce((sum,i)=>sum+Math.max(0,(i.end??performance.now())-Math.max(since,i.start)),0)),
+            sourceLoads:state.events.filter(e=>e.at>=since&&e.name==='loadstart').length};
+        },before.at))};
+    }
     for (const fraction of [.2,.75,.1,.9,.45,.6,.05,.8,.3,.95,.15,.5]) {
       const target = Math.round(server.duration * fraction * 10) / 10;
+      if(avhub&&burst) {
+        for(const delta of [.31,.67,.43]) {
+          const intermediate=Math.round(server.duration*((fraction+delta)%.96)*10)/10;
+          await page.getByRole('slider',{name:'视频完整进度'}).evaluate((input,value)=>{
+            input.value=String(value);input.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));
+          },intermediate);
+          await page.waitForTimeout(40);
+        }
+      }
       const seekBegan=await page.evaluate(()=>performance.now());
       const bytesBefore=receivedBytes;
       if (avhub) {
@@ -209,7 +256,10 @@ async function measure(server) {
       diagnostics:document.querySelector('.playback-diagnostics')?.textContent,
       alert:document.querySelector('.video-wrap [role="alert"]')?.textContent})).catch(()=>null);
     result.feedback=await page.evaluate(()=>({events:window.__seekBenchmark.events,indicators:window.__seekBenchmark.indicators})).catch(()=>null);
-  } finally { await page.close(); }
+  } finally {
+    if(traceFrames)result.frameTrace=await page.evaluate(()=>window.__seekBenchmark.frames).catch(()=>null);
+    result.playbackRequests=playbackRequests;await page.close();
+  }
   return result;
 }
 
@@ -220,12 +270,12 @@ try {
   browser = await chromium.launch({ channel:'msedge', headless:true, args:['--autoplay-policy=no-user-gesture-required'] });
   const results = [];
   for (const server of servers) results.push(await measure(server));
-  const report = { createdAt:new Date().toISOString(), source:{name:path.basename(avhub.source), bytes:avhub.source_size, duration:avhub.duration, codec:avhub.codec}, requestedMode:mode, legacyTs, legacyRemux, legacyDelivery, container, audio, measureBlank, withoutRetention,
+  const report = { createdAt:new Date().toISOString(), source:{name:path.basename(avhub.source), bytes:avhub.source_size, duration:avhub.duration, codec:avhub.codec}, requestedMode:mode, legacyTs, legacyRemux, legacyDelivery, container, audio, measureBlank, withoutRetention, probeOriginal, burst, legacyCancellation, completeTsIndex, traceFrames, legacyTsProbe, warmTsIndex, playFor,
     limitations:['同一 Edge、同一视频、独立临时数据库；不修改源视频或日常媒体库。', '未清理操作系统文件缓存，应用按顺序运行；不代表冷盘性能。', '参考应用由基准脚本在元数据就绪时触发播放；两边预先缓存封面，不测量扫描或封面生成速度。', '合成视频只验证基准流程，不能代表实际 4K、长 GOP 或网络盘速度。'], results };
   const folder = path.join(project,'build','seek-benchmark'); mkdirSync(folder,{recursive:true});
   const destination = path.join(folder,`report-${Date.now()}.json`);
   writeFileSync(destination,JSON.stringify(report,null,2));
-  console.log(JSON.stringify({report:destination, results:results.map(({application,status,mode,firstFrameMs,summary,seeks}) => ({application,status,mode,firstFrameMs,summary,
+  console.log(JSON.stringify({report:destination, results:results.map(({application,status,mode,firstFrameMs,summary,seeks,playbackRequests,continuous}) => ({application,status,mode,firstFrameMs,summary,playbackRequests,continuous,
     loadingIndicators:seeks.reduce((sum,s)=>sum+(s.loadingIndicators??0),0),sourceLoads:seeks.reduce((sum,s)=>sum+(s.sourceLoads??0),0),
     noFrameMs:seeks.reduce((sum,s)=>sum+(s.noFrameMs??0),0),blackFrameMs:seeks.reduce((sum,s)=>sum+(s.blackFrameMs??0),0)}))},null,2));
   if (results.some(result => result.status !== 'ok')) process.exitCode = 1;

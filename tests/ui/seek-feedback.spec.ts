@@ -42,6 +42,37 @@ test('fast native seeks never flash a loading indicator or reload the source, in
   expect(final.indicators).toBe(initial.indicators);expect(final.loads).toBe(startups);expect(requests).toHaveLength(1);
 });
 
+test('late decoded frames after a short MSE gap retire the retained picture, but stale frames never do',async({page})=>{
+  await open(page);
+  await page.locator('video').evaluate((v:HTMLVideoElement)=>{
+    const callbacks=new Map<number,VideoFrameRequestCallback>();let id=0;
+    (window as any).deliverSeekFrame=(mediaTime:number)=>{
+      const pending=[...callbacks.values()];callbacks.clear();
+      for(const callback of pending)callback(performance.now(),{mediaTime} as VideoFrameCallbackMetadata);
+    };
+    // A busy decoder may not deliver its first callback until playback has
+    // advanced beyond the exact target tolerance; keep native seeking real.
+    Object.defineProperty(v,'requestVideoFrameCallback',{configurable:true,value:(cb:VideoFrameRequestCallback)=>{
+      callbacks.set(++id,cb);return id;
+    }});
+    Object.defineProperty(v,'cancelVideoFrameCallback',{configurable:true,value:(key:number)=>callbacks.delete(key)});
+    document.addEventListener('seeked',()=>{
+      Object.defineProperty(v,'currentTime',{configurable:true,value:30.6});
+    },{capture:true,once:true});
+  });
+  await page.getByRole('slider',{name:'视频完整进度'}).evaluate((input:HTMLInputElement)=>{
+    input.value='30';input.dispatchEvent(new PointerEvent('pointerup',{bubbles:true}));
+  });
+  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.seeking)).toBeFalsy();
+  await expect(page.locator('.seek-frame')).toBeVisible();
+  await page.locator('video').evaluate((v:HTMLVideoElement)=>{
+    (window as any).deliverSeekFrame(2);
+  });
+  await expect(page.locator('.seek-frame')).toBeVisible();
+  await page.evaluate(()=>(window as any).deliverSeekFrame(30.6));
+  await expect(page.locator('.seek-frame')).toBeHidden();
+});
+
 test('transient waiting and healthy stalled downloads do not show feedback; genuine paused waits do',async({page})=>{
   await open(page);
   await page.locator('video').evaluate((v:HTMLVideoElement)=>v.pause());

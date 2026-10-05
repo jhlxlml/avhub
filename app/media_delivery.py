@@ -2,13 +2,14 @@
 from pathlib import Path
 import mimetypes
 import stat
+import threading
 import anyio
 from contextlib import asynccontextmanager
 from starlette.datastructures import MutableHeaders
 from secrets import token_hex
 
 from fastapi import HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 
 VIDEO_MEDIA_TYPES = {
@@ -18,6 +19,65 @@ VIDEO_MEDIA_TYPES = {
     ".mpg": "video/mpeg", ".mpeg": "video/mpeg", ".wmv": "video/x-ms-wmv",
     ".flv": "video/x-flv",
 }
+
+
+class PreparedFragmentResponse(Response):
+    """Listen for disconnect even while a short FFmpeg task prepares the body."""
+    media_type='video/mp2t'
+
+    def __init__(self, prepare, release):
+        super().__init__()
+        self.prepare=prepare
+        self.release=release
+
+    async def __call__(self, scope, receive, send):
+        cancelled=threading.Event()
+        reader=None
+        failure=None
+        response_started=False
+        try:
+            async with anyio.create_task_group() as group:
+                async def disconnected():
+                    while True:
+                        if (await receive())['type']=='http.disconnect':
+                            cancelled.set()
+                            group.cancel_scope.cancel()
+                            return
+                        await anyio.lowlevel.checkpoint()
+                group.start_soon(disconnected)
+                try:
+                    # Do not abandon the worker: it owns a subprocess/temp file
+                    # and may be returning a Windows file handle as we cancel.
+                    reader,prefix,length=await anyio.to_thread.run_sync(self.prepare,cancelled)
+                    if not cancelled.is_set():
+                        headers=MutableHeaders({'Content-Type':self.media_type,
+                            'Cache-Control':'private, no-cache','Content-Length':str(len(prefix)+length)})
+                        response_started=True
+                        await send({'type':'http.response.start','status':200,'headers':headers.raw})
+                        if prefix:await send({'type':'http.response.body','body':prefix,'more_body':True})
+                        while length:
+                            chunk=await anyio.to_thread.run_sync(reader.read,min(1024*1024,length))
+                            if not chunk:raise OSError('视频分片读取中断')
+                            length-=len(chunk)
+                            await send({'type':'http.response.body','body':chunk,'more_body':True})
+                        await send({'type':'http.response.body','body':b'','more_body':False})
+                except Exception as exc:
+                    if not cancelled.is_set():failure=exc
+                finally:
+                    cancelled.set()
+                    group.cancel_scope.cancel()
+            # Raise HTTP errors outside TaskGroup so FastAPI retains their
+            # status codes instead of wrapping them in an ExceptionGroup.
+            if failure is not None:raise failure
+            if not response_started:
+                # The client has gone, but the ASGI middleware still needs a
+                # completed response rather than "No response returned" / 500.
+                await Response(status_code=499)(scope,receive,send)
+        finally:
+            cancelled.set()
+            if reader is not None:
+                with anyio.CancelScope(shield=True):
+                    await anyio.to_thread.run_sync(self.release,reader)
 
 
 class MediaFileResponse(FileResponse):

@@ -219,6 +219,11 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 .player-shell .seek-control input[type="range"]::-moz-range-track {background:linear-gradient(to right,var(--ui-accent) 0 var(--seek-progress),#ffffff70 var(--seek-progress) 100%);box-shadow:0 1px 3px #000b}
 .player-shell .seek-control input[type="range"]::-webkit-slider-thumb,.player-shell .volume-slider::-webkit-slider-thumb {background:var(--ui-accent)}
 .player-shell .seek-control input[type="range"]::-moz-range-thumb,.player-shell .volume-slider::-moz-range-thumb {background:var(--ui-accent)}
+/* Keep keyboard focus visible on the thumb, not as a full-width rectangle
+   over the video. Do not blur the slider or change shortcut routing. */
+.player-shell .player-controls input[type="range"]:focus-visible {outline:0;outline-offset:0}
+.player-shell .player-controls input[type="range"]:focus-visible::-webkit-slider-thumb {box-shadow:0 0 0 2px #ffffffe0,0 0 0 4px #0009,0 1px 6px #000c}
+.player-shell .player-controls input[type="range"]:focus-visible::-moz-range-thumb {box-shadow:0 0 0 2px #ffffffe0,0 0 0 4px #0009,0 1px 6px #000c}
 .player-shell .player-info,.player-shell .playback-queue {background:var(--ui-surface);border-color:var(--ui-divider);border-radius:var(--ui-panel-radius);box-shadow:none}
 .player-shell .queue-heading {display:flex;align-items:center;justify-content:space-between;background:transparent;color:var(--ui-secondary)}
 .player-shell .queue-heading>span {display:inline-flex;align-items:center;gap:8px}

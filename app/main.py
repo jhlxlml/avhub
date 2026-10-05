@@ -27,7 +27,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from .playback import PlaybackManager
-from .media_delivery import original_file_response
+from .media_delivery import original_file_response, PreparedFragmentResponse
 from .scanning import ScanManager
 from .path_index import RootPathIndex
 from .folders import relative_folder, directory_prefix, like_literal, directory_clause
@@ -45,6 +45,7 @@ from . import covers
 from .scan_jobs import install as install_scan_jobs, ThumbnailJobs, ThumbnailService
 from .db_timing import timing as database_timing, ReadGate
 from .process_owner import own_encoder
+from .packet_probe import stream_packets
 from .runtime_evidence import RuntimeEvidence
 from . import library_backup
 from . import storage_management
@@ -133,7 +134,7 @@ def scan_process(command: list[str], timeout: float, cancelled=None):
                 stop_scan_process(process)
                 raise ScanCancelled()
             try:
-                output, error = process.communicate(timeout=min(.4, max(.01, deadline-time.monotonic())))
+                output, error = process.communicate(timeout=min(getattr(cancelled,'poll_interval',.4), max(.01, deadline-time.monotonic())))
                 return process.returncode, output, error
             except subprocess.TimeoutExpired:
                 if time.monotonic() >= deadline:
@@ -618,6 +619,7 @@ class PlaybackInput(BaseModel):
     start: float = Field(default=0, ge=0, allow_inf_nan=False)
     seek_preroll: float = Field(default=0, ge=0, le=10, allow_inf_nan=False)
     indexed_ts: bool = False
+    progressive_ts: bool = True
     indexed_remux: bool = False
     force_transcode: bool = False
     prefer_original: bool = False
@@ -1782,7 +1784,7 @@ def start_playback(media_id: int, body: PlaybackInput):
         if (body.indexed_ts and item['ext'].lower() == '.ts' and body.audio_track_index is None and copy_audio):
             started=time.perf_counter()
             result=playback.create_indexed_ts(source, executable('ffprobe'), scan_process,
-                        video_color=item.get('video_color'),client_token=body.client_token)
+                        video_color=item.get('video_color'),client_token=body.client_token,start=start,progressive=body.progressive_ts,stream=stream_packets)
             stages['task_ms']=round((time.perf_counter()-started)*1000,2)
             return measured({'mode':'remux', 'start':start,
                              'reason':'TS 关键帧索引直读，随机跳播复用同一解码器', **result})
@@ -1842,31 +1844,12 @@ def hls_file(token: str, name: str):
         # body. A single opened snapshot keeps the HTTP response consistent.
         content = playback.manifest(token)
         return Response(content, media_type='application/vnd.apple.mpegurl', headers={'Cache-Control':'no-store'})
-    indexed_fragment = playback.remux_fragment(token,name) or playback.indexed_fragment(token, name)
-    if indexed_fragment is not None:
-        source,prefix,length=indexed_fragment
-        def release_indexed():playback.release_fragment(token,source)
-        def indexed_chunks():
-            remaining=length
-            try:
-                if prefix:yield prefix
-                while remaining:
-                    chunk=source.read(min(1024*1024,remaining))
-                    if not chunk:break
-                    remaining-=len(chunk)
-                    yield chunk
-            finally:release_indexed()
-        return StreamingResponse(indexed_chunks(),media_type='video/mp2t',
-                headers={'Cache-Control':'private, no-cache','Content-Length':str(len(prefix)+length)},
-                background=BackgroundTask(release_indexed))
-    source = playback.open_fragment(token, name)
-    size = os.fstat(source.fileno()).st_size
-    def chunks():
-        try:
-            while chunk := source.read(64 * 1024): yield chunk
-        finally: source.close()
-    return StreamingResponse(chunks(), media_type='video/mp2t', headers={'Cache-Control':'no-store', 'Content-Length':str(size)},
-                             background=BackgroundTask(source.close))
+    def prepare(cancelled):
+        fragment=playback.remux_fragment(token,name,cancelled) or playback.indexed_fragment(token,name)
+        if fragment is not None:return fragment
+        source=playback.open_fragment(token,name)
+        return source,b'',os.fstat(source.fileno()).st_size
+    return PreparedFragmentResponse(prepare,lambda reader:playback.release_fragment(token,reader))
 
 STATIC = ROOT / "app" / "static"
 if STATIC.exists():

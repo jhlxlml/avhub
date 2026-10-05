@@ -4,7 +4,7 @@ import {useEffect,useState,type RefObject} from 'react';
 // Delay feedback, not playback; sustained waits must remain visible.
 export const PLAYBACK_FEEDBACK_DELAY_MS = 350;
 
-export function usePlaybackFeedback(video:RefObject<HTMLVideoElement|null>,phase:string,sourceKey:number) {
+export function usePlaybackFeedback(video:RefObject<HTMLVideoElement|null>,phase:string,sourceKey:number,indexWaiting=false) {
   const [preparingKey,setPreparingKey]=useState<number|null>(null);
   const [buffering,setBuffering]=useState(false);
   useEffect(()=>{
@@ -22,7 +22,7 @@ export function usePlaybackFeedback(video:RefObject<HTMLVideoElement|null>,phase
     let frame:number|null=null;
     let disposed=false;
     const needsData=()=>!element.error&&!element.ended &&
-      (element.seeking||element.readyState<2||!element.paused&&element.readyState<3);
+      (indexWaiting||element.seeking||element.readyState<2||!element.paused&&element.readyState<3);
     const clear=()=>{
       if(timer!==null)window.clearTimeout(timer);
       if(frame!==null)element.cancelVideoFrameCallback?.(frame);
@@ -42,7 +42,7 @@ export function usePlaybackFeedback(video:RefObject<HTMLVideoElement|null>,phase
       frame=element.requestVideoFrameCallback((_,metadata)=>{
         frame=null;
         if(disposed)return;
-        if(Math.abs(metadata.mediaTime-element.currentTime)<1.5&&(element.paused||element.readyState>=3))clear();
+        if(!indexWaiting&&Math.abs(metadata.mediaTime-element.currentTime)<1.5&&(element.paused||element.readyState>=3))clear();
         else if(needsData())observeFrame();
       });
     };
@@ -61,6 +61,6 @@ export function usePlaybackFeedback(video:RefObject<HTMLVideoElement|null>,phase
       for(const event of events)element.removeEventListener(event,update);
       for(const event of ['emptied','error','ended'])element.removeEventListener(event,reset);
     };
-  },[video,phase,sourceKey]);
+  },[video,phase,sourceKey,indexWaiting]);
   return {preparing:phase==='preparing'&&preparingKey===sourceKey,buffering:phase==='ready'&&buffering};
 }

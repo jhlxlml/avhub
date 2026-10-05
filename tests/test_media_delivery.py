@@ -1,11 +1,12 @@
 import tempfile
 import unittest
 import anyio
+import io
 from unittest.mock import patch
 from pathlib import Path
 
 from fastapi import HTTPException
-from app.media_delivery import original_file_response
+from app.media_delivery import original_file_response, PreparedFragmentResponse
 
 
 class MediaDeliveryTests(unittest.IsolatedAsyncioTestCase):
@@ -109,3 +110,53 @@ class MediaDeliveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertLessEqual(len(reads),1)
             self.assertEqual(len(opened),1)
             self.assertTrue(opened[0].wrapped.closed)
+
+    async def test_fragment_disconnect_cancels_preparation_before_headers(self):
+        began=anyio.Event();observed=[];messages=[]
+        def prepare(cancelled):
+            anyio.from_thread.run_sync(began.set)
+            observed.append(cancelled.wait(2))
+            raise ValueError('cancelled preparation')
+        async def receive():
+            await began.wait();return {'type':'http.disconnect'}
+        async def send(message):messages.append(message)
+        await PreparedFragmentResponse(prepare,lambda reader:reader.close())({'type':'http'},receive,send)
+        self.assertEqual(observed,[True]);self.assertEqual(messages[0]['status'],499)
+        self.assertEqual(messages[-1]['body'],b'')
+
+    async def test_fragment_disconnect_racing_open_always_closes_returned_handle(self):
+        began=anyio.Event();reader=self.source.open('rb');released=[];messages=[]
+        def prepare(cancelled):
+            anyio.from_thread.run_sync(began.set)
+            self.assertTrue(cancelled.wait(2))
+            return reader,b'',len(self.data)
+        async def receive():
+            await began.wait();return {'type':'http.disconnect'}
+        async def send(message):messages.append(message)
+        def release(handle):released.append(handle);handle.close()
+        await PreparedFragmentResponse(prepare,release)({'type':'http'},receive,send)
+        self.assertEqual(released,[reader]);self.assertTrue(reader.closed)
+        self.assertEqual(messages[0]['status'],499)
+
+    async def test_fragment_delivery_keeps_original_bytes_and_stops_disconnected_read(self):
+        for disconnect in [False,True]:
+            reader=io.BytesIO(self.data);messages=[];signal=anyio.Event()
+            async def receive():
+                await signal.wait();return {'type':'http.disconnect'}
+            async def send(message):
+                messages.append(message)
+                if disconnect and message['type']=='http.response.body':
+                    signal.set();await anyio.sleep(.02)
+            await PreparedFragmentResponse(lambda _: (reader,b'prefix',len(self.data)),lambda r:r.close())({'type':'http'},receive,send)
+            self.assertTrue(reader.closed)
+            body=b''.join(m.get('body',b'') for m in messages)
+            self.assertEqual(body,b'prefix' if disconnect else b'prefix'+self.data)
+            self.assertEqual(dict(messages[0]['headers'])[b'content-length'],str(len(self.data)+6).encode())
+
+    async def test_preparation_http_errors_are_not_wrapped(self):
+        async def receive():await anyio.sleep_forever()
+        async def send(message):self.fail('Headers must wait for preparation')
+        def prepare(_):raise HTTPException(410,'expired')
+        with self.assertRaises(HTTPException) as error:
+            await PreparedFragmentResponse(prepare,lambda _:None)({'type':'http'},receive,send)
+        self.assertEqual(error.exception.status_code,410)

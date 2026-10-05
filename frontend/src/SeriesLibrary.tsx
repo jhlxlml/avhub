@@ -7,17 +7,24 @@ import { Icon } from './Icon';
 import { duration } from './api';
 import { episodeLabel } from './mediaLabels';
 import './library-tools.css';
+import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
 
 type Group={id:number;title:string;count:number;available_count:number;watched_count:number;seasons:number;thumbnail_url?:string|null;thumbnail_media_id?:number|null};
 type GroupPage={items:Group[];total:number;page:number;pages:number;page_size:number};
 type Episodes=MediaPage&{id:number;title:string;seasons:{season:number|null;count:number;available_count:number}[]};
 
-export function SeriesLibrary({q,root,show,season,page,pageSize,revision,change,play}:{q:string;root:string;show:string;season:string;page:number;pageSize:number;revision:number;
+export function SeriesLibrary({cache,active,q,root,show,season,page,pageSize,revision,change,play}:{cache:LibraryPageCache;active:boolean;q:string;root:string;show:string;season:string;page:number;pageSize:number;revision:number;
   change:(value:{show?:string;season?:string;page?:number;pageSize?:number})=>void;play:(media:Media)=>void}) {
-  const [groups,setGroups]=useState<GroupPage|null>(null);const [episodes,setEpisodes]=useState<Episodes|null>(null);
-  const [error,setError]=useState('');const [loading,setLoading]=useState(true);const [retry,setRetry]=useState(0);
+  const [writeError,setError]=useState('');const [retry,setRetry]=useState(0);
+  const params=new URLSearchParams({page:String(page),page_size:String(pageSize)});
+  if(root)params.set('root_id',root);
+  if(show){if(season)params.set('season',season);}else if(q)params.set('q',q);
+  const query=useLibraryQuery<GroupPage|Episodes>(active?`${show?`/api/series/${show}`:'/api/series'}?${params}`:null,revision,cache,q,retry);
+  const groups=show?null:query.data as GroupPage|undefined;
+  const episodes=show?query.data as Episodes|undefined:null;
+  const loading=query.loading,error=writeError||query.error;
   const [renaming,setRenaming]=useState(false),[name,setName]=useState(''),[saving,setSaving]=useState(false);
-  useEffect(()=>{setRenaming(false);},[show]);
+  useEffect(()=>{setRenaming(false);setError('');},[show]);
   useEffect(()=>{
     const ids=episodes?.items.map(item=>item.id)||groups?.items.map(group=>group.thumbnail_media_id).filter(Boolean);
     if(!ids?.length)return;
@@ -29,33 +36,22 @@ export function SeriesLibrary({q,root,show,season,page,pageSize,revision,change,
       if(!ids)return;
       void api<{id:number;thumbnail_url?:string|null}[]>(`/api/thumbnails/versions?ids=${ids}`).then(values=>{
         const covers=new Map(values.map(value=>[value.id,value.thumbnail_url]));
-        setEpisodes(current=>current?{...current,items:current.items.map(item=>covers.has(item.id)?{...item,thumbnail_url:covers.get(item.id)??undefined}:item)}:current);
-        setGroups(current=>current?{...current,items:current.items.map(group=>{const id=group.thumbnail_media_id||0;return covers.has(id)?{...group,thumbnail_url:covers.get(id)}:group;})}:current);
+        cache.clear();
+        query.update(current=>current?{...current,items:current.items.map(item=>{
+          const id='thumbnail_media_id' in item?item.thumbnail_media_id||0:item.id;
+          return covers.has(id)?{...item,thumbnail_url:covers.get(id)??undefined}:item;
+        })} as GroupPage|Episodes:current);
       }).catch(()=>{});
     };
     window.addEventListener('avhub-thumbnails-published',refresh);
     return()=>window.removeEventListener('avhub-thumbnails-published',refresh);
-  },[episodes,groups]);
+  },[episodes,groups,query.update,cache]);
   async function rename() {
     setSaving(true);setError('');
-    try{await api(`/api/series/${show}`,json('PATCH',{title:name.trim()}));setRenaming(false);setRetry(n=>n+1);}
+    try{await api(`/api/series/${show}`,json('PATCH',{title:name.trim()}));cache.clear();setRenaming(false);setRetry(n=>n+1);}
     catch(e){setError(errorText(e));}finally{setSaving(false);}
   }
-  useEffect(()=>{
-    const controller=new AbortController();setLoading(true);setError('');
-    const params=new URLSearchParams({page:String(page),page_size:String(pageSize)});
-    if(root)params.set('root_id',root);
-    if(show){if(season)params.set('season',season);}
-    else if(q)params.set('q',q);
-    const timer=window.setTimeout(()=>{
-      void api<GroupPage|Episodes>(`${show?`/api/series/${show}`:'/api/series'}?${params}`,{signal:controller.signal}).then(result=>{
-        if(controller.signal.aborted)return;
-        if(show){setEpisodes(result as Episodes);setGroups(null);}else{setGroups(result as GroupPage);setEpisodes(null);}
-        if(result.page!==page)change({page:result.page});
-      }).catch(e=>{if(!controller.signal.aborted)setError(errorText(e));}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
-    },150);
-    return()=>{controller.abort();clearTimeout(timer);};
-  },[q,root,show,season,page,pageSize,revision,retry]);
+  useEffect(()=>{if(query.data&&query.data.page!==page)change({page:query.data.page});},[query.data,page]);
   const result=show?episodes:groups;
   return <section className="series-library" aria-label="剧集聚合库">
     {show&&<div className="series-heading"><Button icon="arrowLeft" onClick={()=>change({show:'',season:'',page:1})}>返回剧集库</Button><h2>{episodes?.title||'剧集详情'}</h2>
@@ -63,8 +59,10 @@ export function SeriesLibrary({q,root,show,season,page,pageSize,revision,change,
       <label>季<select aria-label="选择季" value={season} onChange={e=>change({season:e.target.value,page:1})}><option value="">全部季</option>{episodes?.seasons.map(s=><option key={s.season??'unknown'} value={s.season??'unknown'}>{s.season===null?'季未设置':s.season===0?'特别篇':`第 ${s.season} 季`} · {s.count} 集</option>)}</select></label>
     </div>}
     {show&&renaming&&<form className="series-heading" onSubmit={event=>{event.preventDefault();void rename();}}><input aria-label="分组剧名" value={name} maxLength={300} disabled={saving} onChange={event=>setName(event.target.value)}/><Button type="submit" icon="save" busy={saving} disabled={!name.trim()}>保存剧名</Button><small>仅修改分组显示名，不改动文件或单集标题</small></form>}
-    {!show&&<div className="section-title"><h2>按剧集归类</h2><span>{loading?'正在加载…':`共 ${groups?.total??0} 个剧集`}</span></div>}
-    {error?<><StatusMessage kind="error">{error}</StatusMessage><Button icon="refresh" onClick={()=>setRetry(n=>n+1)}>重试剧集库</Button></>:loading?<StatusMessage kind="loading">正在加载剧集…</StatusMessage>:
+    {!show&&<div className="section-title"><h2>按剧集归类</h2><span>{groups?`共 ${groups.total} 个剧集`:query.showLoading?'正在加载…':''}</span></div>}
+    {result&&query.showLoading&&<span className="library-query-feedback" role="status"><Icon name="refresh" size={14} className="is-spinning"/>更新中</span>}
+    {error&&result&&<StatusMessage kind="error">{error}<Button icon="refresh" onClick={()=>{setError('');cache.clear();setRetry(n=>n+1);}}>重试剧集库</Button></StatusMessage>}
+    {error&&!result?<><StatusMessage kind="error">{error}</StatusMessage><Button icon="refresh" onClick={()=>{setError('');cache.clear();setRetry(n=>n+1);}}>重试剧集库</Button></>:loading&&!result?<div className="library-query-placeholder" aria-label="剧集列表载入中" aria-busy="true">{query.showLoading&&<StatusMessage kind="loading">正在加载剧集…</StatusMessage>}</div>:
       show?episodes?.items.length?<div className="series-episodes">{episodes.items.map(m=><button key={m.id} className="series-episode" disabled={Boolean(m.missing)} aria-label={m.missing?`离线 ${m.title}`:`播放 ${m.title}`} onClick={()=>play({...m,series_title:episodes.title})}>
         <span className="episode-cover"><MediaThumbnail url={m.thumbnail_url} retryKey={revision}/><Icon name={m.missing?'warning':'play'} size={20}/></span><span className="episode-meta"><b>{episodeLabel(m)}</b><span title={m.name}>{m.name}</span><small>{m.missing?'源文件离线':m.watched?'已看完':m.progress>0?`看到 ${duration(m.progress)}`:'未观看'}</small></span><span>{duration(m.duration)}</span>
       </button>)}</div>:<EmptyState icon="series" title="当前季暂无视频" description="可以切换季或检查媒体目录。"/>:

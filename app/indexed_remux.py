@@ -5,12 +5,33 @@ import json
 import math
 from pathlib import Path
 import threading
+import time
 import uuid
 from collections import OrderedDict
 
 from .indexed_ts import IndexedTs, fingerprint
 
 VERSION=3
+
+
+class FragmentCancellation:
+    """A disconnected request cancels its work, not the whole playback session."""
+    def __init__(self, session, request):
+        self.session=session
+        self.request=request
+
+    poll_interval=.05
+
+    def is_set(self):
+        return self.session.is_set() or (self.request is not None and self.request.is_set())
+
+    def wait(self,timeout=None):
+        deadline=None if timeout is None else time.monotonic()+timeout
+        while not self.is_set():
+            remaining=self.poll_interval if deadline is None else min(self.poll_interval,deadline-time.monotonic())
+            if remaining<=0:return self.is_set()
+            self.session.wait(remaining)
+        return True
 
 
 def validate(data,stamp):
@@ -89,13 +110,14 @@ class IndexedRemux(IndexedTs):
     cached:OrderedDict=field(default_factory=OrderedDict)
     cache_bytes:int=0
 
-    def open_fragment(self,index):
+    def open_fragment(self,index,request_cancelled=None):
         # Serialize this session's short remuxes, deduplicate identical HTTP
         # retries, and bound cache bytes. No long-running sequential encoder.
-        while not self.generation.acquire(timeout=.1):
-            if self.cancelled.is_set():raise ValueError('播放任务已取消')
+        cancelled=FragmentCancellation(self.cancelled,request_cancelled)
+        while not self.generation.acquire(timeout=.05):
+            if cancelled.is_set():raise ValueError('分片请求已取消')
         try:
-            if self.cancelled.is_set():raise ValueError('播放任务已取消')
+            if cancelled.is_set():raise ValueError('分片请求已取消')
             if self.data is None or index>=len(self.data['fragments']) or index<0:raise ValueError('无效分片')
             if fingerprint(self.source)!=self.data['source']:raise ValueError('源视频已变更，请重新播放')
             destination=self.folder/f'segment_{index:06d}.ts'
@@ -115,8 +137,8 @@ class IndexedRemux(IndexedTs):
                 if not self.copy_audio:command.extend(['-ac','2'])
                 command.extend(['-output_ts_offset',str(dts-origin if index else -origin),'-avoid_negative_ts','disabled','-muxdelay','0','-f','mpegts',str(temporary)])
                 try:
-                    code,_,error=self.run(command,30,self.cancelled)
-                    if self.cancelled.is_set():raise ValueError('播放任务已取消')
+                    code,_,error=self.run(command,30,cancelled)
+                    if cancelled.is_set():raise ValueError('分片请求已取消')
                     if code or not temporary.is_file() or temporary.stat().st_size==0:
                         raise ValueError('分片封装失败：'+error.decode('utf-8',errors='replace')[-300:])
                     if fingerprint(self.source)!=self.data['source']:raise ValueError('源视频已变更')

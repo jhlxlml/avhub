@@ -171,3 +171,37 @@ class IndexedRemuxTests(unittest.TestCase):
             self.assertTrue(reader.closed);self.assertFalse(list(manager.cache.iterdir()))
             self.assertFalse(manager.pending_removals)
         finally:manager.close()
+
+    def test_obsolete_fragment_releases_queue_without_cancelling_playback(self):
+        began=threading.Event();obsolete=threading.Event();errors=[];calls=[]
+        def slow(command,timeout,cancelled):
+            calls.append(command)
+            if len(calls)==1:
+                began.set()
+                self.assertTrue(cancelled.wait(2),'disconnected work should be cancelled')
+                raise ValueError('obsolete request')
+            return self.probe_run(command,timeout,cancelled)
+        stream=IndexedRemux(self.source,data=self.data(),ffmpeg=FFMPEG,run=slow,folder=self.folder)
+        def old_request():
+            try:stream.open_fragment(8,obsolete)
+            except ValueError as exc:errors.append(exc)
+        worker=threading.Thread(target=old_request);worker.start()
+        self.assertTrue(began.wait(1));started=time.monotonic();obsolete.set()
+        with stream.open_fragment(2) as reader:self.assertTrue(reader.read(188))
+        worker.join(timeout=1)
+        self.assertFalse(worker.is_alive());self.assertLess(time.monotonic()-started,1)
+        self.assertEqual(len(errors),1);self.assertEqual(len(calls),2)
+        self.assertFalse(stream.cancelled.is_set());self.assertFalse(list(self.folder.glob('*.tmp')))
+        self.assertFalse((self.folder/'segment_000008.ts').exists())
+
+    def test_request_cancelled_while_queued_never_runs_encoder(self):
+        obsolete=threading.Event();errors=[];run=Mock(side_effect=self.probe_run)
+        stream=IndexedRemux(self.source,data=self.data(),ffmpeg=FFMPEG,run=run,folder=self.folder)
+        def request():
+            try:stream.open_fragment(3,obsolete)
+            except ValueError as exc:errors.append(exc)
+        stream.generation.acquire()
+        try:
+            worker=threading.Thread(target=request);worker.start();obsolete.set();worker.join(timeout=1)
+            self.assertFalse(worker.is_alive());self.assertEqual(len(errors),1);run.assert_not_called()
+        finally:stream.generation.release()

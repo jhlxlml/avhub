@@ -24,12 +24,19 @@ def main():
     parser.add_argument('--container',choices=['mkv','avi','mov','mp4','webm'])
     parser.add_argument('--audio',choices=['copy','ac3'],default='copy')
     parser.add_argument('--legacy-delivery',action='store_true')
+    parser.add_argument('--legacy-fragment-cancellation',action='store_true')
+    parser.add_argument('--legacy-ts-probe',action='store_true')
+    parser.add_argument('--warm-ts-index',action='store_true')
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix='avhub-seek-benchmark-') as temporary:
         folder = Path(temporary)
         os.environ['AVHUB_DATA_DIR'] = str(folder / 'avhub-data')
         os.environ.pop('AVHUB_SESSION_TOKEN', None)
         from app import main as avhub
+        if args.legacy_ts_probe:avhub.stream_packets=None
+        if args.legacy_fragment_cancellation:
+            fragment=avhub.playback.remux_fragment
+            avhub.playback.remux_fragment=lambda token,name,request_cancelled=None:fragment(token,name)
         import uvicorn
         if args.source_index:
             db=sqlite3.connect(Path(args.source_index).resolve().as_uri()+'?mode=ro',uri=True)
@@ -61,6 +68,11 @@ def main():
         metadata = avhub.probe(source)
         if not metadata['video_codec'] or metadata['duration'] < 5:
             raise ValueError('Benchmark requires a valid video at least five seconds long')
+        if args.warm_ts_index:
+            import threading
+            from app.indexed_ts import build_index
+            build_index(source,avhub.DATA/'ts-index',avhub.executable('ffprobe'),avhub.scan_process,
+                        threading.Event(),stream=avhub.stream_packets)
         # Populate both profiles with a cached cover before timing playback.
         # Otherwise the reference UI launches a thumbnail FFmpeg during startup.
         preview = avhub.thumbnail(source, 1, metadata['duration'])

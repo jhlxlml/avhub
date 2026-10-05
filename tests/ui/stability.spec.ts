@@ -628,7 +628,8 @@ test('TS fallback seeks before the current stream offset without retrying the fa
   });
   await page.route('**/api/media/5/playback', async route => {
     // Exercise the still-supported legacy fallback; indexed VOD is tested separately.
-    const body={...route.request().postDataJSON(),indexed_ts:false};starts.push(body);
+    const body={...route.request().postDataJSON(),indexed_ts:false,
+      ...(starts.length===0?{prefer_original:true,skip_direct:false}:{})};starts.push(body);
     await route.continue({postData:JSON.stringify(body)});
   });
   await page.goto('/?q=005');

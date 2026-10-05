@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 import sys
 import time
+import threading
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 temp = tempfile.TemporaryDirectory(prefix="avhub-regression-")
@@ -38,6 +40,51 @@ shutil.copyfile(source, scan_source / 'New title.mp4')
 original_scan_file = m.scan_file
 scan_delay = 0
 thumbnail_delay = 0
+ts_index_gate=threading.Event();ts_index_gate.set()
+ts_index_failure=False
+ts_index_until=12.
+ts_index_delay=0.
+ts_probes={'head':0,'full':0}
+original_media_process=m.scan_process
+original_packet_stream=m.stream_packets
+
+def controlled_ts_probe(command,timeout,cancelled=None):
+    if '-show_entries' in command and command[command.index('-show_entries')+1]=='format=start_time,duration':
+        ts_probes['head']+=1
+    if '-show_packets' in command and Path(command[-1]).suffix=='.ts':
+        short='-read_intervals' in command
+        ts_probes['head' if short else 'full']+=1
+        if not short:
+            while not ts_index_gate.wait(.02):
+                if cancelled and cancelled.is_set():raise m.ScanCancelled()
+            if ts_index_failure:return 1,b'',b'test unsupported full timeline'
+    return original_media_process(command,timeout,cancelled)
+m.scan_process=controlled_ts_probe
+
+def controlled_packet_stream(command,timeout,cancelled,consume):
+    ts_probes['full']+=1
+    def packet(line):
+        fields=line.strip().split(b'|')
+        if len(fields)>1 and fields[0] and float(fields[0])>=ts_index_until:
+            while not ts_index_gate.wait(.02):
+                if cancelled.is_set():raise m.ScanCancelled()
+            if ts_index_failure:raise ValueError('test unsupported full timeline')
+        if b'|K' in line and cancelled.wait(ts_index_delay):raise m.ScanCancelled()
+        consume(line)
+    return original_packet_stream(command,timeout,cancelled,packet)
+m.stream_packets=controlled_packet_stream
+
+@m.app.post('/test/ts-index-gate')
+def ts_gate(hold:bool=False,fail:bool=False,until:float=12,delay:float=0):
+    global ts_index_failure,ts_index_until,ts_index_delay
+    ts_index_failure=fail
+    ts_index_until=until;ts_index_delay=delay
+    if hold:ts_index_gate.clear()
+    else:ts_index_gate.set()
+    return {'ok':True}
+
+@m.app.get('/test/ts-index-state')
+def ts_state():return ts_probes
 original_thumbnail_process=m.thumbnail_service.process
 
 def delayed_thumbnail_process(key,cancelled,gate):
@@ -83,7 +130,7 @@ def restore_interrupted_scan(root_id: int):
 
 @m.app.post('/test/reset')
 def reset():
-    global scan_delay,thumbnail_delay
+    global scan_delay,thumbnail_delay,ts_index_failure,ts_index_until,ts_index_delay
     m.screenshot_store=m.screenshots.ScreenshotStore()
     m.data_jobs.close()
     m.data_jobs=m.DataJobs(lambda:m.DATA)
@@ -92,6 +139,8 @@ def reset():
     scan_delay = 0
     thumbnail_delay = 0
     m.playback.close()
+    ts_index_gate.set();ts_index_failure=False;ts_probes.update(head=0,full=0)
+    ts_index_until=12.;ts_index_delay=0.
     # A browser closed by the runner may not send its final beacon. Reset the
     # test-only transient playback state so leases cannot cross test cases.
     with m.thumbnail_service.lock:m.thumbnail_service.playback_leases.clear()
@@ -137,12 +186,14 @@ def two_audio_fixture():
     return {'ok':True}
 
 @m.app.post('/test/indexed-ts-fixture')
-def indexed_ts_fixture():
+def indexed_ts_fixture(fresh:bool=False):
     target=Path(temp.name)/'indexed.ts'
     if not target.exists():
         subprocess.run([m.executable('ffmpeg'),'-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=25',
             '-f','lavfi','-i','sine=frequency=440','-t','120','-c:v','libx264','-preset','ultrafast',
             '-g','50','-c:a','aac','-f','mpegts',str(target)],check=True,timeout=15)
+    if fresh:
+        copied=Path(temp.name)/f'indexed-{uuid.uuid4().hex}.ts';shutil.copyfile(target,copied);target=copied
     with m.connection() as db:db.execute('UPDATE media SET path=? WHERE id=5',(str(target),))
     return {'ok':True}
 

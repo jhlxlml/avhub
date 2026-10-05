@@ -146,16 +146,17 @@ class PlaybackManager:
                 worker.start()
             return self.status(token)
 
-    def create_indexed_ts(self, source: Path, ffprobe: str, run, *, video_color=None, client_token=None):
+    def create_indexed_ts(self, source: Path, ffprobe: str, run, *, video_color=None, client_token=None, start=0, progressive=False, stream=None):
         return self._create_indexed(source,IndexedTs(source),
-            lambda event:build_index(source,self.cache.parent/'ts-index',ffprobe,run,event),
+            lambda event,publish:build_index(source,self.cache.parent/'ts-index',ffprobe,run,event,
+                                            publish=publish if progressive else None,start=start,stream=stream),
             video_color=video_color,client_token=client_token)
 
     def create_indexed_remux(self,source,ffprobe,ffmpeg,run,*,audio_track_index=None,copy_audio=True,video_color=None,client_token=None):
         indexed=IndexedRemux(source,ffmpeg=ffmpeg,run=run,audio_index=audio_track_index,copy_audio=copy_audio,
                              budget=min(self.cache_target,256*1024**2))
         return self._create_indexed(source,indexed,
-            lambda event:build_remux_index(source,self.cache.parent/'remux-index',ffprobe,run,event),
+            lambda event,publish:build_remux_index(source,self.cache.parent/'remux-index',ffprobe,run,event),
             video_color=video_color,client_token=client_token)
 
     def _create_indexed(self,source,indexed,build,*,video_color=None,client_token=None):
@@ -182,9 +183,16 @@ class PlaybackManager:
             session.color = {'source': video_color or {}, 'label':('原视频编码按需封装 · 不重编码画面' if isinstance(indexed,IndexedRemux) else '原始 TS 按关键帧直读 · 不改视频/音频编码'),
                              'warning':'显示效果仍取决于浏览器、显卡与显示器支持'}
             self.sessions[token] = session
+            def publish(data):
+                with self.lock:
+                    if self.sessions.get(token) is session and not indexed.cancelled.is_set():
+                        indexed.progressive=True
+                        indexed.target_duration=math.ceil(data['source_duration'])
+                        indexed.data=data
+                        session.window_end=data['duration']
             def index():
                 try:
-                    data = build(session.indexed.cancelled)
+                    data = build(session.indexed.cancelled,publish)
                     with self.lock:
                         if self.sessions.get(token) is session and not session.indexed.cancelled.is_set():
                             session.indexed.data = data
@@ -319,7 +327,7 @@ class PlaybackManager:
             if session.indexed:
                 state = 'failed' if session.error else 'ready' if session.indexed.data is not None else 'preparing'
                 return {'token':token, 'state':state, 'offset':0, 'delivery':'indexed-remux' if isinstance(session.indexed,IndexedRemux) else 'indexed-ts',
-                        'complete':state == 'ready', 'error':session.error, 'color':session.color,
+                        'complete':state == 'ready' and session.indexed.data.get('complete',True), 'error':session.error, 'color':session.color,
                         'url':f'/media/hls/{token}/index.m3u8' if state == 'ready' else None,
                         'window_start':0, 'window_end':session.window_end,
                         'cache_bytes':session.indexed.cache_bytes if isinstance(session.indexed,IndexedRemux) else 0,
@@ -401,7 +409,7 @@ class PlaybackManager:
             prefix=bytes.fromhex(session.indexed.data['headers']) if index else b''
             return reader,prefix,length
 
-    def remux_fragment(self,token,name):
+    def remux_fragment(self,token,name,request_cancelled=None):
         with self.lock:
             session=self._get(token)
             if not isinstance(session.indexed,IndexedRemux):return None
@@ -410,7 +418,7 @@ class PlaybackManager:
             session.touched=time.monotonic()
             indexed=session.indexed
         # Never hold the manager lock while FFmpeg seeks/remuxes one GOP.
-        try:reader=indexed.open_fragment(int(match[1]))
+        try:reader=indexed.open_fragment(int(match[1]),request_cancelled)
         except Exception as exc:raise HTTPException(503,f'按需封装不可用：{str(exc)[:300]}') from exc
         finally:
             # Cancellation can arrive while FFmpeg still owns a Windows .tmp

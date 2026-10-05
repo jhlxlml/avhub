@@ -66,7 +66,8 @@ test('indexed TS playing and paused seeks keep the source, decoded picture and o
   await page.waitForTimeout(200);
   const frames=await page.evaluate(()=>{const state=(window as any).tsFrames;state.active=false;return state;});
   expect(frames.emptied).toBe(0);expect(frames.loads).toBe(0);expect(frames.black).toBe(0);
-  expect(frames.missing).toBe(0);expect(starts).toHaveLength(2);
+  expect(frames.missing).toBe(0);expect(starts).toHaveLength(1);
+  expect(starts[0]).toMatchObject({prefer_original:false,skip_direct:true,force_transcode:false});
   await expect.poll(async()=> (await (await request.get('/test/sessions')).json()).count).toBe(1);
   await page.locator('.player-top').getByRole('button',{name:/返回媒体库/}).click();
   await expect.poll(async()=> (await (await request.get('/test/sessions')).json())).toEqual({count:0,folders:0});
@@ -80,7 +81,7 @@ test('unsupported TS indexing falls back once to copy remux, not a quality downg
     await route.fulfill({response,json:session});
   });
   await openTs(page);
-  expect(starts).toHaveLength(3);expect(starts[2]).toMatchObject({indexed_ts:false,force_transcode:false,quality:'auto'});
+  expect(starts).toHaveLength(2);expect(starts[1]).toMatchObject({indexed_ts:false,force_transcode:false,quality:'auto'});
   await expect(page.locator('.playback-diagnostics')).toContainText('保留原视频编码');
 });
 
@@ -102,5 +103,5 @@ test('indexed non-keyframe resume and rewinds on a ten-second GOP do not reconst
     await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeCloseTo(target,0);
     expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>v.paused)).toBeTruthy();
   }
-  expect(creates).toBe(2);
+  expect(creates).toBe(1);
 });

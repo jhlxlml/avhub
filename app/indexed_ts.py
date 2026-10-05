@@ -5,6 +5,7 @@ import json
 import math
 from pathlib import Path
 import threading
+import time
 import uuid
 
 PACKET = 188
@@ -90,22 +91,7 @@ def validate(data, stamp):
     return data
 
 
-def build_index(source, cache, ffprobe, run, cancelled):
-    stamp = fingerprint(source)
-    if stamp[1] < PACKET or stamp[1] % PACKET: raise UnsupportedTs('仅索引完整 188 字节 TS')
-    digest = hashlib.sha256(json.dumps(stamp, ensure_ascii=False).encode()).hexdigest()
-    destination = cache / f'{digest}.json'
-    safe_cache=not cache.is_symlink() and cache.resolve()==cache.parent.resolve()/cache.name
-    try:
-        if safe_cache and not destination.is_symlink() and destination.stat().st_size <= 8 * 1024**2:
-            return validate(json.loads(destination.read_text(encoding='utf-8')), stamp)
-    except (OSError, ValueError, KeyError, TypeError): pass
-    if cancelled.is_set(): raise UnsupportedTs('已取消 TS 索引')
-    code, output, _ = run([ffprobe, '-v', 'error', '-select_streams', 'v:0', '-show_packets',
-                          '-show_entries', 'packet=pts_time,pos,flags:format=start_time,duration',
-                          '-of', 'json', str(source)], 30, cancelled)
-    if code or len(output) > 64 * 1024**2: raise UnsupportedTs('无法构建 TS 索引')
-    probe = json.loads(output)
+def packet_index(source, stamp, probe, cancelled, *, complete=True):
     origin = float(probe.get('format', {}).get('start_time', 0))
     duration = float(probe.get('format', {}).get('duration', 0))
     if not math.isfinite(origin) or not math.isfinite(duration) or duration <= 0: raise UnsupportedTs('TS 时间轴无效')
@@ -122,22 +108,98 @@ def build_index(source, cache, ffprobe, run, cancelled):
             if not math.isfinite(pts) or pts <= previous_pts or position < 0 or position % PACKET:
                 raise UnsupportedTs('TS 有时间戳跳变或无有效关键帧位置')
             previous_pts = pts
-            # The first keyframe belongs to segment zero, including its original
-            # stream tables/audio preamble. Later ranges start at a full key PES.
             if not first_key_seen:
                 if pts < -.5 or pts >= 1.5: raise UnsupportedTs('TS 首关键帧偏离起点')
                 first_key_seen = True
                 continue
-            cut = position
-            if pts - points[-1][0] < 1.9 or pts >= duration or cut <= points[-1][1]: continue
-            points.append((pts, cut))
+            if pts - points[-1][0] < 1.9 or pts >= duration or position <= points[-1][1]: continue
+            points.append((pts, position))
     if previous_pts == -math.inf: raise UnsupportedTs('TS 缺少关键帧')
     if fingerprint(source) != stamp: raise UnsupportedTs('索引期间视频发生变更')
+    if not complete and len(points)<2:raise UnsupportedTs('开头尚无完整关键帧区间')
+    # Publish only closed ranges. The last observed keyframe is a boundary,
+    # never a guessed segment extending into the still-unindexed remainder.
+    count=len(points) if complete else len(points)-1
     fragments = [[start, (points[i + 1][1] if i + 1 < len(points) else stamp[1]) - position,
                   position, (points[i + 1][0] if i + 1 < len(points) else duration) - start]
-                 for i, (start, position) in enumerate(points)]
-    data = validate({'version': VERSION, 'source': stamp, 'duration': duration,
-                     'headers':headers, 'fragments': fragments}, stamp)
+                 for i, (start, position) in enumerate(points[:count])]
+    data={'version':VERSION,'source':stamp,'duration':duration if complete else points[-1][0],
+          'headers':headers,'fragments':fragments}
+    if not complete:data.update(complete=False,source_duration=duration)
+    return validate(data,stamp)
+
+
+def streaming_index(source, stamp, ffprobe, run, stream, cancelled, publish, start):
+    # Format probing is bounded and does not enumerate packets. Full packet
+    # output is consumed line-by-line, keeping only keyframes in memory.
+    code, raw, _ = run([ffprobe,'-v','error','-show_entries','format=start_time,duration',
+                       '-of','json',str(source)],5,cancelled)
+    if code or len(raw)>65536:raise UnsupportedTs('TS 时间轴探测失败')
+    metadata=json.loads(raw).get('format',{})
+    origin=float(metadata.get('start_time',0));duration=float(metadata.get('duration',0))
+    if not math.isfinite(origin) or not math.isfinite(duration) or duration<=0:
+        raise UnsupportedTs('TS 时间轴无效')
+    with source.open('rb') as reader:headers=initialization(reader).hex()
+    points=[(0.,0)];first=False;previous=-math.inf;published=0.;last_publish=0.
+    def snapshot(complete):
+        count=len(points) if complete else len(points)-1
+        fragments=[[t,(points[i+1][1] if i+1<len(points) else stamp[1])-pos,pos,
+                    (points[i+1][0] if i+1<len(points) else duration)-t]
+                   for i,(t,pos) in enumerate(points[:count])]
+        data={'version':VERSION,'source':stamp,'duration':duration if complete else points[-1][0],
+              'headers':headers,'fragments':fragments}
+        if not complete:data.update(complete=False,source_duration=duration)
+        return validate(data,stamp)
+    def consume(line):
+        nonlocal first,previous,published,last_publish
+        if cancelled.is_set():raise UnsupportedTs('已取消 TS 索引')
+        if b'|K' not in line:return
+        fields=line.strip().rstrip(b'|').split(b'|')
+        if b'K' not in fields[-1]:return
+        if len(fields)!=3:raise UnsupportedTs('TS 关键帧信息无效')
+        pts=float(fields[0])-origin;position=int(fields[1])
+        if not math.isfinite(pts) or pts<=previous or position<0 or position%PACKET:
+            raise UnsupportedTs('TS 有时间戳跳变或无有效关键帧位置')
+        previous=pts
+        if not first:
+            if pts<-.5 or pts>=1.5:raise UnsupportedTs('TS 首关键帧偏离起点')
+            first=True;return
+        if pts-points[-1][0]<1.9 or pts>=duration or position<=points[-1][1]:return
+        points.append((pts,position))
+        if len(points)>200000:raise UnsupportedTs('TS 关键帧数量超过安全限制')
+        now=time.monotonic()
+        # Supply a small real runway before attaching MSE, rather than a lone
+        # GOP that can starve while the next index update is still in flight.
+        if (publish is not None and pts>start+.1 and
+                (published or pts>=min(duration-.1,start+8)) and
+                (not published or pts-published>=15 and now-last_publish>=.25)):
+            if fingerprint(source)!=stamp:raise UnsupportedTs('索引期间视频发生变更')
+            publish(snapshot(False));published=pts;last_publish=now
+    code,_=stream([ffprobe,'-v','error','-select_streams','v:0','-show_packets',
+                   '-show_entries','packet=pts_time,pos,flags:packet_side_data=','-of','compact=p=0:nk=1',str(source)],
+                  90,cancelled,consume)
+    if cancelled.is_set():raise UnsupportedTs('已取消 TS 索引')
+    if code or not first:raise UnsupportedTs('无法构建 TS 关键帧索引')
+    if fingerprint(source)!=stamp:raise UnsupportedTs('索引期间视频发生变更')
+    return snapshot(True)
+
+
+def build_index(source, cache, ffprobe, run, cancelled, *, publish=None, start=0, stream=None):
+    stamp = fingerprint(source)
+    if stamp[1] < PACKET or stamp[1] % PACKET: raise UnsupportedTs('仅索引完整 188 字节 TS')
+    digest = hashlib.sha256(json.dumps(stamp, ensure_ascii=False).encode()).hexdigest()
+    destination = cache / f'{digest}.json'
+    safe_cache=not cache.is_symlink() and cache.resolve()==cache.parent.resolve()/cache.name
+    try:
+        if safe_cache and not destination.is_symlink() and destination.stat().st_size <= 8 * 1024**2:
+            cached=validate(json.loads(destination.read_text(encoding='utf-8')), stamp)
+            if cached.get('complete',True):return cached
+    except (OSError, ValueError, KeyError, TypeError): pass
+    if cancelled.is_set(): raise UnsupportedTs('已取消 TS 索引')
+    if stream is not None:
+        data=streaming_index(source,stamp,ffprobe,run,stream,cancelled,publish,start)
+    else:
+        data=legacy_index(source,stamp,ffprobe,run,cancelled,publish,start)
     if cancelled.is_set(): raise UnsupportedTs('已取消 TS 索引')
     if not safe_cache or destination.is_symlink():return data
     # A read-only cache disk need not prevent playback; retain the in-memory index.
@@ -153,18 +215,47 @@ def build_index(source, cache, ffprobe, run, cancelled):
     return data
 
 
+def legacy_index(source,stamp,ffprobe,run,cancelled,publish,start):
+    command=[ffprobe,'-v','error','-select_streams','v:0','-show_packets',
+             '-show_entries','packet=pts_time,pos,flags:format=start_time,duration','-of','json']
+    head=None
+    # A late resume still needs the complete time axis. Cached indexes and all
+    # non-progressive callers retain the single-probe path.
+    if publish is not None and 0<=start<4:
+        try:
+            code,output,_=run([*command,'-read_intervals','%+12',str(source)],3,cancelled)
+            if not code and len(output)<=8*1024**2:
+                candidate=packet_index(source,stamp,json.loads(output),cancelled,complete=False)
+                if candidate['duration']>start+.1 and candidate['source_duration']>candidate['duration']:
+                    head=candidate
+        except (ValueError,KeyError,TypeError,OSError,TimeoutError):
+            if cancelled.is_set():raise UnsupportedTs('已取消 TS 索引')
+        if head is not None:publish(head)
+    if cancelled.is_set():raise UnsupportedTs('已取消 TS 索引')
+    code, output, _ = run([*command,str(source)], 30, cancelled)
+    if code or len(output) > 64 * 1024**2: raise UnsupportedTs('无法构建 TS 索引')
+    data=packet_index(source,stamp,json.loads(output),cancelled)
+    if head is not None and (data['headers']!=head['headers'] or
+            data['fragments'][:len(head['fragments'])]!=head['fragments'] or
+            math.ceil(data['duration'])>math.ceil(head['source_duration'])):
+        raise UnsupportedTs('开头与完整索引边界不一致，使用兼容封装')
+    return data
+
+
 @dataclass
 class IndexedTs:
     source: Path
     cancelled: threading.Event = field(default_factory=threading.Event)
     data: dict | None = None
+    progressive: bool = False
+    target_duration: int | None = None
 
     def manifest(self):
         if self.data is None: raise UnsupportedTs('TS 索引尚未完成')
         fragments = self.data['fragments']
-        lines = ['#EXTM3U', '#EXT-X-VERSION:3', '#EXT-X-PLAYLIST-TYPE:VOD',
-                 f'#EXT-X-TARGETDURATION:{math.ceil(max(f[3] for f in fragments))}', '#EXT-X-MEDIA-SEQUENCE:0']
+        lines = ['#EXTM3U', '#EXT-X-VERSION:3', f'#EXT-X-PLAYLIST-TYPE:{"EVENT" if self.progressive else "VOD"}',
+                 f'#EXT-X-TARGETDURATION:{self.target_duration or math.ceil(max(f[3] for f in fragments))}', '#EXT-X-MEDIA-SEQUENCE:0']
         for i, (_, length, position, seconds) in enumerate(fragments):
             lines.extend([f'#EXTINF:{seconds:.6f},', f'segment_{i:06d}.ts'])
-        lines.append('#EXT-X-ENDLIST')
+        if self.data.get('complete',True):lines.append('#EXT-X-ENDLIST')
         return ('\n'.join(lines) + '\n').encode()

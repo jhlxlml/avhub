@@ -136,6 +136,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const quietNext=useRef(false);
   useEffect(()=>{nextPlayerControlsHidden=false;},[]);
   const [seekHover, setSeekHover] = useState<{ time: number; x: number } | null>(null);
+  const pointerFocusedRange=useRef<HTMLInputElement|null>(null);
   const [quality, setQuality] = useState<Quality>('auto');
   const [playbackMode, setPlaybackMode] = useState<'direct' | 'remux' | 'hls' | null>(null);
   const [playbackReason, setPlaybackReason] = useState('');
@@ -145,7 +146,8 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const preparation = usePreparationTrace();
   const [audioTrack, setAudioTrack] = useState('');
   const [openSetting, setOpenSetting] = useState<'quality' | 'audio' | 'speed' | 'subtitles' | 'more' | null>(null);
-  const feedback = usePlaybackFeedback(video,phase,request?.key??0);
+  const [waitingForIndex,setWaitingForIndex]=useState(false);
+  const feedback = usePlaybackFeedback(video,phase,request?.key??0,waitingForIndex);
   const [position, setDisplayedPosition] = useState(media.progress);
   const positionRef = useRef(position);
   const setPosition = useCallback((value:number) => {
@@ -193,6 +195,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const hlsInstance = useRef<Hls | null>(null);
   const hlsAvailableEnd = useRef(0);
   const hlsAvailableStart = useRef(0);
+  const indexedTsPending = useRef(false);
   const indexedTsFailed = useRef(false);
   const indexedRemuxFailed = useRef(false);
   const cacheRecoveries = useRef(0);
@@ -330,11 +333,20 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       setRequest({ ...request, start, force_transcode: hls.current, prefer_original: false,
         skip_direct: true, key: request.key + 1 });
     };
+    const recoverPendingIndex=()=>{
+      if(disposed||desktopQuitting.current||indexedTsFailed.current)return;
+      indexedTsFailed.current=true;
+      cacheRecoveryStarted=true;
+      setRequest({...currentRequest,indexed_ts:false,
+        start:queuedSeek.current??v.currentTime+offset.current,
+        autoplay:queuedSeek.current!==null?seekAutoplay.current:!v.paused,key:currentRequest.key+1});
+    };
     const videoError = () => {
       if (!transcode.current) fallback();
       else fail('转码视频播放失败，请重试或检查文件');
     };
     const hasVideoFrameTrack = () => {
+      if (v.readyState >= 2 && v.videoWidth && v.videoHeight) clearTimeout(browserLoadTimer);
       if (disposed || desktopQuitting.current || v.readyState < 2 || !media.width || !media.height || (v.videoWidth && v.videoHeight)) return;
       // Chromium can silently discard an unsupported video track (e.g. HEVC)
       // and play just its AAC audio. Neither MediaError nor play() rejects.
@@ -345,7 +357,6 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     };
     const loaded = () => {
       if (disposed) return;
-      clearTimeout(browserLoadTimer);
       trace.finish();
       diagnostics.observeFrame();
       if (!hls.current) {
@@ -364,7 +375,9 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         // NotAllowedError is normal autoplay policy, not codec failure.
       });
     };
-    const finish = () => { clearInterval(heartbeat); void stop(); if (!desktopQuitting.current) setPhase('ended'); };
+    // Keep the bounded session while the player remains open. Seeking back
+    // after the last frame must not fetch fragments from a deleted session.
+    const finish = () => { if (!desktopQuitting.current) setPhase('ended'); };
     v.addEventListener('error', videoError);
     v.addEventListener('loadedmetadata', loaded);
     v.addEventListener('loadeddata', hasVideoFrameTrack);
@@ -373,6 +386,8 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     hlsInstance.current = null;
     hlsAvailableEnd.current = 0;
     hlsAvailableStart.current = 0;
+    indexedTsPending.current = false;
+    setWaitingForIndex(false);
     diagnostics.sourceChanged();
     sourceChanging.current = true;
     setPhase('preparing'); setError(''); setPosition(request.start); setPlaybackMode(null); setPlaybackReason('');
@@ -393,9 +408,15 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         // Client-known ownership also retires a creation whose response timed
         // out. The backend rejects a late creation after this token is retired.
         sessionToken = crypto.randomUUID().replaceAll('-', '');
+        // These containers can carry supported H.264 while the browser cannot
+        // demux the original. Go straight to lossless delivery instead of
+        // attaching a known unsupported file and waiting for MediaError.
+        const containerType=({'.ts':'video/mp2t','.avi':'video/x-msvideo','.flv':'video/x-flv'} as Record<string,string>)[media.ext.toLowerCase()];
+        const needsRemux=media.video_codec?.toLowerCase()==='h264'&&!!containerType&&!v.canPlayType(containerType);
         // Stream-copy seeks can discard video up to the next keyframe. Keep a
         // bounded decode lead-in (including common 10s GOPs), not a re-encode.
         let session = await api<Session>(`/api/media/${media.id}/playback`, { ...json('POST', { ...currentRequest,
+          prefer_original:currentRequest.prefer_original&&!needsRemux,skip_direct:currentRequest.skip_direct||needsRemux,
           indexed_ts:currentRequest.indexed_ts??!indexedTsFailed.current,indexed_remux:currentRequest.indexed_remux??!indexedRemuxFailed.current,
           seek_preroll:10, client_token: sessionToken }), signal: creationController.signal });
         sessionToken = session.token || null;
@@ -435,6 +456,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           setRequest({...currentRequest,indexed_remux:false,key:currentRequest.key+1});return;
         }
         if (session.state === 'failed') throw new Error(session.error || '播放流生成失败');
+        indexedTsPending.current=session.delivery==='indexed-ts'&&!session.complete;
         if (!session.url) throw new Error('未获取到可播放的视频');
         // A stale duration may place a near-end request past the actual tail.
         // A finished encoder cannot publish more data; seek its final frame.
@@ -457,14 +479,31 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           if (HlsRuntime.isSupported()) {
             instance = new HlsRuntime({ startPosition: Math.max(0,playbackStart-session.offset), autoStartLoad: true,
               backBufferLength: 30, maxBufferLength: 30, maxMaxBufferLength: 90,
-              liveSyncDuration: 120 });
+              // Indexed TS is an offline EVENT timeline, not a broadcast whose
+              // growing edge should move the user's playback position.
+              liveSyncDuration: session.delivery==='indexed-ts'?Math.max(120,media.duration+120):120 });
             hlsInstance.current = instance;
+            let playlistRefreshPending=false;
             instance.on(HlsRuntime.Events.LEVEL_LOADED, (_, data) => {
               if (disposed) return;
+              playlistRefreshPending=false;
               const end = data.details.fragments.reduce((latest, fragment) =>
                 Math.max(latest, fragment.start + fragment.duration), 0);
               hlsAvailableEnd.current = Math.max(hlsAvailableEnd.current, end);
               if (data.details.fragments.length) hlsAvailableStart.current = Math.max(hlsAvailableStart.current, data.details.fragments[0].start);
+              if(session.delivery==='indexed-ts') {
+                if(!data.details.live)indexedTsPending.current=false;
+                // Resume as soon as the requested range is published; do not
+                // wait for unrelated hours of the timeline to finish indexing.
+                const target=queuedSeek.current;
+                if(target!==null&&seekTimer.current===null&&target-offset.current<end) {
+                  queuedSeek.current=null;
+                  v.currentTime=target-offset.current;
+                  setWaitingForIndex(false);
+                  setPosition(target);
+                  if(seekAutoplay.current)void v.play().catch(()=>{});
+                }
+              }
             });
             instance.on(HlsRuntime.Events.FRAG_BUFFERED, () => {
               // Paused MSE streams do not run gap recovery. Align the first
@@ -472,6 +511,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
               if (!disposed && request?.autoplay === false && !played.current && v.buffered.length && v.currentTime < v.buffered.start(0)) v.currentTime = v.buffered.start(0) + .01;
             });
             instance.on(HlsRuntime.Events.ERROR, (_, data) => {
+              if(data.context?.type==='level')playlistRefreshPending=false;
               if (disposed || desktopQuitting.current || !request) return;
               if (cacheRecoveryStarted) return;
               if (data.response?.code === 410) {
@@ -503,6 +543,30 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
             });
             watchBrowserLoad();
             instance.loadSource(session.url); instance.attachMedia(v);
+            if(indexedTsPending.current) {
+              const extendIndex=async()=>{
+                try {
+                  while(!disposed&&indexedTsPending.current&&sessionToken) {
+                    await new Promise(resolve=>setTimeout(resolve,150));
+                    if(disposed||!indexedTsPending.current||!sessionToken)return;
+                    const state=await api<Session>(`/api/playback/${sessionToken}`,{signal:creationController.signal});
+                    if(disposed)return;
+                    if(state.state==='failed'){recoverPendingIndex();return;}
+                    const level=instance?.loadLevelObj;
+                    if(instance&&level&&hlsAvailableEnd.current>0&&!playlistRefreshPending&&
+                        (state.complete||(state.window_end??0)>hlsAvailableEnd.current+.01)) {
+                      // Refresh only the playlist through the public event API.
+                      // startLoad() stops the fragment controller, cancelling
+                      // in-flight bytes and resetting its next-load position.
+                      playlistRefreshPending=true;
+                      instance.trigger(HlsRuntime.Events.LEVEL_LOADING,{url:level.uri,level:instance.loadLevel,
+                        levelInfo:level,pathwayId:level.attrs['PATHWAY-ID'],id:0,deliveryDirectives:null});
+                    }
+                  }
+                }catch(e){if(!disposed)fail(errorText(e));}
+              };
+              void extendIndex();
+            }
           } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
             watchBrowserLoad();
             v.src = session.url;
@@ -519,7 +583,10 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
             if (disposed) return;
             heartbeatFailures = 0;
             if (state.window_start !== undefined) hlsAvailableStart.current = Math.max(hlsAvailableStart.current, state.window_start - offset.current);
-            if (state.state === 'failed') fail(state.error || '播放流生成失败');
+            if (state.state === 'failed') {
+              if(indexedTsPending.current)recoverPendingIndex();
+              else fail(state.error || '播放流生成失败');
+            }
           } catch (e) { if (++heartbeatFailures >= 3) fail(errorText(e)); }
           finally { heartbeatBusy = false; }
         }, 5000);
@@ -541,6 +608,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       if (hlsInstance.current === instance) hlsInstance.current = null;
       hlsAvailableEnd.current = 0;
       hlsAvailableStart.current = 0;
+      indexedTsPending.current = false;
       playbackTasks.retirement = Promise.all([playbackTasks.retirement, stop()]).then(() => undefined);
     };
   }, [request, media.id, save]);
@@ -727,26 +795,43 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     const v = video.current!;
     if (!Number.isFinite(target)) return;
     target = Math.max(0, Math.min(Math.max(0, media.duration - .1), target));
+    if (phase === 'ended') {
+      ended.current = false;
+      setNextCancelled(true);
+      setPhase('ready');
+    }
     if(!sourceChanging.current&&Math.abs(v.currentTime+offset.current-target)<.05) {
       if(seekTimer.current!==null)clearTimeout(seekTimer.current);
       seekTimer.current=null;queuedSeek.current=null;
+      setWaitingForIndex(false);
       seekFrame.clear();setPosition(target);return;
     }
     seekFrame.begin(target);
+    const relative = target - offset.current;
+    if(indexedTsPending.current&&!sourceChanging.current&&hlsInstance.current&&relative>hlsAvailableEnd.current-.05) {
+      if(queuedSeek.current===null)seekAutoplay.current=!v.paused;
+      queuedSeek.current=target;
+      setWaitingForIndex(true);
+      diagnostics.beginSeek(target,'segments');
+      v.pause();setPosition(target);
+      return;
+    }
     if (!sourceChanging.current && !hls.current) {
       if (Math.abs(v.currentTime + offset.current - target) < .05) return;
       diagnostics.beginSeek(target, 'original');
       v.currentTime = target; setPosition(target); return;
     }
-    const relative = target - offset.current;
+    const resumePending=indexedTsPending.current&&queuedSeek.current!==null&&seekAutoplay.current;
     // Browser seekable ranges may lag behind an updated event playlist.
     // If FFmpeg has already published this point, let hls.js fetch
     // its segment instead of tearing down and restarting the local FFmpeg session.
     if (!sourceChanging.current && hlsInstance.current && relative >= hlsAvailableStart.current && relative <= hlsAvailableEnd.current - .05) {
       if (seekTimer.current !== null) clearTimeout(seekTimer.current);
       seekTimer.current = null; queuedSeek.current = null;
+      setWaitingForIndex(false);
       diagnostics.beginSeek(target, 'segments');
       v.currentTime = relative;
+      if(resumePending)void v.play().catch(()=>{});
       setPosition(target);
       return;
     }
@@ -816,6 +901,11 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     if (desktopQuitting.current) return;
     const current = video.current;
     if (!current || phase !== 'ready') return;
+    if(indexedTsPending.current&&queuedSeek.current!==null) {
+      seekAutoplay.current=!seekAutoplay.current;
+      setIsPlaying(seekAutoplay.current);
+      return;
+    }
     if (current.paused) void current.play().catch(()=>{}); else current.pause();
   }
   function scheduleControlsHide(delay:number) {
@@ -999,9 +1089,12 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   useEffect(() => {
     function shortcuts(event: KeyboardEvent) {
       const target = event.target;
-      // Range controls need arrows/Home/End for adjustment, but Space/K have
-      // no useful range action and should still toggle the video after a drag.
-      const rangePlaybackToggle=target instanceof HTMLInputElement && target.type==='range' && (event.code==='Space'||event.code==='KeyK');
+      // Mouse focus on a player slider must not disable playback shortcuts.
+      // Preserve native slider navigation for explicit keyboard/Tab focus.
+      if(event.code==='Tab')pointerFocusedRange.current=null;
+      const playerRange=target instanceof HTMLInputElement&&target.type==='range'&&!!target.closest('.player-controls');
+      const rangePlaybackKey=playerRange&&(['Space','KeyK','KeyJ','KeyL','KeyR','KeyM','KeyF','KeyW','KeyC','KeyP','KeyN'].includes(event.code)||
+        pointerFocusedRange.current===target&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.code));
       if (desktopQuitting.current) return;
       if(event.defaultPrevented || event.isComposing || event.keyCode===229 || document.querySelector('[role="dialog"]')) return;
       if(openSetting) return;
@@ -1017,7 +1110,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         event.preventDefault();void togglePurePlayback();return;
       }
       if (event.altKey || event.ctrlKey || event.metaKey || target instanceof HTMLElement &&
-          (target.isContentEditable || target.closest('[role="menu"], .setting-popover') || ['INPUT','SELECT','TEXTAREA'].includes(target.tagName) && !rangePlaybackToggle || target.getAttribute('type') === 'range' && !rangePlaybackToggle || target.tagName === 'SUMMARY' && event.code === 'Space')) return;
+          (target.isContentEditable || target.closest('[role="menu"], .setting-popover') || ['INPUT','SELECT','TEXTAREA'].includes(target.tagName) && !rangePlaybackKey || target.getAttribute('type') === 'range' && !rangePlaybackKey || target.tagName === 'SUMMARY' && event.code === 'Space')) return;
       const v = video.current;
       if (!v) return;
       if (event.code === 'KeyR' && phase === 'ready') {
@@ -1028,7 +1121,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         // not to that button's default keyup click (mute/rotate/capture/etc.).
         // Prevent the default even for held keys, but toggle only once.
         if(event.repeat)return;
-        if (v.paused) void v.play().catch(()=>{}); else v.pause();
+        togglePlayback();
       } else if ((event.code === 'ArrowLeft' || event.code === 'ArrowRight' || event.code === 'KeyJ' || event.code === 'KeyL') && (phase === 'ready' || phase === 'preparing')) {
         event.preventDefault();
         const current = queuedSeek.current ?? (sourceChanging.current ? positionRef.current : Number.isFinite(v.currentTime) ? v.currentTime + offset.current : 0);
@@ -1143,7 +1236,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}`} ref={videoWrap}
       style={{ '--player-height': `${videoWrapSize.height}px` } as CSSProperties}
       onMouseMove={revealControls} onMouseLeave={hideControlsSoon}
-      onPointerDownCapture={revealControls}
+      onPointerDownCapture={event=>{revealControls();const target=event.target;pointerFocusedRange.current=target instanceof HTMLInputElement&&target.type==='range'?target:null;}}
       onFocusCapture={event=>{if((event.target as HTMLElement).matches(':focus-visible'))revealControls();}}
       onClick={event => { if (suppressStageClick.current) { suppressStageClick.current = false; event.preventDefault(); return; } const target = event.target as HTMLElement; if (target === video.current || target === videoWrap.current || target.closest('.video-canvas')) togglePlayback(); }}
       onDoubleClick={event => { if (suppressStageClick.current) { suppressStageClick.current = false; event.preventDefault(); return; } const target = event.target as HTMLElement; if ((target === video.current || target === videoWrap.current || target.closest('.video-canvas')) && phase === 'ready') toggleFullscreen(); }}>
@@ -1161,7 +1254,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           positionRef.current=video.current.currentTime+offset.current;
           if(controlsVisible)setDisplayedPosition(positionRef.current);
         } }}
-        onPause={() => { if(video.current&&queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);setIsPlaying(false); if (!desktopQuitting.current) void save().catch(() => {}); }}
+        onPause={() => { if(video.current&&queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);setIsPlaying(indexedTsPending.current&&queuedSeek.current!==null?seekAutoplay.current:false); if (!desktopQuitting.current) void save().catch(() => {}); }}
         onSeeked={() => { if (!desktopQuitting.current) void save().catch(() => {}); }}
         onEnded={() => { ended.current = true; void save().catch(() => {}); }}>
         {subtitleUrl && <track key={subtitleUrl} kind="subtitles" src={subtitleUrl} default />}
@@ -1203,7 +1296,12 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
             {seekHover && <span className="seek-preview" style={{ left: `${seekHover.x}%` }}>{duration(seekHover.time)}</span>}
             <input aria-label="视频完整进度" type="range" min={0} max={Math.max(0, media.duration - .1)} step={.1} value={seek ?? position}
               disabled={phase !== 'ready' && phase !== 'preparing'} onChange={e => setSeek(Number(e.target.value))}
-              onPointerUp={e => seekTo(Number(e.currentTarget.value))} onKeyUp={e => { if (['ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'].includes(e.key)) seekTo(Number(e.currentTarget.value)); }} />
+              onPointerUp={e => seekTo(Number(e.currentTarget.value))} onKeyUp={e => {
+                // A pointer-focused arrow was handled on keydown as a playback
+                // seek. Do not commit the controlled slider again on keyup.
+                if(pointerFocusedRange.current===e.currentTarget&&['ArrowLeft','ArrowRight'].includes(e.key))return;
+                if (['ArrowLeft','ArrowRight','Home','End','PageUp','PageDown'].includes(e.key)) seekTo(Number(e.currentTarget.value));
+              }} />
           </div>
           <span>{duration(media.duration)}</span>
         </div>

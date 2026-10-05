@@ -26,6 +26,7 @@ import { initializeAppearance } from './appearance';
 import { initializeAutoplay } from './autoplay';
 import { CoverSizeControl, ThemeToggle } from './AppearanceControls';
 import { AutoScrollbars } from './AutoScrollbars';
+import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
 import './styles.css';
 import './library-performance.css';
 import './design-system.css';
@@ -70,13 +71,27 @@ function historyTime(value?: number) {
   return `${date.toLocaleDateString()} ${time}`;
 }
 
+const NO_MEDIA:Media[]=[];
+function mediaQuery(filters:Filters) {
+  const params=new URLSearchParams({view:filters.view==='favorites'?'all':filters.view,q:filters.q});
+  if(filters.view==='favorites')params.set('favorite','true');
+  if(filters.root)params.set('root_id',filters.root);
+  if(filters.folder)params.set('folder',filters.folder);
+  if(!filters.recursive)params.set('recursive','false');
+  if(filters.format)params.set('format_ext',filters.format);
+  if(filters.watch!=='all')params.set('watch_status',filters.watch);
+  if(filters.duration)params.set('duration_band',filters.duration);
+  params.set('page',String(filters.page));params.set('page_size',String(filters.pageSize));params.set('sort',filters.sort);
+  return '/api/media?'+params;
+}
+
 function App() {
   const [filters, setFilters] = useState(readFilters);
   const [advancedOpen, setAdvancedOpen] = useState(() => {
     const initial = readFilters(); return Boolean(initial.format || initial.watch !== 'all' || initial.duration);
   });
-  const [items, setItems] = useState<Media[]>([]);
-  const [total, setTotal] = useState(0);
+  const [libraryCache]=useState(()=>new LibraryPageCache());
+  const [rootsReady,setRootsReady]=useState(false);
   const [roots, setRoots] = useState<Root[]>([]);
   const [selected, setSelected] = useState<Media | null>(null);
   const [automaticMedia, setAutomaticMedia] = useState<number|null>(null);
@@ -85,7 +100,6 @@ function App() {
   const [playlistTarget, setPlaylistTarget] = useState<Media | null>(null);
   const [queue, setQueue] = useState<PlaylistSource | null>(null);
   const [searchOpen, setSearchOpen] = useState(() => Boolean(readFilters().q));
-  const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState({message:'', autoDismissMs:0, id:0});
   const notice = notification.message;
   const setNotice = useCallback((message:string) => {
@@ -95,12 +109,15 @@ function App() {
     // A fresh identity restarts the timer even when the same video is added again.
     setNotification(current => ({message, autoDismissMs:4000, id:current.id+1}));
   }, []);
-  const [requestError, setRequestError] = useState('');
   const [revision, setRevision] = useState(0);
   const [bulkMode, setBulkMode] = useState(false);
   const [picked, setPicked] = useState<number[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const grouped = filters.view === 'series' && filters.grouped;
+  const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q);
+  const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
+  const loading=!rootsReady||library.loading,requestError=library.error;
+  const setItems=useCallback((change:(value:Media[])=>Media[])=>library.update(value=>value?{...value,items:change(value.items)}:value),[library.update]);
   useEffect(() => { setPicked([]); setBulkMode(false); }, [filters.view, filters.root, filters.folder, filters.recursive, filters.q, filters.format, filters.watch, filters.duration, grouped]);
   function pick(ids: number[]) {
     setPicked(current => { const next = [...new Set([...current, ...ids])];
@@ -118,7 +135,7 @@ function App() {
   const [routeLoading,setRouteLoading]=useState(false);
   const router=useWatchRouter(()=>{
     setAutomaticMedia(null);
-    setFilters(readFilters());setLoading(true);setRevision(value=>value+1);
+    setFilters(readFilters());setRevision(value=>value+1);
     scroll.current=Number(history.state?.avhubScroll)||0;restore.current=true;
   });
   useEffect(()=>{savePreference('hoverPreview',previewEnabled);setPreviewId(null);},[previewEnabled]);
@@ -140,7 +157,7 @@ function App() {
     setFilters(f => f.root && !values.some(r => String(r.id) === f.root) ? { ...f, root: '', folder: '', recursive: true, page: 1 } : f);
     setRevision(x => x + 1);
   }, []);
-  useEffect(() => { void reloadRoots().catch(e => setNotice(errorText(e))); }, [reloadRoots]);
+  useEffect(() => { void reloadRoots().catch(e => setNotice(errorText(e))).finally(()=>setRootsReady(true)); }, [reloadRoots]);
   const onScanComplete = useCallback(() => { void reloadRoots().catch(e => setNotice(errorText(e))); }, [reloadRoots]);
   const onScanProgress = useCallback(() => setRevision(value => value + 1), []);
   const scan = useScan(onScanComplete, setNotice, onScanProgress);
@@ -173,40 +190,21 @@ function App() {
     return ()=>controller.abort();
   },[router.route.mediaId,router.route.playlistId]);
 
-  useEffect(() => {
-    if (grouped) { setLoading(false); return; }
-    const controller = new AbortController();
-    setLoading(true); setRequestError('');
-    const timer = window.setTimeout(async () => {
-      const params = new URLSearchParams({ view: filters.view === 'favorites' ? 'all' : filters.view, q: filters.q });
-      if (filters.view === 'favorites') params.set('favorite', 'true');
-      if (filters.root) params.set('root_id', filters.root);
-      if (filters.folder) params.set('folder', filters.folder);
-      if (!filters.recursive) params.set('recursive', 'false');
-      if (filters.format) params.set('format_ext', filters.format);
-      if (filters.watch !== 'all') params.set('watch_status', filters.watch);
-      if (filters.duration) params.set('duration_band', filters.duration);
-      params.set('page', String(filters.page)); params.set('page_size', String(filters.pageSize)); params.set('sort', filters.sort);
-      try {
-        const result = await api<MediaPage>('/api/media?' + params, { signal: controller.signal });
-        if (!controller.signal.aborted) {
-          setItems(result.items); setTotal(result.total);
-          if (result.page !== filters.page) setFilters(f => ({ ...f, page: result.page }));
-        }
-      } catch (e) { if (!controller.signal.aborted) setRequestError(errorText(e)); }
-      finally { if (!controller.signal.aborted) setLoading(false); }
-    }, 200);
-    return () => { controller.abort(); clearTimeout(timer); };
-  }, [grouped, filters.view, filters.root, filters.folder, filters.recursive, filters.q, filters.format, filters.watch, filters.duration, filters.page, filters.pageSize, filters.sort, revision]);
+  useEffect(()=>{
+    if(library.data&&library.data.page!==filters.page)setFilters(f=>({...f,page:library.data!.page}));
+  },[library.data,filters.page]);
 
   const updateMedia = useCallback((value: MediaUpdate) => {
+    libraryCache.clear();
     setItems(current => current.map(m => m.id === value.id ? { ...m, ...value } : m));
     setSelected(current => current?.id === value.id ? { ...current, ...value } : current);
-  }, []);
+    setRevision(current=>current+1);
+  }, [libraryCache,setItems]);
   const refreshThumbnails=useCallback(()=>{
     const ids=selected?String(selected.id):items.map(item=>item.id).join(',');
     if(ids)void api<{id:number;thumbnail_url?:string|null}[]>(`/api/thumbnails/versions?ids=${ids}`).then(values=>{
       const covers=new Map(values.map(value=>[value.id,value.thumbnail_url??undefined]));
+      libraryCache.clear();
       setItems(current=>current.map(item=>covers.has(item.id)?{...item,thumbnail_url:covers.get(item.id)}:item));
       setSelected(current=>current&&covers.has(current.id)?{...current,thumbnail_url:covers.get(current.id)}:current);
     }).catch(()=>{});
@@ -300,7 +298,7 @@ function App() {
           {!grouped&&<div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
             aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div>}</div>
         </div>
-        {grouped ? <SeriesLibrary q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
+        {grouped ? <SeriesLibrary cache={libraryCache} active={rootsReady&&!selected} q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
           change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
         {bulkMode && <div className="bulk-selection-bar" aria-label="批量选择"><span>已选 {picked.length} / 500 · 支持跨页选择</span>
           <Button disabled={loading} onClick={() => pick(visible.map(m => m.id))}>选中本页</Button>
@@ -321,9 +319,11 @@ function App() {
           </select></label>
           {(filters.format || filters.watch !== 'all' || filters.duration) && <button className="filter-reset" onClick={() => setFilters(f => ({ ...f, format: '', watch: 'all', duration: '', page: 1 }))}>清除筛选</button>}
         </div>}
-        <div className="section-title"><h2>{title}</h2><span>{loading ? '正在加载…' : `共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`}</span></div>
-        {requestError ? <div className="empty"><StatusMessage kind="error">{requestError}</StatusMessage><Button icon="refresh" onClick={() => setRevision(x => x + 1)}>重试</Button></div> :
-          loading ? <div className="empty"><StatusMessage kind="loading">正在加载视频…</StatusMessage></div> :
+        <div className="section-title"><h2>{title}</h2><span>{library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}</span>
+          {library.data&&library.showLoading&&<span className="library-query-feedback" role="status"><Icon name="refresh" size={14} className="is-spinning"/>更新中</span>}</div>
+        {requestError&&library.data&&<StatusMessage kind="error">{requestError}<Button icon="refresh" onClick={()=>setRevision(x=>x+1)}>重试</Button></StatusMessage>}
+        {requestError&&!library.data ? <div className="empty"><StatusMessage kind="error">{requestError}</StatusMessage><Button icon="refresh" onClick={() => setRevision(x => x + 1)}>重试</Button></div> :
+          loading&&!library.data ? <div className="library-query-placeholder" aria-busy="true" aria-label="视频列表载入中">{library.showLoading&&<StatusMessage kind="loading">正在加载视频…</StatusMessage>}</div> :
             visible.length ? <div className={`media-${filters.layout}`}>{visible.map(m => <article className={`card${picked.includes(m.id) ? ' selected' : ''}`} key={m.id}>
             <div className="cover" onPointerEnter={event=>{if(previewEnabled && !selected && event.pointerType==='mouse')setPreviewId(m.id);}} onPointerLeave={()=>setPreviewId(null)}>
               {bulkMode && <label className="bulk-pick"><input type="checkbox" aria-label={`选择 ${m.title}`} checked={picked.includes(m.id)} onChange={event => event.target.checked ? pick([m.id]) : setPicked(current => current.filter(id => id !== m.id))}/></label>}
@@ -346,7 +346,7 @@ function App() {
             description={roots.length ? '可以切换分类、目录或清除搜索条件。' : '添加视频文件夹后，点击刷新媒体库开始扫描。'}>
             {roots.length ? <Button onClick={() => setFilters(f => ({ ...f, root: '', folder: '', recursive: true, q: '', view: 'all', format: '', watch: 'all', duration: '', page: 1 }))}>查看全部视频</Button> :
               <Button icon="folder" onClick={() => setSettings(true)}>添加视频文件夹</Button>}</EmptyState>}
-        {!requestError && <Pagination page={filters.page} pages={pages} total={displayTotal} pageSize={filters.pageSize} busy={loading}
+        {!requestError&&library.data && <Pagination page={filters.page} pages={pages} total={displayTotal} pageSize={filters.pageSize} busy={loading}
           changePage={changePage} changeSize={pageSize => { setFilters(f => ({ ...f, pageSize, page: 1 })); scrollPageTo(0); }} />}
         </>}
       </section></div>
