@@ -45,6 +45,8 @@ class IndexedFolderTests(unittest.TestCase):
         self.assertEqual([(item['name'],item['count']) for item in drama['items']], [('Season 1',1)])
         self.assertEqual(drama['direct_count'], 1)
         self.assertEqual(drama['video_count'], 2)
+        self.assertTrue(next(item for item in result['items'] if item['name']=='Drama')['has_children'])
+        self.assertFalse(drama['items'][0]['has_children'])
 
     def test_recursive_boundary_and_literal_folder_filters_compose(self):
         result = self.media(root_id=1, folder='Drama')
@@ -78,6 +80,9 @@ class IndexedFolderTests(unittest.TestCase):
         self.assertEqual(result['pages'], 167)
         self.assertEqual(self.folders(q='folder-09999')['items'][0]['count'], 1)
         self.assertEqual(self.folders(page=999)['page'], 167)
+        focused=self.folders(focus='folder-09999',page_size=40)
+        self.assertTrue(any(item['name']=='folder-09999' for item in focused['items']))
+        self.assertGreater(focused['page'],1)
         indexed = self.media(root_id=1, folder='folder-09999')['items'][0]
         self.assertEqual(indexed['ext'], '.mp4')
 

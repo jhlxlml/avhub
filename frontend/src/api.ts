@@ -16,7 +16,7 @@ export type Media = {
 };
 export type Root = { id: number; path: string; available: boolean | null; relocated?: number };
 export type MediaPage = { items: Media[]; total: number; page: number; page_size: number; pages: number };
-export type FolderPage = { folder: string; items: { name: string; folder: string; count: number }[]; total: number; video_count: number; direct_count: number; page: number; pages: number };
+export type FolderPage = { folder: string; items: { name: string; folder: string; count: number;has_children?:boolean }[]; total: number; video_count: number; direct_count: number; page: number; pages: number };
 export type SiblingPage = MediaPage & { index: number; previous: Media | null; next: Media | null };
 export type Playlist = { id: number; name: string; count: number };
 export type PlaylistDetail = Playlist & { items: Media[]; created_at: number };

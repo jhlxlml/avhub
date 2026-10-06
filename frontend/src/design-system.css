@@ -85,6 +85,10 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 .toolbar {gap:10px;justify-content:flex-start}
 .toolbar>.switch {margin-left:auto}
 .folder-filter,.sort-select,.directory-filter input,.root-search,.pagination select,.pagination input {background:var(--ui-field);color:var(--ui-secondary);border-color:var(--ui-border);padding:9px 11px;font-size:12px;border-radius:var(--ui-radius)}
+.library-sort-controls {display:inline-flex;align-items:center;gap:6px;flex-shrink:0}
+.library-sort-controls .sort-select {min-width:104px;max-width:140px}
+.library-sort-controls .sort-direction {width:36px;height:36px;flex-shrink:0;background:var(--ui-field);color:var(--ui-secondary);border:1px solid var(--ui-border)}
+.library-sort-controls .sort-direction:hover {background:var(--ui-hover);color:var(--ui-text)}
 .advanced-toggle {display:inline-flex;align-items:center;gap:7px;border-color:var(--ui-border);background:var(--ui-surface);color:var(--ui-secondary)}
 .advanced-toggle.active {background:var(--ui-accent-soft);color:var(--ui-accent);border-color:var(--ui-accent-border)}
 .switch {display:flex;gap:2px;padding:3px;border:1px solid var(--ui-border);background:var(--ui-surface);border-radius:var(--ui-radius)}
@@ -111,6 +115,21 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 .video-title:hover {color:var(--ui-accent)}
 .meta span {font-size:11px;color:var(--ui-muted);line-height:1.5}
 .meta span .ui-icon {color:var(--ui-accent)}
+.video-specs {display:flex;align-items:center;gap:7px;min-width:0;margin-top:5px;min-height:20px}
+.video-specs .video-spec-text {margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--ui-muted)}
+.resolution-badge,.meta .resolution-badge {display:inline-flex;align-items:center;justify-content:center;flex:none;margin:0;padding:1px 5px;min-width:29px;box-sizing:border-box;height:19px;border:1px solid var(--ui-border);border-radius:5px;background:var(--ui-field);color:var(--ui-secondary);font-size:10px;font-weight:700;line-height:1;letter-spacing:.3px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.resolution-badge-ultra,.meta .resolution-badge-ultra {background:var(--ui-accent-soft);border-color:var(--ui-accent-border);color:var(--ui-accent)}
+.meta .video-context {margin-top:3px;font-size:10px}
+.playlist-video-meta>.resolution-badge {margin-right:7px;vertical-align:middle}
+.episode-meta .episode-status {display:flex;align-items:center;gap:7px}
+.library-toolbar-right {display:flex;align-items:center;gap:14px;margin-left:auto;max-width:100%}
+.resolution-filter {display:flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-field);flex:none;box-sizing:border-box}
+.resolution-filter-label {font-size:10px;color:var(--ui-muted);padding:0 6px;white-space:nowrap}
+.resolution-filter>button {min-height:28px;padding:4px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ui-secondary);font-size:11px;font-weight:600;letter-spacing:.2px;white-space:nowrap;flex:none}
+.resolution-filter>button:hover {background:var(--ui-hover);color:var(--ui-text)}
+.resolution-filter>button[aria-pressed="true"] {background:var(--ui-accent-soft);border-color:var(--ui-accent-border);color:var(--ui-accent)}
+@media(max-width:1200px) {.toolbar {flex-wrap:wrap}}
+@media(max-width:600px) {.library-toolbar-right {flex-wrap:wrap;gap:8px;width:100%}.library-toolbar-right .resolution-filter {order:2;width:100%;justify-content:space-between}.resolution-filter>button {padding:4px 6px}.resolution-filter-label {padding:0 4px}}
 .media-list .card {padding:10px;border:1px solid var(--ui-divider);border-radius:var(--ui-panel-radius);background:var(--ui-surface)}
 .media-list .card:hover {border-color:var(--ui-border)}
 .media-actions .media-more {width:29px;height:29px;padding:6px;border-radius:7px;color:var(--ui-muted)}
@@ -410,4 +429,5 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 @media(max-width:420px) {
   .settings-tabs {grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .settings-tabs>button {min-height:34px;font-size:12px;gap:7px}
+  .settings-tabs>#settings-tab-about {grid-column:1 / -1}
 }

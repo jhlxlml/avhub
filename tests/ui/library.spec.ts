@@ -10,6 +10,7 @@ test('347 videos: true count, last page, sorting, sizes and filter resets', asyn
   await expect(page.getByRole('button', { name: '播放 视频 347', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeDisabled();
   await page.getByRole('combobox', { name: '排序方式' }).selectOption('name');
+  await page.getByRole('button', { name: '切换为升序', exact: true }).click();
   await expect(page.getByText('共 347 个视频 · 第 1 / 8 页', { exact: true })).toBeVisible();
   await expect(page.locator('.video-title').first()).toHaveText('视频 001');
   await page.getByRole('combobox', { name: '每页数量' }).selectOption('96');

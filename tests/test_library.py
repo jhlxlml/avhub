@@ -104,6 +104,7 @@ class ScanTests(unittest.TestCase):
             self.assertEqual(second['updated'],0)
             self.assertEqual(probe.call_count,1)
         item = m.one_media(1)
+        self.assertEqual(item['modified'],source.stat().st_mtime)
         self.assertEqual((item['title'],item['progress'],item['favorite'],item['rating'],item['tags']),
                          ('My edited title',21,1,5,['personal']))
         self.assertEqual(source.read_bytes(),b'new source')

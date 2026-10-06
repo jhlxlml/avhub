@@ -1,12 +1,23 @@
-.app-tools>small,.app-about>small{display:block;color:var(--ui-muted);font-size:11px;line-height:1.8;margin-top:10px}
+.app-tools>small,.app-about-content>small{display:block;color:var(--ui-muted);font-size:11px;line-height:1.8;margin-top:10px}
+.app-about-brand {display:flex;align-items:center;gap:12px;margin:0 0 14px;font-size:23px;font-weight:650;color:var(--ui-text)}
+.app-about-brand small {display:block;margin-top:3px;font-size:11px;font-weight:400;color:var(--ui-muted)}
+.app-about-mark {display:grid;place-items:center;width:42px;height:42px;flex:none;background:var(--ui-accent);color:var(--ui-surface);border-radius:12px}
+.app-about-intro {font-size:12px;line-height:1.8;color:var(--ui-secondary);margin:0 0 12px}
+.app-about-principles {display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11px;color:var(--ui-secondary)}
+.app-about-principles>span {display:inline-flex;align-items:center;gap:5px}.app-about-principles .ui-icon {color:var(--ui-accent)}
 .app-select-field{display:grid;gap:8px;font-size:12px;color:var(--ui-secondary);max-width:360px}
 .app-select-field select{width:100%;padding:9px 11px;border:1px solid var(--ui-border);border-radius:var(--ui-radius);color:var(--ui-text);background:var(--ui-field);font-size:12px}
 .app-directory-path{display:block;background:var(--ui-field);border:1px solid var(--ui-divider);border-radius:10px;padding:12px;color:var(--ui-secondary);font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.data-location-pending {margin-top:12px;padding:10px 12px;background:var(--ui-accent-soft);border:1px solid var(--ui-accent-border);border-radius:9px;color:var(--ui-secondary)}
+.data-location-pending small {display:block;margin-bottom:5px;font-size:11px}.data-location-pending code {font-size:11px;overflow-wrap:anywhere}
 .app-tool-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.app-about-content .app-tool-actions>.ui-button {padding:8px 11px;max-width:100%;box-sizing:border-box}
+.app-version-check {display:flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:flex-end}.app-version-check>.ui-button {min-height:28px;padding:5px 8px;font-size:11px;white-space:nowrap}
+.manual-update-result:empty {display:none}.manual-update-result {font-size:12px;color:var(--ui-secondary)}.manual-update-result>small {display:block;color:var(--ui-muted)}.manual-update-result details {margin-top:12px}.manual-update-result summary {cursor:pointer;color:var(--ui-accent)}.manual-update-result details p {white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;max-height:180px;overflow:auto}
 .modal.app-about{max-width:520px}.app-about-info{margin:18px 0;display:grid;gap:1px;background:var(--ui-divider);border:1px solid var(--ui-divider);border-radius:10px;overflow:hidden}
 .app-about-info>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;background:var(--ui-field);font-size:12px}.app-about-info dt{color:var(--ui-muted)}.app-about-info dd{margin:0;color:var(--ui-text);overflow-wrap:anywhere;text-align:right}.app-project-address{font-size:11px;overflow-wrap:anywhere;color:var(--ui-muted)!important}
 .desktop-titlebar>.window-about{width:auto;display:flex;align-items:center;gap:7px;padding:0 12px;font-size:11px;white-space:nowrap}.window-about>.ui-icon:first-child{color:var(--ui-accent)}
 .desktop-titlebar>small{min-width:0;max-width:25vw;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pure-playback .desktop-titlebar>.window-about{width:auto;padding:0 10px;border-radius:9px;font-size:11px}
 @media(max-width:420px){.app-about-info>div{padding:10px}.app-about .app-tool-actions{gap:6px}}
-@media(max-width:520px){.pure-playback .desktop-titlebar>.window-about{width:32px;min-width:32px;padding:0;display:grid;place-items:center;border-radius:50%}.pure-playback .window-about>span,.pure-playback .window-about>.ui-icon:first-child{display:none}}
+@media(max-width:520px){.pure-playback .desktop-titlebar>.window-about{width:32px;min-width:32px;padding:0;display:grid;place-items:center;border-radius:50%}.pure-playback .window-about>span{display:none}.settings-tabs>button .ui-icon{display:none}}

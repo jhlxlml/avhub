@@ -69,6 +69,9 @@ try {
   await page.locator('video').evaluate(v=>v.pause());
   await page.getByRole('toolbar',{name:'窗口控制'}).getByRole('button',{name:'关于 AVHub',exact:true}).click();
   await expect(page.getByRole('dialog',{name:'关于 AVHub'})).toBeVisible();await page.keyboard.press('k');assert.equal(await page.locator('video').evaluate(v=>v.paused),true);
+  await page.getByRole('toolbar',{name:'窗口控制'}).getByRole('button',{name:'关于 AVHub',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByText('请先关闭当前对话框',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'打开项目主页',exact:true}).click();
   assert.deepEqual((await desktop.evaluate(()=>globalThis.__appCalls)).at(-1),{kind:'project',value:'https://github.com/jhlxlml/avhub'});
   await page.getByRole('button',{name:'复制版本信息',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('版本信息已复制');
@@ -76,6 +79,7 @@ try {
   await page.getByRole('button',{name:'复制项目地址',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('项目地址已复制');
   ownedClipboard=await desktop.evaluate(({clipboard})=>clipboard.readText());assert.equal(ownedClipboard,'https://github.com/jhlxlml/avhub');
   await page.screenshot({path:path.join(folder,'about-dark.png')});await page.keyboard.press('Escape');
+  await expect(page.getByText('请先关闭当前对话框',{exact:true})).toHaveCount(0);
   assert.equal(await page.locator('video').evaluate(v=>v.currentSrc),original);
   await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:true}));
   await desktop.evaluate(({BrowserWindow})=>{BrowserWindow.getAllWindows()[0].setContentSize(480,270);});

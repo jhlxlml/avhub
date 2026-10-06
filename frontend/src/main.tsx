@@ -5,15 +5,16 @@ import { Settings } from './Settings';
 import {AboutHost} from './AppTools';
 import { Diagnostics } from './Diagnostics';
 import { Button, EmptyState, StatusMessage, Toast } from './ui';
-import { episodeLabel, formatLabel,fileSizeLabel } from './mediaLabels';
+import { episodeLabel, formatLabel,fileSizeLabel,resolutionTiers,resolutionDisplayLabel } from './mediaLabels';
 import { Playlists } from './Playlists';
 import { Pagination } from './Pagination';
 import { DirectoryFilter } from './DirectoryFilter';
+import {DirectoryTree} from './DirectoryTree';
 import { FolderBrowser } from './FolderBrowser';
 import { HoverPreview, loadPreviewPreference } from './HoverPreview';
 import { ScanProgress, ScanRecovery, useScan } from './ScanProgress';
 import { ThumbnailTasks, useThumbnails } from './ThumbnailTasks';
-import { initializePreferences, savePreference, flushPreferences } from './preferences';
+import { initializePreferences, savePreference, flushPreferences,preference } from './preferences';
 import { useWatchRouter } from './watchRouter';
 import { MediaActions } from './MediaActions';
 import { Icon, type IconName } from './Icon';
@@ -29,6 +30,8 @@ import { initializeNativePreparation } from './nativePreparation';
 import { CoverSizeControl, ThemeToggle } from './AppearanceControls';
 import { AutoScrollbars } from './AutoScrollbars';
 import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
+import {librarySorts,sortField,isAscending,validSort} from './librarySort';
+import {ResolutionBadge} from './ResolutionBadge';
 import './styles.css';
 import './library-performance.css';
 import './design-system.css';
@@ -38,17 +41,14 @@ import './playlists.css';
 
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
 
-const sorts = [{ id:'recent', label:'最近观看' }, { id:'added', label:'最近添加' }, { id:'name', label:'名称 A–Z' },
-  { id:'duration_desc', label:'时长从长到短' }, { id:'duration_asc', label:'时长从短到长' },
-  {id:'resolution_desc',label:'分辨率从高到低'},{id:'resolution_asc',label:'分辨率从低到高'},
-  {id:'size_desc',label:'文件从大到小'},{id:'size_asc',label:'文件从小到大'}];
 const formats = ['mp4','mkv','avi','mov','m4v','webm','wmv','flv','ts','mts','m2ts'];
 const viewIcons:Record<View,IconName>={all:'library',movies:'film',series:'series',continue:'continue',favorites:'favorite',history:'history'};
 type Filters = { view: View; root: string; folder: string; recursive: boolean; q: string; layout: 'grid' | 'list'; sort: string; page: number; pageSize: number;
-  format: string; watch: 'all' | 'watched' | 'unwatched'; duration: '' | 'short' | 'medium' | 'long'; grouped: boolean; show: string; season: string };
+  format: string; resolution: string; watch: 'all' | 'watched' | 'unwatched'; duration: '' | 'short' | 'medium' | 'long'; grouped: boolean; show: string; season: string };
 function readFilters(): Filters {
   const p = new URLSearchParams(location.search);
   const candidate = p.get('view') || (p.get('favorites') === '1' ? 'favorites' : 'all');
+  const savedSort=preference<string>('librarySort','added');
   return { view: views.some(x => x.id === candidate) ? candidate as View : 'all',
     grouped: p.get('grouped') === 'true', show: /^\d+$/.test(p.get('show') || '') ? p.get('show')! : '',
     season: /^(unknown|\d+)$/.test(p.get('season') || '') ? p.get('season')! : '',
@@ -56,8 +56,9 @@ function readFilters(): Filters {
     folder: /^\d+$/.test(p.get('root') || '') ? p.get('folder') || '' : '',
     recursive: !p.get('root') || p.get('recursive') !== 'false', q: p.get('q') || '',
     layout: p.get('layout') === 'list' ? 'list' : 'grid',
-    sort: sorts.some(s => s.id === p.get('sort')) ? p.get('sort')! : 'recent',
+    sort: validSort(p.get('sort')) ? p.get('sort')! : validSort(savedSort)?savedSort:'added',
     format: formats.includes(p.get('format') || '') ? p.get('format')! : '',
+    resolution: resolutionTiers.some(t=>t===p.get('resolution')) ? p.get('resolution')! : '',
     watch: ['all','watched','unwatched'].includes(p.get('watch') || '') ? p.get('watch') as Filters['watch'] : 'all',
     duration: ['short','medium','long'].includes(p.get('duration') || '') ? p.get('duration') as Filters['duration'] : '',
     page: /^\d+$/.test(p.get('page') || '') ? Math.max(1, Math.min(10000000, Number(p.get('page')))) : 1,
@@ -85,12 +86,15 @@ function mediaQuery(filters:Filters) {
   if(filters.format)params.set('format_ext',filters.format);
   if(filters.watch!=='all')params.set('watch_status',filters.watch);
   if(filters.duration)params.set('duration_band',filters.duration);
+  if(filters.resolution)params.set('resolution',filters.resolution);
   params.set('page',String(filters.page));params.set('page_size',String(filters.pageSize));params.set('sort',filters.sort);
   return '/api/media?'+params;
 }
 
 function App() {
   const [filters, setFilters] = useState(readFilters);
+  const [treeOpen,setTreeOpen]=useState(false);
+  useEffect(()=>{savePreference('librarySort',filters.sort);},[filters.sort]);
   const [advancedOpen, setAdvancedOpen] = useState(() => {
     const initial = readFilters(); return Boolean(initial.format || initial.watch !== 'all' || initial.duration);
   });
@@ -122,7 +126,7 @@ function App() {
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
   const loading=!rootsReady||library.loading,requestError=library.error;
   const setItems=useCallback((change:(value:Media[])=>Media[])=>library.update(value=>value?{...value,items:change(value.items)}:value),[library.update]);
-  useEffect(() => { setPicked([]); setBulkMode(false); }, [filters.view, filters.root, filters.folder, filters.recursive, filters.q, filters.format, filters.watch, filters.duration, grouped]);
+  useEffect(() => { setPicked([]); setBulkMode(false); }, [filters.view, filters.root, filters.folder, filters.recursive, filters.q, filters.format, filters.watch, filters.duration, filters.resolution, grouped]);
   function pick(ids: number[]) {
     setPicked(current => { const next = [...new Set([...current, ...ids])];
       if (next.length > 500) { setNotice('每批最多选择 500 个视频，请先整理当前选择'); return current; }
@@ -171,7 +175,7 @@ function App() {
     url.searchParams.delete('favorites');
     for (const [key, value] of Object.entries(filters)) {
       if ((!value && key !== 'recursive') || (key === 'view' && value === 'all') || (key === 'watch' && value === 'all') || (key === 'layout' && value === 'grid') ||
-          (key === 'recursive' && value === true) || (key === 'page' && value === 1) || (key === 'pageSize' && value === 48) || (key === 'sort' && value === 'recent')) url.searchParams.delete(key);
+          (key === 'recursive' && value === true) || (key === 'page' && value === 1) || (key === 'pageSize' && value === 48)) url.searchParams.delete(key);
       else if (key === 'recursive' && value === false) url.searchParams.set(key, 'false');
       else url.searchParams.set(key, String(value));
     }
@@ -268,7 +272,7 @@ function App() {
         <div className="brand"><span className="logo"><Icon name="play" size={20}/></span><div><b>AVHub</b><small>本地视频库</small></div></div>
         <nav className="primary-nav" aria-label="视频分类">{views.map(v => <button key={v.id}
           className={filters.view === v.id ? 'active' : ''} aria-pressed={filters.view === v.id}
-          onClick={() => setFilters(f => ({ ...f, view: v.id, show: '', season: '', page: 1, ...(v.id === 'series' && f.grouped ? {folder:'',recursive:true,format:'',watch:'all' as const,duration:'' as const} : {}) }))}><Icon name={viewIcons[v.id]} size={16}/>{v.label}</button>)}
+          onClick={() => setFilters(f => ({ ...f, view: v.id, show: '', season: '', page: 1, ...(v.id === 'series' && f.grouped ? {folder:'',recursive:true,format:'',resolution:'',watch:'all' as const,duration:'' as const} : {}) }))}><Icon name={viewIcons[v.id]} size={16}/>{v.label}</button>)}
           <button className="playlist-nav" aria-label="播放列表" onClick={() => setPlaylistsOpen(true)}><Icon name="playlist" size={16}/>播放列表</button></nav>
         <div className="header-actions">
           <div className={`header-search${searchOpen ? ' expanded' : ''}`}>
@@ -286,21 +290,41 @@ function App() {
           <ThemeToggle/>
           <button className="ui-icon-button" aria-label="媒体库设置" title="媒体库设置" onClick={() => setSettings(true)}><Icon name="settings"/></button></div>
       </header>
-      <div className="app-layout"><section className="library">
+      <div className={`app-layout${treeOpen?' with-directory-tree':''}`}>
+      {treeOpen&&<DirectoryTree roots={roots} root={filters.root} folder={filters.folder} revision={revision} active={!router.route.mediaId&&!routeLoading}
+        close={()=>setTreeOpen(false)} select={(root,folder)=>setFilters(f=>({...f,root,folder,show:'',season:'',page:1,recursive:root?f.recursive:true,grouped:folder?false:f.grouped}))}/>}
+      <section className="library">
         <ScanProgress job={scan.job} cancel={scan.cancel} connectionError={scan.connectionError} />
         <div className="toolbar">
+          <button className="ui-icon-button" aria-label={treeOpen?'隐藏目录树':'显示目录树'} aria-pressed={treeOpen} title={treeOpen?'隐藏目录树':'显示目录树'} onClick={()=>setTreeOpen(open=>!open)}><Icon name="folder"/></button>
           <DirectoryFilter roots={roots} value={filters.root} change={root => setFilters(f => ({ ...f, root, folder: '', show: '', season: '', recursive: true, page: 1 }))} />
-          {filters.view === 'series' && <Button icon="series" aria-pressed={grouped} onClick={() => setFilters(f => ({...f, grouped: !grouped, show: '', season: '', folder: '', recursive: true, format: '', watch: 'all', duration: '', page: 1}))}>{grouped ? '按视频浏览' : '按剧集归类'}</Button>}
-          {!grouped && <><select className="sort-select" aria-label="排序方式" value={filters.sort} onChange={e => setFilters(f => ({ ...f, sort: e.target.value, page: 1 }))}>
-            {sorts.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          {filters.view === 'series' && <Button icon="series" aria-pressed={grouped} onClick={() => setFilters(f => ({...f, grouped: !grouped, show: '', season: '', folder: '', recursive: true, format: '', resolution: '', watch: 'all', duration: '', page: 1}))}>{grouped ? '按视频浏览' : '按剧集归类'}</Button>}
+          {!grouped && <><div className="library-sort-controls"><select className="sort-select" aria-label="排序方式" value={sortField(filters.sort).id} onChange={e => {
+            const field=librarySorts.find(s=>s.id===e.target.value)!;
+            setFilters(f=>({...f,sort:isAscending(f.sort)?field.asc:field.desc,page:1}));
+          }}>
+            {librarySorts.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
+          <button className="ui-icon-button sort-direction" aria-label={isAscending(filters.sort)?'切换为降序':'切换为升序'}
+            title={`${isAscending(filters.sort)?'升序':'降序'} · ${isAscending(filters.sort)?sortField(filters.sort).ascending:sortField(filters.sort).descending}（点击切换）`}
+            onClick={()=>setFilters(f=>({...f,sort:isAscending(f.sort)?sortField(f.sort).desc:sortField(f.sort).asc,page:1}))}>
+            <Icon name={isAscending(filters.sort)?'sortAsc':'sortDesc'} size={18}/>
+          </button></div>
           <button className={`advanced-toggle${filters.format || filters.watch !== 'all' || filters.duration ? ' active' : ''}`} aria-expanded={advancedOpen}
             onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/>更多筛选{filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}</button>
           <Button icon="edit" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}>批量整理</Button>
           </>}
+          <div className="library-toolbar-right">
+          {!grouped&&<div className="resolution-filter" role="group" aria-label="分辨率筛选">
+            <span className="resolution-filter-label">分辨率</span>
+            {['',...resolutionTiers].map(tier=><button key={tier} type="button" aria-label={tier?`筛选 ${resolutionDisplayLabel(tier)}`:'全部分辨率'}
+              aria-pressed={filters.resolution===tier} title={tier?'按源视频短边分级':'显示所有分辨率，包括未知'}
+              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'全部'}</button>)}
+          </div>}
           <div className="library-view-controls"><CoverSizeControl disabled={!grouped&&filters.layout==='list'}/>
           {!grouped&&<div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
             aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div>}</div>
+          </div>
         </div>
         {grouped ? <SeriesLibrary cache={libraryCache} active={rootsReady&&!selected} q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
           change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
@@ -309,7 +333,7 @@ function App() {
           <Button disabled={!picked.length} onClick={() => setPicked([])}>清空选择</Button>
           <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button></div>}
         {roots.find(root => String(root.id) === filters.root) && <FolderBrowser key={filters.root} root={roots.find(root => String(root.id) === filters.root)!}
-          folder={filters.folder} recursive={filters.recursive} revision={revision} change={folder => setFilters(f => ({ ...f, folder, page: 1 }))}
+          folder={filters.folder} recursive={filters.recursive} revision={revision} treeMode={treeOpen} change={folder => setFilters(f => ({ ...f, folder, page: 1 }))}
           changeRecursive={recursive => setFilters(f => ({ ...f, recursive, page: 1 }))} />}
         {advancedOpen && <div className="advanced-filters" aria-label="高级筛选">
           <label>视频格式<select aria-label="视频格式" value={filters.format} onChange={event => setFilters(f => ({ ...f, format: event.target.value, page: 1 }))}>
@@ -321,7 +345,7 @@ function App() {
           <label>视频时长<select aria-label="视频时长范围" value={filters.duration} onChange={event => setFilters(f => ({ ...f, duration: event.target.value as Filters['duration'], page: 1 }))}>
             <option value="">不限时长</option><option value="short">短片 · 30 分钟内</option><option value="medium">中等 · 30–90 分钟</option><option value="long">长片 · 90 分钟以上</option>
           </select></label>
-          {(filters.format || filters.watch !== 'all' || filters.duration) && <button className="filter-reset" onClick={() => setFilters(f => ({ ...f, format: '', watch: 'all', duration: '', page: 1 }))}>清除筛选</button>}
+          {(filters.format || filters.watch !== 'all' || filters.duration || filters.resolution) && <button className="filter-reset" onClick={() => setFilters(f => ({ ...f, format: '', resolution: '', watch: 'all', duration: '', page: 1 }))}>清除筛选</button>}
         </div>}
         <div className="section-title"><h2>{title}</h2><span>{library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}</span>
           {library.data&&library.showLoading&&<span className="library-query-feedback" role="status"><Icon name="refresh" size={14} className="is-spinning"/>更新中</span>}</div>
@@ -343,12 +367,13 @@ function App() {
               {m.progress > 0 && <div className="progress"><i style={{ width: `${Math.min(100, m.progress / (m.duration || 1) * 100)}%` }} /></div>}
             </div>
             <div className="card-footer"><div className="meta"><button className="video-title" title={m.title} onClick={() => open(m)}>{m.title}</button>
-              <span>{m.watched && filters.view!=='history'?<><Icon name="check" size={12}/> 已看 · </>:null}{filters.view === 'history' ? `${historyTime(m.last_played)} · ${m.watched ? '已看完' : `看到 ${duration(m.progress)}`}` :
-                m.kind === 'episode' ? episodeLabel(m) : `${formatLabel(m.ext)} · ${m.height ? `${m.height}p` : '分辨率未知'}`}{fileSizeLabel(m.size)&&` · ${fileSizeLabel(m.size)}`}</span></div>
+              <div className="video-specs"><ResolutionBadge width={m.width} height={m.height}/><span className="video-spec-text">{formatLabel(m.ext)}{fileSizeLabel(m.size)&&` · ${fileSizeLabel(m.size)}`}</span></div>
+              {(m.watched||m.kind==='episode'||filters.view==='history')&&<span className="video-context">{m.watched && filters.view!=='history'?<><Icon name="check" size={12}/> 已看{m.kind==='episode'?' · ':''}</>:null}{filters.view === 'history' ? `${historyTime(m.last_played)} · ${m.watched ? '已看完' : `看到 ${duration(m.progress)}`}` :
+                m.kind === 'episode' ? episodeLabel(m) : null}</span>}</div>
               <MediaActions media={m} update={updateMedia} changed={()=>setRevision(value=>value+1)} notify={setNotice}/></div>
             </article>)}</div> : <EmptyState icon={viewIcons[filters.view]} title={filters.view === 'continue' ? '暂无可继续观看的视频' : filters.view === 'favorites' ? '暂无收藏视频' : filters.view === 'history' ? '暂无观看历史' : '暂无匹配的视频'}
             description={roots.length ? '可以切换分类、目录或清除搜索条件。' : '添加视频文件夹后，点击刷新媒体库开始扫描。'}>
-            {roots.length ? <Button onClick={() => setFilters(f => ({ ...f, root: '', folder: '', recursive: true, q: '', view: 'all', format: '', watch: 'all', duration: '', page: 1 }))}>查看全部视频</Button> :
+            {roots.length ? <Button onClick={() => setFilters(f => ({ ...f, root: '', folder: '', recursive: true, q: '', view: 'all', format: '', resolution: '', watch: 'all', duration: '', page: 1 }))}>查看全部视频</Button> :
               <Button icon="folder" onClick={() => setSettings(true)}>添加视频文件夹</Button>}</EmptyState>}
         {!requestError&&library.data && <Pagination page={filters.page} pages={pages} total={displayTotal} pageSize={filters.pageSize} busy={loading}
           changePage={changePage} changeSize={pageSize => { setFilters(f => ({ ...f, pageSize, page: 1 })); scrollPageTo(0); }} />}

@@ -2,6 +2,20 @@
 
 English · [简体中文](README.md)
 
+### 0.2.3 update
+
+- Added an explicit manual update button beside the About version. No background checks, automatic downloads or installation. See [release notes](docs/RELEASE-0.2.3.md).
+
+### 0.2.2 update
+
+- The directory sidebar starts collapsed. Open it from the toolbar folder icon; reloads and new launches collapse it without changing directory filters.
+
+### 0.2.1 update
+
+- Added a collapsible multi-level directory sidebar with lazy expansion, per-level pagination, video counts, keyboard navigation, and deep-link reveal. It uses indexed directories and adapts to narrow windows.
+- Added persistent sort field/direction (date added by default), separate resolution filters, consistent badges, and an About settings page.
+- Data defaults to `AVHub-data`; desktop users can choose an empty custom directory and migrate on the next launch while retaining the original library.
+
 AVHub is an offline local video library and player for Windows. It brings multiple video directories into one interface, lets you browse by folder or by movie and series, and remembers favorites, playlists, and viewing progress.
 
 Videos stay in their original locations. The app does not offer operations to move, rename, or delete source videos. Indexes, artwork, settings, and viewing records are stored separately. Once dependencies are installed or a portable build is ready, everyday scanning and playback work offline, without online artwork or metadata scraping.
@@ -213,16 +227,20 @@ Screenshots capture the **currently decoded image** at its decoded dimensions, e
 
 ## Data, backup, and migration
 
-Runtime modes use different default directories and do not automatically share a library:
+The default is `AVHub-data/` beside the app. Do not run multiple instances against the same library:
 
 | Runtime | Default location |
 | --- | --- |
-| Source browser mode | `data/` in the project root |
-| Source Electron mode | `data/` under Electron's user configuration directory; see Runtime diagnostics for the exact path |
+| Source browser mode | `AVHub-data/` in the project root |
+| Source Electron mode | `AVHub-data/` in the project root |
 | Electron portable EXE | `AVHub-data/` next to the EXE, falling back to Electron's user configuration directory if unwritable |
-| Custom location | Set `AVHUB_DATA_DIR` before startup; it overrides the defaults above |
+| Custom location | Electron Settings → Data management → Custom data directory; `AVHUB_DATA_DIR` still takes highest priority |
 
 The data directory contains `library.db`, thumbnails, custom artwork, and playback caches. Desktop mode also stores Chromium profile data and logs. Screenshots default to this directory but can use a separate location.
+
+Choose an **empty directory** in desktop Settings. The current session keeps its original location; after a normal exit, the next launch copies a consistent SQLite snapshot, preferences, progress, playlists and artwork. The old directory remains intact. Source videos, screenshots, playback caches and Chromium profiles are not copied. Migration refuses to overwrite a library and stops startup on failure; back up first and leave sufficient free space (current migration limit: 2 GB).
+
+The location is stored beside the app in `avhub-data-location.json`, excluded from Git. An old default library is copied to an empty `AVHub-data/` on upgrade; separate libraries are not merged. Custom absolute paths do not automatically relocate with a portable app.
 
 For example, run browser mode with a dedicated data directory:
 

@@ -20,14 +20,41 @@ class LibraryEnhancementTests(unittest.TestCase):
     def test_sorting_known_values_before_unknown_with_stable_ties(self):
         for sort in ['resolution_desc','size_desc']:self.assertEqual(self.ids(sort),[2,1,6,3,4,5,7])
         for sort in ['resolution_asc','size_asc']:self.assertEqual(self.ids(sort),[3,1,6,2,4,5,7])
+    def test_file_modification_is_distinct_from_library_addition_and_unknown_last(self):
+        with m.connection() as db:
+            db.execute('UPDATE media SET created_at=id,modified=CASE id WHEN 1 THEN 300 WHEN 2 THEN 100 WHEN 3 THEN 200 WHEN 4 THEN 0 END')
+        self.assertEqual(self.ids('modified_asc'),[2,3,1,4,5,6,7])
+        self.assertEqual(self.ids('modified_desc'),[1,3,2,4,5,6,7])
+        self.assertEqual(self.ids('modified_desc',page=2,page_size=2),[2,4])
+        self.assertEqual(self.ids('modified_asc',q='视频 1'),[1])
     def test_new_sorts_keep_page_and_filter_semantics(self):
         self.assertEqual(self.ids('size_desc',page_size=2),[2,1]);self.assertEqual(self.ids('size_desc',page=2,page_size=2),[6,3])
         self.assertEqual(self.ids('resolution_desc',q='视频 6'),[6])
         with m.connection() as db:db.execute('UPDATE media SET missing=1 WHERE id=2')
         self.assertEqual(self.ids('resolution_desc')[:2],[1,6])
+    def test_resolution_filters_match_badge_tiers_and_combine_with_other_filters(self):
+        with m.connection() as db:
+            db.execute('UPDATE media SET width=2160,height=3840 WHERE id=2')
+        self.assertEqual(self.ids('name',resolution='4K'),[2])
+        self.assertEqual(self.ids('name',resolution='FHD'),[1,6])
+        self.assertEqual(self.ids('name',resolution='HD'),[3])
+        for tier in ('8K','QHD','SD'):self.assertEqual(self.ids('name',resolution=tier),[])
+        self.assertEqual(self.ids('name',resolution='FHD',q='视频 6',root_id=1),[6])
+        self.assertEqual(self.ids('name',resolution='FHD',page=2,page_size=1),[6])
+        with m.connection() as db:
+            db.execute('UPDATE media SET width=3840,height=1600 WHERE id=2')
+        self.assertEqual(self.ids('name',resolution='4K'),[])
+        self.assertEqual(self.ids('name',resolution='QHD'),[2])
+        with self.assertRaises(HTTPException):self.ids('name',resolution='invalid')
+    def test_name_and_time_orders_support_both_directions(self):
+        with m.connection() as db:
+            db.execute('UPDATE media SET created_at=id,last_played=id*10')
+        for asc,desc in [('name','name_desc'),('added_asc','added'),('recent_asc','recent')]:
+            self.assertEqual(self.ids(asc),list(range(1,8)))
+            self.assertEqual(self.ids(desc),list(range(7,0,-1)))
     def test_unfiltered_sort_orders_use_expression_indexes_without_temp_sort(self):
         with m.connection() as db:
-            for key in ('resolution_asc','resolution_desc','size_asc','size_desc'):
+            for key in ('resolution_asc','resolution_desc','size_asc','size_desc','modified_asc','modified_desc'):
                 detail=' '.join(str(row[3]) for row in db.execute('EXPLAIN QUERY PLAN SELECT * FROM media WHERE missing=0 ORDER BY '+media_order.ORDERS[key]+' LIMIT 48'))
                 self.assertIn(f'media_{key}_order',detail);self.assertNotIn('TEMP B-TREE',detail)
     def test_resume_behavior_is_validated_and_persisted(self):
@@ -38,6 +65,12 @@ class LibraryEnhancementTests(unittest.TestCase):
             m.set_preferences(m.PreferencesInput(values={'resumeBehavior':value}))
             self.assertEqual(m.get_preferences()['values']['resumeBehavior'],value)
             with m.read_connection() as db:self.assertEqual(json.loads(db.execute("SELECT value FROM preferences WHERE key='resumeBehavior'").fetchone()[0]),value)
+    def test_library_sort_persists_valid_field_and_direction(self):
+        for key in media_order.ORDERS:
+            m.set_preferences(m.PreferencesInput(values={'librarySort':key}))
+            self.assertEqual(m.get_preferences()['values']['librarySort'],key)
+        for value in (None,True,{},'invalid'):
+            with self.assertRaises(HTTPException):m.set_preferences(m.PreferencesInput(values={'librarySort':value}))
     def test_exact_old_generated_sort_index_is_repaired_without_touching_media(self):
         with m.connection() as db:
             db.execute('DROP INDEX media_size_asc_order')

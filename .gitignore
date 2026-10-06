@@ -12,6 +12,7 @@ env/
 
 # Local media library, saved screenshots, portable application data
 /data/
+/avhub-data-location.json
 AVHub-data/
 screenshots/
 frame-inspection/

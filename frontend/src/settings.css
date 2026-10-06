@@ -1,4 +1,4 @@
-.settings-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:4px;background:var(--ui-field);border:1px solid var(--ui-divider);border-radius:10px;margin:18px 0}
+.settings-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px;background:var(--ui-field);border:1px solid var(--ui-divider);border-radius:10px;margin:18px 0}
 .settings-tabs>button{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;padding:9px 5px;background:transparent;color:var(--ui-muted);border-radius:7px;white-space:nowrap}
 .settings-tabs>button[aria-selected=true]{background:var(--ui-accent-soft);color:var(--ui-accent)}
 .settings-panel[hidden]{display:none}.settings-panel>.settings-section:first-child,.settings-panel>.backup-tools:first-child{margin-top:0;border-top:0;padding-top:0}

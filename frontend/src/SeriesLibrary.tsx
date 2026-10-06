@@ -6,6 +6,7 @@ import { MediaThumbnail } from './MediaThumbnail';
 import { Icon } from './Icon';
 import { duration } from './api';
 import { episodeLabel } from './mediaLabels';
+import {ResolutionBadge} from './ResolutionBadge';
 import './library-tools.css';
 import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
 
@@ -64,7 +65,7 @@ export function SeriesLibrary({cache,active,q,root,show,season,page,pageSize,rev
     {error&&result&&<StatusMessage kind="error">{error}<Button icon="refresh" onClick={()=>{setError('');cache.clear();setRetry(n=>n+1);}}>重试剧集库</Button></StatusMessage>}
     {error&&!result?<><StatusMessage kind="error">{error}</StatusMessage><Button icon="refresh" onClick={()=>{setError('');cache.clear();setRetry(n=>n+1);}}>重试剧集库</Button></>:loading&&!result?<div className="library-query-placeholder" aria-label="剧集列表载入中" aria-busy="true">{query.showLoading&&<StatusMessage kind="loading">正在加载剧集…</StatusMessage>}</div>:
       show?episodes?.items.length?<div className="series-episodes">{episodes.items.map(m=><button key={m.id} className="series-episode" disabled={Boolean(m.missing)} aria-label={m.missing?`离线 ${m.title}`:`播放 ${m.title}`} onClick={()=>play({...m,series_title:episodes.title})}>
-        <span className="episode-cover"><MediaThumbnail url={m.thumbnail_url} retryKey={revision}/><Icon name={m.missing?'warning':'play'} size={20}/></span><span className="episode-meta"><b>{episodeLabel(m)}</b><span title={m.name}>{m.name}</span><small>{m.missing?'源文件离线':m.watched?'已看完':m.progress>0?`看到 ${duration(m.progress)}`:'未观看'}</small></span><span>{duration(m.duration)}</span>
+        <span className="episode-cover"><MediaThumbnail url={m.thumbnail_url} retryKey={revision}/><Icon name={m.missing?'warning':'play'} size={20}/></span><span className="episode-meta"><b>{episodeLabel(m)}</b><span title={m.name}>{m.name}</span><small className="episode-status"><ResolutionBadge width={m.width} height={m.height}/>{m.missing?'源文件离线':m.watched?'已看完':m.progress>0?`看到 ${duration(m.progress)}`:'未观看'}</small></span><span>{duration(m.duration)}</span>
       </button>)}</div>:<EmptyState icon="series" title="当前季暂无视频" description="可以切换季或检查媒体目录。"/>:
       groups?.items.length?<div className="media-grid series-groups">{groups.items.map(group=><article className="card" key={group.id}>
         <button className="series-group-cover cover" aria-label={`打开剧集 ${group.title}`} onClick={()=>change({show:String(group.id),season:'',page:1})}><MediaThumbnail url={group.thumbnail_url} retryKey={revision}/><span className="series-count">{group.count} 集</span></button>

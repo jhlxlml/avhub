@@ -65,18 +65,13 @@ def data_directory() -> Path:
     override = os.environ.get("AVHUB_DATA_DIR")
     if override:
         return Path(override).expanduser().resolve()
-    if FROZEN:
-        portable = APP_HOME / "data"
-        try:
-            portable.mkdir(parents=True, exist_ok=True)
-            probe_file = portable / ".write-check"
-            probe_file.touch(exist_ok=True)
-            probe_file.unlink(missing_ok=True)
-            return portable
-        except OSError:
-            local = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-            return (local / "AVHub" / "data").resolve()
-    return ROOT / "data"
+    from .data_migration import configured_directory
+    home=APP_HOME if FROZEN else ROOT
+    try:return configured_directory(home,home/'data')
+    except PermissionError:
+        if not FROZEN or any((home/name).exists() for name in ('avhub-data-location.json','data/library.db','AVHub-data/library.db')):raise
+        local=Path(os.environ.get('LOCALAPPDATA',Path.home()/'AppData'/'Local'))
+        return configured_directory(local/'AVHub',local/'AVHub'/'data')
 
 
 DATA = data_directory()
@@ -1270,13 +1265,19 @@ def retry_thumbnail(media_id: int, body: ThumbnailRetry):
     return media_thumbnail_status(media_id)
 
 
+@app.post('/api/updates/check')
+def check_updates():
+    from .updates import check
+    return check(BUILD['version'])
+
 @app.get("/api/media")
 def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: bool = False,
           format_ext: str = "", watch_status: Literal['all','watched','unwatched'] = 'all',
           duration_band: Literal['short','medium','long'] | None = None,
+          resolution: Literal['8K','4K','QHD','FHD','HD','SD'] | None = None,
           root_id: int | None = None, folder: str = '', recursive: bool = True, limit: int = Query(300, ge=1, le=1000),
           page: int | None = Query(None, ge=1), page_size: int = Query(48, ge=1, le=120),
-          sort: Literal['recent','added','name','duration_desc','duration_asc','resolution_desc','resolution_asc','size_desc','size_asc'] = 'recent'):
+          sort: Literal['recent','recent_asc','added','added_asc','modified_desc','modified_asc','name','name_desc','duration_desc','duration_asc','resolution_desc','resolution_asc','size_desc','size_asc'] = 'recent'):
     sql = "SELECT * FROM media WHERE missing=0"; args: list[Any] = []
     if q:
         literal_query = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -1306,6 +1307,12 @@ def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: boo
     if duration_band == 'short': sql += " AND duration>0 AND duration<=1800"
     elif duration_band == 'medium': sql += " AND duration>1800 AND duration<=5400"
     elif duration_band == 'long': sql += " AND duration>5400"
+    if resolution:
+        if resolution not in media_order.RESOLUTION_BANDS: raise HTTPException(400,'不支持的分辨率筛选')
+        low,high=media_order.RESOLUTION_BANDS[resolution]
+        sql += f' AND ({media_order.SHORT_EDGE})>=?'; args.append(low)
+        if high is not None:
+            sql += f' AND ({media_order.SHORT_EDGE})<?'; args.append(high)
     order = media_order.ORDERS[sort]
     # Keep the legacy list endpoint compatible; new clients always supply page.
     if not isinstance(page, int):
@@ -1317,7 +1324,7 @@ def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: boo
         # For a whole-library search, counting in physical row order avoids
         # random heap lookups through that index. Selective matches then sort a
         # small result set; broad matches retain indexed order and bounded LIMIT.
-        search_scan = bool(q) and view == 'all' and root_id is None and not favorite and not unwatched and watch_status == 'all' and not format_ext and not duration_band
+        search_scan = bool(q) and view == 'all' and root_id is None and not favorite and not unwatched and watch_status == 'all' and not format_ext and not duration_band and not resolution
         count_sql = sql.replace('FROM media', 'FROM media NOT INDEXED', 1) if search_scan else sql
         total = db.execute(count_sql.replace('SELECT *', 'SELECT COUNT(*)', 1), args).fetchone()[0]
         pages = max(1, (total + page_size - 1) // page_size)
@@ -1329,7 +1336,7 @@ def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: boo
 
 @app.get('/api/roots/{root_id}/folders')
 def media_folders(root_id: int, folder: str = '', q: str = '', page: int = Query(1, ge=1),
-                  page_size: int = Query(60, ge=1, le=100)):
+                  page_size: int = Query(60, ge=1, le=100), focus: str = ''):
     folder = relative_folder(folder)
     with read_connection() as db:
         db.execute('BEGIN')
@@ -1340,13 +1347,20 @@ def media_folders(root_id: int, folder: str = '', q: str = '', page: int = Query
         cte = f'''WITH descendants AS (
             SELECT substr(path,?) AS rest FROM media WHERE root_id=? AND missing=0 AND {clause}
           ), children AS (
-            SELECT substr(rest,1,instr(rest,?)-1) AS name, COUNT(*) AS count
+            SELECT substr(rest,1,instr(rest,?)-1) AS name, COUNT(*) AS count,
+              MAX(instr(substr(rest,instr(rest,?)+1),?)>0) AS has_children
             FROM descendants WHERE instr(rest,?)>0 GROUP BY name
           ) '''
-        params = [len(prefix)+1, root_id, *args, os.sep, os.sep]
+        params = [len(prefix)+1, root_id, *args, os.sep, os.sep, os.sep, os.sep]
         search = " WHERE name LIKE ? ESCAPE '\\'" if q else ''
         search_args = [f'%{like_literal(q)}%'] if q else []
         total = db.execute(cte + 'SELECT COUNT(*) FROM children' + search, [*params, *search_args]).fetchone()[0]
+        if focus and not q:
+            # Reveal a deep-linked child without downloading every sibling page.
+            exists=db.execute(cte+'SELECT 1 FROM children WHERE name=?',[*params,focus]).fetchone()
+            if exists:
+                before=db.execute(cte+'SELECT COUNT(*) FROM children WHERE name COLLATE NOCASE < ? COLLATE NOCASE OR (name COLLATE NOCASE = ? COLLATE NOCASE AND name < ?)',[*params,focus,focus,focus]).fetchone()[0]
+                page=before//page_size+1
         page = min(page, max(1, (total + page_size - 1)//page_size))
         rows = db.execute(cte + 'SELECT * FROM children' + search + ' ORDER BY name COLLATE NOCASE,name LIMIT ? OFFSET ?',
                           [*params, *search_args, page_size, (page-1)*page_size]).fetchall()
@@ -1355,7 +1369,7 @@ def media_folders(root_id: int, folder: str = '', q: str = '', page: int = Query
             FROM media WHERE root_id=? AND missing=0 AND {clause}''',
                             [len(prefix)+1, os.sep, root_id, *args]).fetchone()
         return {'folder': folder, 'items': [{'name': row['name'], 'folder': '/'.join(filter(None, [folder, row['name']])),
-                                           'count': row['count']} for row in rows],
+                                           'count': row['count'],'has_children':bool(row['has_children'])} for row in rows],
                 'total': total, 'video_count': counts['total'], 'direct_count': counts['direct'],
                 'page': page, 'pages': max(1, (total + page_size-1)//page_size)}
 

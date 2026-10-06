@@ -5,9 +5,10 @@ import { permissionAllowed } from './permissionPolicy';
 import { stopOwnedBackend } from './backendShutdown';
 import { appendBoundedLog } from './desktopLogs';
 import { previousDirectory,rememberDirectory,type DirectoryPurpose } from './directoryHistory';
+import {configName,readDataLocation,writeDataLocation,writableDirectory,migrationConfig,type DataMigration} from './dataLocation';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { realpath,stat } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -30,6 +31,10 @@ let normalPlaybackWindow: { contentBounds: Rectangle; maximized: boolean } | nul
 let playbackAspectRatio=0;
 let expandedPlaybackBounds:Rectangle|null=null;
 let fittingPlaybackWindow=false;
+const dataHome=isPackaged?(process.env.PORTABLE_EXECUTABLE_DIR||path.dirname(app.getPath('exe'))):(process.env.AVHUB_APP_HOME||projectRoot);
+const dataConfigFile=path.join(dataHome,configName);
+const defaultDataDir=path.join(dataHome,'AVHub-data');
+let pendingDataMigration:DataMigration|undefined;
 
 function setExactContentBounds(window:BrowserWindow,target:Rectangle) {
   window.setContentBounds(target);
@@ -210,30 +215,48 @@ ipcMain.handle('avhub:app-command',async(event,command:unknown)=>{
   const error=await shell.openPath(directory);if(error)throw new Error('无法打开数据目录');
   return {ok:true};
 });
+ipcMain.handle('avhub:open-release',async(event,tag:unknown)=>{
+  trustedWindow(event);
+  if(typeof tag!=='string'||!/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)||tag.length>50)throw new Error('发布版本无效');
+  await shell.openExternal(`https://github.com/jhlxlml/avhub/releases/tag/${tag}`);return {ok:true};
+});
 
 function chooseDataDirectory(): string {
   if (process.env.AVHUB_DATA_DIR) {
-    const configured = path.resolve(process.env.AVHUB_DATA_DIR);
-    mkdirSync(configured, { recursive: true });
-    return configured;
+    return writableDirectory(path.resolve(process.env.AVHUB_DATA_DIR));
   }
-  const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
-  if (isPackaged && portableDir) {
-    const portable = path.join(portableDir, 'AVHub-data');
-    try {
-      mkdirSync(portable, { recursive: true });
-      const probe = path.join(portable, '.write-check');
-      writeFileSync(probe, 'ok');
-      rmSync(probe, { force: true });
-      return portable;
-    } catch {
-      // Some USB drives and protected program folders are read-only; use the user profile instead.
-    }
+  const configured=readDataLocation(dataConfigFile);
+  if(configured){pendingDataMigration=configured.pending;return writableDirectory(configured.directory);}
+  const profileLegacy=path.join(!isPackaged&&process.env.AVHUB_APP_HOME?dataHome:app.getPath('userData'),'data');
+  const homeLegacy=path.join(dataHome,'data');
+  const legacy=existsSync(path.join(profileLegacy,'library.db'))?profileLegacy:existsSync(path.join(homeLegacy,'library.db'))?homeLegacy:profileLegacy;
+  let directory:string;
+  try{directory=writableDirectory(defaultDataDir);}
+  catch {return writableDirectory(legacy);}
+  if(existsSync(path.join(legacy,'library.db'))&&!existsSync(path.join(directory,'library.db'))) {
+    const config=migrationConfig(legacy,directory);writeDataLocation(dataConfigFile,config);pendingDataMigration=config.pending;
   }
-  const fallback = path.join(app.getPath('userData'), 'data');
-  mkdirSync(fallback, { recursive: true });
-  return fallback;
+  return directory;
 }
+
+let dataLocationBusy=false;
+ipcMain.handle('avhub:data-location',async(event,action:unknown)=>{
+  const owner=trustedWindow(event);
+  const info=()=>({current:dataDir,default:defaultDataDir,next:(process.env.AVHUB_DATA_DIR?undefined:readDataLocation(dataConfigFile)?.directory)||dataDir,locked:Boolean(process.env.AVHUB_DATA_DIR)});
+  if(action==='get')return info();
+  if(action!=='choose')throw new Error('数据目录操作无效');
+  if(process.env.AVHUB_DATA_DIR)throw new Error('当前使用 AVHUB_DATA_DIR 环境变量，请先移除它再使用目录设置');
+  if(dataLocationBusy||directoryDialogActive)throw new Error('请先完成当前目录操作');
+  dataLocationBusy=true;
+  try {
+    const result=await dialog.showOpenDialog(owner,{title:'选择空的数据目录（下次启动迁移）',properties:['openDirectory'],defaultPath:dataDir});
+    if(result.canceled||!result.filePaths.length)return {cancelled:true};const selected=result.filePaths[0];
+    const config=migrationConfig(dataDir,selected);
+    const confirmed=await dialog.showMessageBox(owner,{type:'question',title:'更换数据目录',message:'保存并在下次启动时迁移媒体库？',detail:`新位置：${config.directory}\n\n迁移索引、设置、观看记录与封面；旧目录保留。原视频、截图、临时播放缓存和 Chromium 配置不搬动。请正常退出应用后重新打开。`,buttons:['保存，下次启动生效','取消'],defaultId:0,cancelId:1});
+    if(confirmed.response!==0)return {cancelled:true};
+    writeDataLocation(dataConfigFile,config);return info();
+  }finally{dataLocationBusy=false;}
+});
 
 // Electron creates its single-instance lock and Chromium profile under userData.
 // Pick the same writable directory as the library before requesting that lock,
@@ -404,6 +427,19 @@ function createWindow(): BrowserWindow {
 
 async function startApplication() {
   appendDesktopLog('startup-begin');
+  if(pendingDataMigration) {
+    const pending=pendingDataMigration;
+    const executable=isPackaged?path.join(process.resourcesPath,'backend','AVHubServer.exe'):(process.env.AVHUB_PYTHON||'python');
+    const args=[...(isPackaged?[]:['run.py']),'--migrate-data',pending.source,pending.target,pending.id];
+    const child=spawn(executable,args,{cwd:isPackaged?path.dirname(executable):projectRoot,windowsHide:true,stdio:['ignore','pipe','pipe']});
+    backend=child;
+    let diagnostic='';child.stderr?.on('data',chunk=>{diagnostic=(diagnostic+chunk.toString()).slice(-4096);});
+    await new Promise<void>((resolve,reject)=>{child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(new Error(`数据迁移失败，旧数据仍在 ${pending.source}。请检查目标空间与权限后重试。\n${diagnostic}`)));});
+    backend=null;
+    const config=readDataLocation(dataConfigFile);
+    if(config?.pending?.id!==pending.id)throw new Error('数据目录配置在迁移期间发生变化');
+    writeDataLocation(dataConfigFile,{version:1,directory:pending.target});pendingDataMigration=undefined;
+  }
   backendPort = await freeLoopbackPort();
   sessionToken = randomBytes(32).toString('hex');
   appendDesktopLog(`backend-start port=${backendPort}`);

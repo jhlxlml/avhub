@@ -1,5 +1,5 @@
 export type IconName = 'play'|'pause'|'back'|'forward'|'volume'|'muted'|'rotate'|'zoomReset'|'pip'|'exitPip'|'fullscreen'|'fullscreenExit'|'expand'|'favorite'|'quality'|'speed'|'audio'|'camera'|'close'|'search'|'settings'|'refresh'|'library'|'film'|'series'|'continue'|'history'|'playlist'|'filter'|'grid'|'list'|'folder'|'chevronDown'|'chevronRight'|'chevronLeft'|'chevronUp'|'plus'|'check'|'eye'|'eyeOff'|'copy'|'reveal'|'external'|'trash'|'edit'|'download'|'upload'|'save'|'shield'|'database'|'previous'|'next'|'first'|'last'|'info'|'warning'|'arrowLeft'|'subtitles'|'more'
-  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize'|'shuffle';
+  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize'|'shuffle'|'sortAsc'|'sortDesc';
 
 // One 24px grid, one optical stroke and rounded joins across every surface.
 // Code-native SVGs remain fully offline and inherit the control's state color.
@@ -38,6 +38,7 @@ export function Icon({name,size=18,filled=false,className=''}:{name:IconName;siz
     {name==='chevronRight' && <path d="m9 6 6 6-6 6"/>}
     {name==='chevronLeft' && <path d="m15 6-6 6 6 6"/>}
     {name==='chevronUp' && <path d="m6 15 6-6 6 6"/>}
+    {(name==='sortAsc'||name==='sortDesc') && <><path d={name==='sortAsc'?'M7 20V4m-3 3 3-3 3 3':'M7 4v16m-3-3 3 3 3-3'}/><path d={name==='sortAsc'?'M14 6h3m-3 6h5m-5 6h7':'M14 6h7m-7 6h5m-5 6h3'}/></>}
     {name==='plus' && <path d="M12 5v14M5 12h14"/>}
     {name==='check' && <path d="m5 12 4 4L19 6"/>}
     {(name==='eye'||name==='eyeOff') && <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>{name==='eyeOff'&&<path d="m3 3 18 18"/>}</>}

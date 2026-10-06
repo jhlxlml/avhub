@@ -25,8 +25,8 @@ export function WindowChrome() {
   }
   return <div className="desktop-titlebar" role="toolbar" aria-label="窗口控制">
     <button className="window-about" aria-label="关于 AVHub" title="关于 AVHub" onClick={()=>{
-      if(document.querySelector('.modal-backdrop')){setError('请先关闭当前对话框');return;}setError('');requestAbout();
-    }}><Icon name="play" size={12}/><span>AVHub{state.purePlayback?' · 纯净播放':''}</span><Icon name="info" size={13}/></button>
+      if(document.querySelector('.modal-backdrop'))return;setError('');requestAbout();
+    }}><Icon name="play" size={12}/><span>AVHub{state.purePlayback?' · 纯净播放':''}</span></button>
     <div className="window-drag-area" title="拖动窗口 · 双击最大化或还原"/>
     {error && <small role="alert">{error}</small>}
     <button className="window-pin" title={state.alwaysOnTop?'取消窗口置顶':'窗口置顶'} aria-label={state.alwaysOnTop?'取消窗口置顶':'窗口置顶'}

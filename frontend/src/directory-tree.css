@@ -1,0 +1,17 @@
+.app-layout.with-directory-tree {display:grid;grid-template-columns:232px minmax(0,1fr);gap:20px;align-items:start}
+.with-directory-tree .toolbar {flex-wrap:wrap}
+.directory-tree-panel {position:sticky;top:16px;display:flex;flex-direction:column;min-width:0;max-height:calc(100vh - 150px);padding:10px 8px;background:var(--ui-surface);border:1px solid var(--ui-border);border-radius:12px;box-sizing:border-box;color:var(--ui-secondary)}
+.directory-tree-heading {display:flex;align-items:center;gap:7px;padding:0 4px 8px}.directory-tree-heading h2 {flex:1;margin:0;font-size:12px;font-weight:600;color:var(--ui-text)}
+.directory-tree-heading>.ui-icon-button {width:27px;height:27px;min-height:27px;padding:5px;background:transparent;color:var(--ui-muted)}
+.directory-tree-panel>input {width:100%;min-width:0;box-sizing:border-box;background:var(--ui-field);border:1px solid var(--ui-border);border-radius:7px;padding:8px 9px;font-size:11px;color:var(--ui-text);margin-bottom:8px}
+.directory-tree-scroll {min-height:0;overflow:auto;flex:1}.directory-tree-scroll ul {list-style:none;margin:0;padding:0}
+.directory-tree-row,.tree-all {display:flex;align-items:center;gap:6px;min-height:34px;border:1px solid transparent;border-radius:7px;cursor:pointer;box-sizing:border-box;color:var(--ui-secondary);font-size:12px}
+.tree-all {width:100%;padding:7px 9px;margin-bottom:5px;background:transparent;text-align:left}.tree-all>span {flex:1}
+.directory-tree-row {padding:4px 6px}.directory-tree-row:hover,.tree-all:hover {background:var(--ui-hover);color:var(--ui-text)}
+.directory-tree-row.is-selected,.tree-all.is-selected {background:var(--ui-accent-soft);border-color:var(--ui-accent-border);color:var(--ui-accent)}
+.directory-tree-row>.ui-icon {flex:none}.tree-node-name {flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tree-chevron {display:grid;place-items:center;flex:none;width:18px;height:22px;padding:0;background:transparent;color:inherit;border-radius:4px}
+.directory-tree-row small,.tree-all small {font-size:10px;color:var(--ui-muted);flex:none;font-variant-numeric:tabular-nums}
+.tree-page {display:flex;align-items:center;justify-content:center;gap:9px;margin:6px 0;font-size:10px;color:var(--ui-muted)}.tree-page button {display:grid;place-items:center;width:25px;height:25px;padding:4px;background:var(--ui-field);color:var(--ui-secondary)}
+.tree-message {display:flex;align-items:center;gap:5px;padding:8px 12px;font-size:11px;color:var(--ui-muted);line-height:1.6}.tree-error {flex-wrap:wrap;overflow-wrap:anywhere;color:var(--ui-danger)}.tree-error button {padding:4px 8px;font-size:11px}
+@media(max-width:1000px) {.app-layout.with-directory-tree {grid-template-columns:minmax(0,1fr)}.directory-tree-panel {position:static;max-height:360px}}

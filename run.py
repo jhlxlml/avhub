@@ -2,12 +2,21 @@ import argparse
 import os
 import threading
 import webbrowser
+import sys
 import uvicorn
-from app.main import app
-from app import main as backend
+
+# The dedicated migration command must not import/create a media library.
+# Normal launches keep the established module interface for shutdown tooling.
+if sys.argv[1:2]!=['--migrate-data']:
+    from app.main import app
+    from app import main as backend
 
 
 def main():
+    if sys.argv[1:2]==['--migrate-data']:
+        if len(sys.argv)!=5:raise SystemExit('Usage: --migrate-data SOURCE TARGET ID')
+        from app.data_migration import migrate
+        migrate(*sys.argv[2:]);return
     parser = argparse.ArgumentParser(description="AVHub local media service")
     parser.add_argument("--port", type=int, default=int(os.environ.get("AVHUB_PORT", "8765")))
     parser.add_argument("--no-browser", action="store_true", help="Electron owns the application window")

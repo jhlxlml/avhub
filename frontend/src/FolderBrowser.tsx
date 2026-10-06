@@ -3,11 +3,11 @@ import { api, errorText, type FolderPage, type Root } from './api';
 import { Icon } from './Icon';
 import { Button, StatusMessage } from './ui';
 
-export function FolderBrowser({ root, folder, recursive, change, changeRecursive, revision }: {
+export function FolderBrowser({ root, folder, recursive, change, changeRecursive, revision, treeMode=false }: {
   root: Root; folder: string; recursive: boolean; change: (folder: string) => void;
-  changeRecursive: (recursive: boolean) => void; revision: number;
+  changeRecursive: (recursive: boolean) => void; revision: number; treeMode?:boolean;
 }) {
-  const [open, setOpen] = useState(Boolean(folder));
+  const [open, setOpen] = useState(Boolean(folder)&&!treeMode);
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<FolderPage | null>(null);

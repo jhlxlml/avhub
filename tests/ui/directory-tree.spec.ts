@@ -1,0 +1,65 @@
+import {test,expect} from '@playwright/test';
+test.beforeEach(async({request})=>{await request.post('/test/reset');});
+test('desktop sidebar defaults closed and stays closed after reload without losing filters',async({page,request})=>{
+  await request.post('/test/folder-fixture');await page.goto('/?root=50&folder=Drama&sort=name');
+  const tree=page.getByRole('complementary',{name:'多级目录树'});
+  await expect(tree).toHaveCount(0);await expect(page.locator('.card')).toHaveCount(2);
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();await expect(tree).toBeVisible();
+  await page.reload();await expect(tree).toHaveCount(0);await expect(page.locator('.card')).toHaveCount(2);
+  await expect(page).toHaveURL(/root=50/);await expect(page).toHaveURL(/folder=Drama/);
+});
+test('lazy multi-level expansion selects real folder scopes and keeps the original navigation',async({page,request})=>{
+  await request.post('/test/folder-fixture');const calls:string[]=[];page.on('request',r=>{if(r.url().includes('/folders?'))calls.push(r.url());});
+  await page.goto('/');await expect(page.getByRole('complementary',{name:'多级目录树'})).toHaveCount(0);
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'folder-library',exact:true})).toBeVisible();expect(calls).toHaveLength(0);
+  const tree=page.getByRole('complementary',{name:'多级目录树'});
+  await tree.getByRole('button',{name:'展开目录 folder-library',exact:true}).click();
+  await expect(tree.getByRole('treeitem',{name:'Drama',exact:true})).toBeVisible();expect(calls).toHaveLength(1);
+  await tree.getByRole('button',{name:'展开目录 Drama',exact:true}).click();
+  await expect(tree.getByRole('treeitem',{name:'Season 1',exact:true})).toBeVisible();
+  await tree.getByRole('treeitem',{name:'Season 1',exact:true}).click();
+  await expect(page).toHaveURL(/root=50/);await expect(page).toHaveURL(/folder=Drama%2FSeason\+1/);
+  await expect(page.locator('.card')).toHaveCount(1);await expect(page.getByRole('button',{name:'播放 second',exact:true})).toBeVisible();
+  await expect(page.getByRole('navigation',{name:'目录路径'})).toContainText('Season 1');
+  await expect(tree.getByRole('button',{name:'展开目录 Season 1',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
+  await expect(page.locator('.video-title').first()).toHaveCSS('color','rgb(29, 43, 61)');
+  await page.screenshot({path:'test-results/directory-tree-light.png'});
+  await tree.getByRole('button',{name:'全部目录',exact:true}).click();await expect(page).not.toHaveURL(/root=|folder=/);
+  await page.getByRole('button',{name:'隐藏目录树',exact:true}).click();await expect(tree).toHaveCount(0);
+});
+test('ten thousand roots and child folders have bounded rendering and reveal deep links',async({page,request})=>{
+  await request.post('/test/many-roots');await request.post('/test/many-subfolders');
+  await page.goto('/?root=60&folder=folder-09999');
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  const tree=page.getByRole('complementary',{name:'多级目录树'});
+  await expect(tree.getByRole('treeitem',{name:'folder-09999',exact:true})).toHaveAttribute('aria-selected','true');
+  expect(await tree.getByRole('treeitem').count()).toBeLessThanOrEqual(92);
+  await expect(tree.getByRole('button',{name:'下一页媒体目录树'})).toBeVisible();
+  await expect(tree.getByRole('button',{name:'上一页目录 many-subfolders'})).toBeEnabled();
+  await tree.getByRole('searchbox',{name:'搜索目录树媒体目录'}).fill('folder-09999');
+  await expect(tree.getByRole('treeitem')).toHaveCount(1);
+  await expect(tree.getByRole('treeitem')).toHaveText(/folder-09999/);
+});
+test('folder errors are honest, retryable and keyboard navigation works',async({page,request})=>{
+  await request.post('/test/folder-fixture');let fail=true;
+  await page.route('**/api/roots/50/folders?*',route=>fail?route.fulfill({status:503,json:{detail:'目录加载测试失败'}}):route.continue());
+  await page.goto('/');await page.getByRole('button',{name:'显示目录树',exact:true}).click();const tree=page.getByRole('complementary',{name:'多级目录树'});
+  await tree.getByRole('treeitem',{name:'folder-library',exact:true}).focus();await page.keyboard.press('ArrowRight');
+  await expect(tree.getByRole('alert')).toHaveText('目录加载测试失败');fail=false;
+  await tree.getByRole('button',{name:'重试',exact:true}).click();await expect(tree.getByRole('treeitem',{name:'Drama',exact:true})).toBeVisible();
+  await tree.getByRole('treeitem',{name:'Drama',exact:true}).focus();await page.keyboard.press('ArrowRight');
+  await expect(tree.getByRole('treeitem',{name:'Season 1',exact:true})).toBeVisible();await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');
+  await expect(tree.getByRole('treeitem',{name:'Season 1',exact:true})).toHaveAttribute('aria-selected','true');
+});
+test('narrow windows use a compact collapsible tree without horizontal overflow',async({page,request})=>{
+  await request.post('/test/folder-fixture');await page.setViewportSize({width:390,height:820});await page.goto('/');
+  await expect(page.getByRole('complementary',{name:'多级目录树'})).toHaveCount(0);
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await expect(page.getByRole('complementary',{name:'多级目录树'})).toBeVisible();
+  await page.getByRole('button',{name:'展开目录 folder-library',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'Drama',exact:true})).toBeVisible();
+  expect(await page.locator('.app-layout').evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  await page.screenshot({path:'test-results/directory-tree-narrow.png'});
+});

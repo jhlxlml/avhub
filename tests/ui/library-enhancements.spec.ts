@@ -1,13 +1,42 @@
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
+test('all sort fields toggle direction, preserve filters and support legacy links',async({page,request})=>{
+  await page.goto('/?sort=duration_asc&root=2');
+  const select=page.getByRole('combobox',{name:'排序方式',exact:true});
+  await expect(select).toHaveValue('duration');
+  for(const [field,asc,desc] of [['recent','recent_asc','recent'],['added','added_asc','added'],['name','name','name_desc'],['duration','duration_asc','duration_desc']]) {
+    await select.selectOption(field);await expect(page).toHaveURL(new RegExp(`sort=${asc}(?:&|$)`));
+    await page.getByRole('button',{name:'切换为降序',exact:true}).click();
+    await expect.poll(()=>new URL(page.url()).searchParams.get('sort')||'recent').toBe(desc);
+    await expect(page).toHaveURL(/root=2/);
+    expect((await request.get(`/api/media?sort=${desc}`)).ok()).toBe(true);
+    await page.reload();await expect(select).toHaveValue(field);
+    await page.getByRole('button',{name:'切换为升序',exact:true}).click();
+  }
+  await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
+  await page.setViewportSize({width:390,height:820});
+  await expect(page.getByRole('button',{name:'切换为降序',exact:true})).toBeVisible();
+  expect(await page.locator('.library-sort-controls').evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  await page.screenshot({path:'test-results/library-sort-light.png'});
+});
 test('new sort choices persist in URL and metadata sizes omit unknown values',async({page,request})=>{
   await page.goto('/');
   const sort=page.getByRole('combobox',{name:'排序方式',exact:true});
-  for(const value of ['resolution_desc','resolution_asc','size_desc','size_asc']) {
-    await sort.selectOption(value);await expect(page).toHaveURL(new RegExp(`sort=${value}`));
-    expect((await request.get(`/api/media?page=1&sort=${value}`)).ok()).toBe(true);
+  await expect(sort.locator('option')).toHaveCount(7);
+  await expect(sort.locator('option[value="modified"]')).toHaveText('文件修改时间');
+  for(const field of ['modified','resolution','size']) {
+    await sort.selectOption(field);
+    for(const direction of ['desc','asc']) {
+      const value=`${field}_${direction}`;
+      await expect(page).toHaveURL(new RegExp(`sort=${value}`));
+      if(field==='modified') await expect(page.getByRole('button',{name:direction==='desc'?'切换为升序':'切换为降序',exact:true})).toHaveAttribute('title',new RegExp(direction==='desc'?'最近修改优先':'较早修改优先'));
+      expect((await request.get(`/api/media?page=1&sort=${value}`)).ok()).toBe(true);
+      await page.getByRole('button',{name:direction==='desc'?'切换为升序':'切换为降序',exact:true}).click();
+    }
   }
-  await page.reload();await expect(sort).toHaveValue('size_asc');
+  await page.getByRole('button',{name:'切换为升序',exact:true}).click();
+  await page.reload();await expect(sort).toHaveValue('size');
+  await expect(page.getByRole('button',{name:'切换为降序',exact:true})).toBeVisible();
   await page.route('**/api/media?*',async route=>{
     const response=await route.fetch(),body=await response.json();
     body.items=body.items.map((item:any,index:number)=>({...item,size:index===0?1073741824:index===1?0:null}));
@@ -44,8 +73,10 @@ test('data tools show the existing location; about dialog uses shared styling an
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();
   await expect(page.getByRole('region',{name:'应用数据目录'})).toContainText(info.data_directory);
   await expect(page.getByRole('button',{name:'打开数据目录',exact:true})).toBeEnabled();
-  await page.getByRole('tab',{name:'运行诊断',exact:true}).click();await page.getByRole('button',{name:'关于 AVHub',exact:true}).click();
-  await expect(page.getByRole('dialog',{name:'关于 AVHub'})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(1);
+  await page.getByRole('tab',{name:'关于',exact:true}).dblclick();
+  await expect(page.getByRole('region',{name:'关于 AVHub'})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(page.getByRole('region',{name:'关于 AVHub'})).toContainText('自动记住观看进度');
+  await expect(page.getByText('请先关闭当前对话框',{exact:true})).toHaveCount(0);
   await expect(page.getByRole('dialog')).toContainText(info.build_id);
   await expect(page.getByRole('link',{name:'打开项目主页',exact:true})).toHaveAttribute('href','https://github.com/jhlxlml/avhub');
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
