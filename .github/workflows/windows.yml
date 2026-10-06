@@ -47,6 +47,11 @@ jobs:
           python -m pip install -r requirements-ci.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm ci
+      - name: Install and verify pinned Electron runtime
+        run: |
+          node node_modules/electron/install.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node -e "const fs=require('node:fs'),assert=require('node:assert/strict');const version=require('./node_modules/electron/package.json').version;assert.ok(fs.existsSync('node_modules/electron/dist/electron.exe'),'Electron runtime missing');assert.equal(fs.readFileSync('node_modules/electron/dist/version','utf8').trim(),version,'Electron runtime version mismatch');console.log('Electron runtime verified: '+version)"
       - name: Build shared UI and Electron
         run: |
           npm run build

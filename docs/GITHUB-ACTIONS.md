@@ -27,6 +27,7 @@ git push origin vX.Y.Z
 ## 流程与安全
 
 1. Windows 2025 runner 准备 Node 24.19.0、Python 3.13.11 和已测试的 Python 直接依赖。npm 使用 package-lock.json。
+   Electron 44 的 npm 包不再通过 postinstall 自动下载运行时；CI 在 `npm ci` 后显式运行 `node node_modules/electron/install.js`，并验证 electron.exe 存在及运行时版本与锁定 npm 包一致。下载失败直接阻止发布，不能跳过真实 Electron 验收。
 2. 下载固定 Gyan FFmpeg 9.0.2 essentials 压缩包，校验 `ci/ffmpeg.json` 中的 SHA-256；不自动切换最新版本、不上传 FFmpeg 二进制到 Git。
 3. 构建 UI / Electron，运行后端、共享界面测试以及真实 Electron 启动/退出验证。另以真实 Windows 8.3 短临时目录运行截图回归，防止 hosted runner 的 `RUNNER~1` 与完整路径差异造成误判；验证保存目录、实际文件位置及 PNG 文件头，不跳过保存断言。
 4. 标签或手动运行才调用 Windows 打包脚本，并验证实际便携 EXE 的内部 FFmpeg、默认目录和迁移。CI 中更新提示使用模拟 GitHub 响应，避免共享 IP 限流影响可重复性；真实 GitHub 检查有独立逻辑测试和既往本地 EXE 验收，不把模拟检查声称为联网验收。
