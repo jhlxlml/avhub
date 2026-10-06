@@ -1,0 +1,18 @@
+.screenshot-settings {display:flex;flex-direction:column;gap:12px}
+.screenshot-settings h3,.screenshot-description {margin:0}
+.screenshot-description,.screenshot-settings small {color:var(--ui-muted);font-size:12px;line-height:1.65}
+.screenshot-directory-field {display:flex;gap:8px}
+.screenshot-directory-field input {flex:1;min-width:0}
+.screenshot-path {overflow-wrap:anywhere}
+.screenshot-options,.screenshot-setting-actions {display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.screenshot-options kbd {padding:3px 9px;border:1px solid var(--ui-border);border-radius:6px;background:var(--ui-surface);font-family:inherit;font-size:12px;font-weight:600;color:var(--ui-text)}
+.screenshot-toast {position:absolute;z-index:12;top:16px;left:16px;max-width:min(460px,calc(100% - 32px));padding:12px 14px;border-radius:12px;background:rgba(14,20,29,.9);color:#f3f6fc;box-shadow:0 4px 18px #0003;display:flex;gap:10px;align-items:flex-start;pointer-events:auto}
+.screenshot-toast>div {min-width:0;display:flex;flex-direction:column;gap:6px}
+.screenshot-toast strong {font-size:13px;font-weight:600}
+.screenshot-toast small {font-size:11px;color:#bdc8d9;overflow-wrap:anywhere}
+.screenshot-toast .screenshot-toast-actions {display:flex;flex-wrap:wrap;gap:6px;flex-direction:row}
+.screenshot-toast button {font-size:12px;padding:5px 8px;border-radius:7px;color:inherit;background:#ffffff12;border:0;cursor:pointer}
+.screenshot-toast button:hover {background:#ffffff25}
+.screenshot-toast>button {margin-left:auto;padding:3px;display:flex;flex-shrink:0}
+.screenshot-toast.is-error {background:rgba(51,23,26,.95)}
+.is-pure-playback .screenshot-toast {top:52px}

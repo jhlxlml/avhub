@@ -1,0 +1,13 @@
+.thumbnail-task-icon { position:relative; }
+.thumbnail-task-icon i { position:absolute; top:7px; right:7px; width:5px; height:5px; border-radius:50%; background:var(--accent); }
+.thumbnail-task-icon.needs-attention { color:var(--accent); }
+.thumbnail-task-dialog { width:min(620px,calc(100vw - 32px)); }
+.thumbnail-task-summary { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:12px 0; color:var(--muted); font-size:13px; }
+.thumbnail-failures { display:grid; gap:12px; }
+.thumbnail-failures>div { padding:12px; border-radius:10px; background:var(--ui-surface); }
+.thumbnail-failures strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.thumbnail-failures details { margin:8px 0; font-size:13px; }
+.thumbnail-failures pre,.cover-capture pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; font-size:12px; }
+.cover-capture { display:grid; gap:8px; margin-top:12px; font-size:13px; }
+.cover-capture-tools { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.cover-capture input { width:112px; }

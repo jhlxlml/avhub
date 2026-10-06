@@ -62,7 +62,7 @@ try {
   assert.equal(await page.locator('.desktop-titlebar').count(),1);
   const titlebar=page.getByRole('toolbar',{name:'窗口控制'});
   assert.deepEqual(await titlebar.getByRole('button').evaluateAll(buttons=>buttons.map(button=>button.getAttribute('aria-label'))),
-    ['窗口置顶','最小化窗口','最大化窗口','关闭窗口']);
+    ['关于 AVHub','窗口置顶','最小化窗口','最大化窗口','关闭窗口']);
   await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveAttribute('aria-pressed','false');
   assert.equal(await titlebar.getByRole('button',{name:'窗口置顶',exact:true}).evaluate(button=>getComputedStyle(button).getPropertyValue('-webkit-app-region')),'no-drag');
   const original=await stats();assert.equal(original.full,false);assert.equal(original.top,false);
@@ -203,6 +203,11 @@ try {
   await expectRatio(page,16/9);
   await page.locator('video').evaluate(v=>v.play());
   await revealPlayerControls(page);
+  // Native fullscreen transitions may leave the mouse at the eventual slider
+  // coordinate. Enter from the picture so hover tests witness a real boundary
+  // crossing, rather than depending on a stationary synthetic hover.
+  const hoverStage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(hoverStage.x+hoverStage.width/2,hoverStage.y+hoverStage.height/2);
   await page.getByRole('slider',{name:'视频完整进度',exact:true}).hover();
   await page.waitForTimeout(1200);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);

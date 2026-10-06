@@ -4,6 +4,7 @@ import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
 import { stopOwnedBackend } from './backendShutdown';
 import { appendBoundedLog } from './desktopLogs';
+import { previousDirectory,rememberDirectory,type DirectoryPurpose } from './directoryHistory';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -176,6 +177,37 @@ ipcMain.handle('avhub:screenshot-action',async(event,id:unknown,action:unknown)=
     if(!info.isDirectory())throw new Error('截图目录不可访问');
     const error=await shell.openPath(source);if(error)throw new Error('无法打开截图目录');
   }
+  return {ok:true};
+});
+
+let directoryDialogActive=false;
+ipcMain.handle('avhub:choose-folder',async(event,purpose:unknown)=>{
+  const owner=trustedWindow(event);
+  if(purpose!=='media'&&purpose!=='screenshots')throw new Error('目录用途无效');
+  if(directoryDialogActive)throw new Error('请先完成当前目录选择');
+  directoryDialogActive=true;
+  try {
+    const kind=purpose as DirectoryPurpose;
+    const previous=await previousDirectory(dataDir,kind);
+    const result=await dialog.showOpenDialog(owner,{
+      title:kind==='media'?'选择媒体目录':'选择截图保存目录',properties:['openDirectory'],
+      ...(previous?{defaultPath:previous}:{}),
+    });
+    if(result.canceled||result.filePaths.length===0)return {cancelled:true};
+    const selected=await realpath(result.filePaths[0]);
+    if(!(await stat(selected)).isDirectory())throw new Error('所选目录已离线或不可访问');
+    await rememberDirectory(dataDir,kind,selected);return {path:selected};
+  }finally{directoryDialogActive=false;}
+});
+ipcMain.handle('avhub:app-command',async(event,command:unknown)=>{
+  trustedWindow(event);
+  if(command==='project-page') {
+    await shell.openExternal('https://github.com/jhlxlml/avhub');return {ok:true};
+  }
+  if(command!=='data-folder')throw new Error('应用操作无效');
+  const directory=await realpath(dataDir);
+  if(!(await stat(directory)).isDirectory())throw new Error('数据目录不可访问');
+  const error=await shell.openPath(directory);if(error)throw new Error('无法打开数据目录');
   return {ok:true};
 });
 

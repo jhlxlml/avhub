@@ -1,0 +1,105 @@
+import assert from 'node:assert/strict';
+import {_electron,expect} from '@playwright/test';
+import {mkdirSync,mkdtempSync,readFileSync,statSync,realpathSync,rmdirSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+mkdirSync(path.join(root,'build'),{recursive:true});const folder=mkdtempSync(path.join(root,'build','electron-library-controls-'));
+const data=path.join(folder,'profile'),media=path.join(folder,'media'),shots=path.join(folder,'screenshots');mkdirSync(media);mkdirSync(shots);
+const offline=path.join(folder,'empty-offline'),replacement=path.join(folder,'replacement');mkdirSync(offline);mkdirSync(replacement);
+const video=path.join(media,'Library control demo.mp4');
+const encoded=spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=12','-t','60','-c:v','libx264','-preset','ultrafast','-g','24','-pix_fmt','yuv420p','-movflags','+faststart',video],{windowsHide:true,timeout:30000});
+assert.equal(encoded.status,0,encoded.stderr?.toString());const before=createHash('sha256').update(readFileSync(video)).digest('hex'),modified=statSync(video).mtimeMs;
+let desktop,savedClipboard,ownedClipboard;
+async function launch(){desktop=await _electron.launch({args:[root,'--autoplay-policy=no-user-gesture-required'],cwd:folder,
+  env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});const page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();return page;}
+async function close(){
+  if(savedClipboard!==undefined)await desktop.evaluate(({clipboard},{saved,owned})=>{if(clipboard.readText()===owned)clipboard.writeText(saved);},{saved:savedClipboard,owned:ownedClipboard});
+  const stopped=desktop.waitForEvent('close',{timeout:20000});await desktop.evaluate(({app})=>{setTimeout(()=>app.quit(),0);});await stopped;desktop=null;
+}
+async function stub(choices){await desktop.evaluate(({dialog,shell},choices)=>{
+  globalThis.__choices=choices;globalThis.__directoryCalls=[];globalThis.__appCalls=[];
+  dialog.showOpenDialog=async(_owner,options)=>{globalThis.__directoryCalls.push(options);const selected=globalThis.__choices.shift();return selected?{canceled:false,filePaths:[selected]}:{canceled:true,filePaths:[]};};
+  shell.openExternal=async url=>{globalThis.__appCalls.push({kind:'project',value:url});};
+  shell.openPath=async value=>{globalThis.__appCalls.push({kind:'folder',value});return '';};
+},choices);}
+try {
+  let page=await launch();await stub([null,media,shots,replacement]);
+  savedClipboard=await desktop.evaluate(({clipboard})=>clipboard.readText());
+  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  await page.getByRole('button',{name:'浏览本地文件夹',exact:true}).click();
+  await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();
+  assert.equal(await page.evaluate(async()=> (await (await fetch('/api/roots')).json()).length),0);
+  await page.getByRole('button',{name:'浏览本地文件夹',exact:true}).click();
+  await expect.poll(()=>page.evaluate(async()=> (await (await fetch('/api/roots')).json()).length)).toBe(1);
+  await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
+  await page.getByRole('region',{name:'视频截图设置'}).getByRole('button',{name:'浏览',exact:true}).click();
+  await expect(page.getByRole('textbox',{name:'默认保存目录',exact:true})).toHaveValue(realpathSync(shots));
+  await page.getByRole('button',{name:'保存截图设置',exact:true}).click();
+  await page.getByRole('combobox',{name:'起播方式',exact:true}).selectOption('resume');await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();
+  const persisted=JSON.parse(readFileSync(path.join(data,'avhub-directory-choices.json'),'utf8'));
+  assert.deepEqual(persisted.folders,{media:realpathSync(media),screenshots:realpathSync(shots)});
+  await page.getByRole('button',{name:'关闭设置'}).click();
+  await page.evaluate(async selected=>{await fetch('/api/roots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:selected})});},offline);
+  rmdirSync(offline); // The deliberately empty synthetic root, never a video directory.
+  await page.reload();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  await page.getByRole('button',{name:'重新定位',exact:true}).click();
+  await expect.poll(()=>page.evaluate(async()=> (await (await fetch('/api/roots')).json()).some(row=>row.path.endsWith('replacement')))).toBe(true);
+  assert.equal(JSON.parse(readFileSync(path.join(data,'avhub-directory-choices.json'),'utf8')).folders.media,realpathSync(replacement));
+  await page.getByRole('tab',{name:'数据管理',exact:true}).click();
+  await expect(page.getByRole('region',{name:'应用数据目录'})).toContainText(data);
+  await page.getByRole('button',{name:'打开数据目录',exact:true}).click();
+  assert.deepEqual(await desktop.evaluate(()=>globalThis.__appCalls),[{kind:'folder',value:realpathSync(data)}]);
+  ownedClipboard=data;await page.getByRole('button',{name:'复制目录路径',exact:true}).click();
+  await expect(page.getByRole('region',{name:'应用数据目录'})).toContainText('数据目录路径已复制');
+  assert.equal(await desktop.evaluate(({clipboard})=>clipboard.readText()),data);
+  await page.getByRole('button',{name:'关闭设置'}).click();
+  await page.evaluate(async()=>{await fetch('/api/scan',{method:'POST'});});
+  await expect.poll(()=>page.evaluate(async()=> (await (await fetch('/api/media?page=1')).json()).total),{timeout:30000}).toBe(1);
+  const item=await page.evaluate(async()=> (await (await fetch('/api/media?page=1')).json()).items[0]);
+  await expect(page.locator('.card .meta')).toContainText(/(?:KB|MB)/);
+  await page.evaluate(async id=>{await fetch(`/api/media/${id}/progress`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({progress:12,watched:false})});},item.id);
+  await page.reload();const bodies=[];page.on('request',r=>{if(r.url().endsWith(`/api/media/${item.id}/playback`))bodies.push(r.postDataJSON());});
+  await page.locator('.open-video').first().click();
+  await expect.poll(()=>page.locator('video').evaluate(v=>v.readyState>=2&&!v.paused)).toBe(true);
+  assert.equal(bodies[0].start,12);assert.equal(bodies[0].force_transcode,false);assert.equal(bodies[0].allow_video_transcode,undefined);
+  const original=await page.locator('video').evaluate(v=>v.currentSrc);
+  await page.locator('video').evaluate(v=>v.pause());
+  await page.getByRole('toolbar',{name:'窗口控制'}).getByRole('button',{name:'关于 AVHub',exact:true}).click();
+  await expect(page.getByRole('dialog',{name:'关于 AVHub'})).toBeVisible();await page.keyboard.press('k');assert.equal(await page.locator('video').evaluate(v=>v.paused),true);
+  await page.getByRole('button',{name:'打开项目主页',exact:true}).click();
+  assert.deepEqual((await desktop.evaluate(()=>globalThis.__appCalls)).at(-1),{kind:'project',value:'https://github.com/jhlxlml/avhub'});
+  await page.getByRole('button',{name:'复制版本信息',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('版本信息已复制');
+  ownedClipboard=await desktop.evaluate(({clipboard})=>clipboard.readText());assert.match(ownedClipboard,/^AVHub .*构建/);
+  await page.getByRole('button',{name:'复制项目地址',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('项目地址已复制');
+  ownedClipboard=await desktop.evaluate(({clipboard})=>clipboard.readText());assert.equal(ownedClipboard,'https://github.com/jhlxlml/avhub');
+  await page.screenshot({path:path.join(folder,'about-dark.png')});await page.keyboard.press('Escape');
+  assert.equal(await page.locator('video').evaluate(v=>v.currentSrc),original);
+  await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:true}));
+  await desktop.evaluate(({BrowserWindow})=>{BrowserWindow.getAllWindows()[0].setContentSize(480,270);});
+  await expect.poll(()=>page.evaluate(()=>innerWidth)).toBeLessThanOrEqual(520);
+  const toolbar=page.getByRole('toolbar',{name:'窗口控制'});
+  assert.ok(await toolbar.getByRole('button').evaluateAll(buttons=>buttons.every(button=>button.getBoundingClientRect().right<=innerWidth+1)));
+  await toolbar.getByRole('button',{name:'关于 AVHub',exact:true}).click();await expect(page.getByRole('dialog',{name:'关于 AVHub'})).toBeVisible();
+  await page.screenshot({path:path.join(folder,'about-compact.png')});await page.keyboard.press('Escape');
+  await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:false}));
+  await assert.rejects(()=>page.evaluate(()=>window.avhubDesktop.appCommand('https://untrusted.example')),/应用操作无效/);
+  await assert.rejects(()=>page.evaluate(()=>window.avhubDesktop.chooseFolder('arbitrary')),/目录用途无效/);
+  await page.getByRole('button',{name:'返回媒体库',exact:true}).click();
+  await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
+  await page.getByRole('toolbar',{name:'窗口控制'}).getByRole('button',{name:'关于 AVHub',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(255, 255, 255)');await page.screenshot({path:path.join(folder,'about-light.png')});await page.keyboard.press('Escape');
+  const calls=await desktop.evaluate(()=>globalThis.__directoryCalls);assert.ok(calls.every(call=>call.properties.join(',')==='openDirectory'));
+  await close();page=await launch();await stub([null,null]);
+  assert.equal(await page.evaluate(async()=> (await (await fetch('/api/preferences')).json()).values.resumeBehavior),'resume');
+  await page.evaluate(()=>window.avhubDesktop.chooseFolder('media'));await page.evaluate(()=>window.avhubDesktop.chooseFolder('screenshots'));
+  const reopened=await desktop.evaluate(()=>globalThis.__directoryCalls);
+  assert.equal(reopened[0].defaultPath,realpathSync(replacement));assert.equal(reopened[1].defaultPath,realpathSync(shots));
+  await stub([video]);await assert.rejects(()=>page.evaluate(()=>window.avhubDesktop.chooseFolder('media')),/所选目录已离线或不可访问/);
+  assert.equal(JSON.parse(readFileSync(path.join(data,'avhub-directory-choices.json'),'utf8')).folders.media,realpathSync(replacement));
+  assert.equal(createHash('sha256').update(readFileSync(video)).digest('hex'),before);assert.equal(statSync(video).mtimeMs,modified);
+  console.log(JSON.stringify({passed:true,report:folder,checks:['native pick/cancel','independent durable folder memory','actual unchanged data location','restricted app commands','resume first request','unchanged original source and video quality','shared dark/light About UI','about does not steal player shortcuts','restart persistence']}));
+  await close();
+}finally{if(desktop)await close().catch(()=>{});}

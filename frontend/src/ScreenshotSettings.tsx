@@ -32,6 +32,11 @@ export function ScreenshotSettings({busy,changeBusy,enabled}:{busy:boolean;chang
     <label htmlFor="screenshot-directory">默认保存目录</label>
     <div className="screenshot-directory-field"><input id="screenshot-directory" disabled={locked} value={directory} placeholder="留空使用应用数据目录" onChange={event=>setDirectory(event.target.value)}/>
       <Button icon="folder" disabled={locked} onClick={()=>void action(async()=>{
+        if(window.avhubDesktop) {
+          if(!window.avhubDesktop.chooseFolder)throw new Error('请重新编译并启动 Electron 桌面组件');
+          const selected=await window.avhubDesktop.chooseFolder('screenshots');
+          if('path' in selected)setDirectory(selected.path);return;
+        }
         const value=await api<{directory?:string;cancelled?:boolean}>('/api/screenshots/pick',{method:'POST'});
         if(value.directory)setDirectory(value.directory);
       })}>浏览</Button></div>

@@ -2,9 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { createRoot } from 'react-dom/client';
 import { api, checkServiceBuild, json, duration, errorText, views, type View, type Media, type MediaUpdate, type Root, type MediaPage, type PlaylistSource } from './api';
 import { Settings } from './Settings';
+import {AboutHost} from './AppTools';
 import { Diagnostics } from './Diagnostics';
 import { Button, EmptyState, StatusMessage, Toast } from './ui';
-import { episodeLabel, formatLabel } from './mediaLabels';
+import { episodeLabel, formatLabel,fileSizeLabel } from './mediaLabels';
 import { Playlists } from './Playlists';
 import { Pagination } from './Pagination';
 import { DirectoryFilter } from './DirectoryFilter';
@@ -24,6 +25,7 @@ import { SeriesLibrary } from './SeriesLibrary';
 import { pageScrollTop, scrollPageTo } from './pageScroll';
 import { initializeAppearance } from './appearance';
 import { initializeAutoplay } from './autoplay';
+import { initializeNativePreparation } from './nativePreparation';
 import { CoverSizeControl, ThemeToggle } from './AppearanceControls';
 import { AutoScrollbars } from './AutoScrollbars';
 import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
@@ -37,7 +39,9 @@ import './playlists.css';
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
 
 const sorts = [{ id:'recent', label:'最近观看' }, { id:'added', label:'最近添加' }, { id:'name', label:'名称 A–Z' },
-  { id:'duration_desc', label:'时长从长到短' }, { id:'duration_asc', label:'时长从短到长' }];
+  { id:'duration_desc', label:'时长从长到短' }, { id:'duration_asc', label:'时长从短到长' },
+  {id:'resolution_desc',label:'分辨率从高到低'},{id:'resolution_asc',label:'分辨率从低到高'},
+  {id:'size_desc',label:'文件从大到小'},{id:'size_asc',label:'文件从小到大'}];
 const formats = ['mp4','mkv','avi','mov','m4v','webm','wmv','flv','ts','mts','m2ts'];
 const viewIcons:Record<View,IconName>={all:'library',movies:'film',series:'series',continue:'continue',favorites:'favorite',history:'history'};
 type Filters = { view: View; root: string; folder: string; recursive: boolean; q: string; layout: 'grid' | 'list'; sort: string; page: number; pageSize: number;
@@ -340,7 +344,7 @@ function App() {
             </div>
             <div className="card-footer"><div className="meta"><button className="video-title" title={m.title} onClick={() => open(m)}>{m.title}</button>
               <span>{m.watched && filters.view!=='history'?<><Icon name="check" size={12}/> 已看 · </>:null}{filters.view === 'history' ? `${historyTime(m.last_played)} · ${m.watched ? '已看完' : `看到 ${duration(m.progress)}`}` :
-                m.kind === 'episode' ? episodeLabel(m) : `${formatLabel(m.ext)} · ${m.height ? `${m.height}p` : '分辨率未知'}`}</span></div>
+                m.kind === 'episode' ? episodeLabel(m) : `${formatLabel(m.ext)} · ${m.height ? `${m.height}p` : '分辨率未知'}`}{fileSizeLabel(m.size)&&` · ${fileSizeLabel(m.size)}`}</span></div>
               <MediaActions media={m} update={updateMedia} changed={()=>setRevision(value=>value+1)} notify={setNotice}/></div>
             </article>)}</div> : <EmptyState icon={viewIcons[filters.view]} title={filters.view === 'continue' ? '暂无可继续观看的视频' : filters.view === 'favorites' ? '暂无收藏视频' : filters.view === 'history' ? '暂无观看历史' : '暂无匹配的视频'}
             description={roots.length ? '可以切换分类、目录或清除搜索条件。' : '添加视频文件夹后，点击刷新媒体库开始扫描。'}>
@@ -364,10 +368,10 @@ function Startup() {
   const [attempt,setAttempt]=useState(0);
   useEffect(()=>{
     let active=true;setError('');
-    void checkServiceBuild().then(initializePreferences).then(()=>{if(active){initializeAppearance();initializeAutoplay();setReady(true);}}).catch(e=>{if(active)setError(errorText(e));});
+    void checkServiceBuild().then(initializePreferences).then(()=>{if(active){initializeAppearance();initializeAutoplay();initializeNativePreparation();setReady(true);}}).catch(e=>{if(active)setError(errorText(e));});
     return ()=>{active=false;};
   },[attempt]);
   if(ready)return <App/>;
   return <div className="empty" role={error?'alert':'status'}>{error||'正在载入本地设置…'}{error&&<><button onClick={()=>setAttempt(value=>value+1)}>重试启动</button><Diagnostics/></>}</div>;
 }
-createRoot(document.getElementById('root')!).render(<><AutoScrollbars/><WindowChrome/><div id="app-scroll-area"><Startup/></div></>);
+createRoot(document.getElementById('root')!).render(<><AutoScrollbars/><WindowChrome/><AboutHost/><div id="app-scroll-area"><Startup/></div></>);

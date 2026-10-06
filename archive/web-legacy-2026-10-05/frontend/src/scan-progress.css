@@ -1,0 +1,6 @@
+.scan-recovery{position:relative;display:grid;place-items:center;flex:none;width:38px;height:38px;padding:0;background:#18243a;border:1px solid #354763;color:#f5bb78}
+.scan-recovery span{font-size:21px;line-height:1;transition:transform .2s ease}
+.scan-recovery:hover span{transform:rotate(-35deg)}
+.scan-recovery i{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#ff9b67;box-shadow:0 0 0 2px #18243a}
+.scan-recovery:focus-visible{outline:2px solid #ffad82;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){.scan-recovery span{transition:none}}

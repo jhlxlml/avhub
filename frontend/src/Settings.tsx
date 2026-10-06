@@ -9,6 +9,9 @@ import { Diagnostics } from './Diagnostics';
 import { type ThumbnailStatus } from './ThumbnailTasks';
 import { ScreenshotSettings } from './ScreenshotSettings';
 import { AutoplaySettings } from './AutoplaySettings';
+import { NativePrepareSettings } from './NativePrepareSettings';
+import {ResumeBehaviorSettings} from './ResumeBehaviorSettings';
+import {AppDataTools,requestAbout} from './AppTools';
 
 const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'}];
 
@@ -43,6 +46,12 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     if (busy) return;
     setBusy(true); setNotice(''); setNoticeError(false);
     try {
+      if(pick&&window.avhubDesktop) {
+        if(!window.avhubDesktop.chooseFolder)throw new Error('请重新编译并启动 Electron 桌面组件');
+        const chosen=await window.avhubDesktop.chooseFolder('media');if('cancelled' in chosen)return;
+        await api<Root>('/api/roots',json('POST',{path:chosen.path}));
+        setPath('');await reload();setNotice('目录已加入，点击顶栏“刷新媒体库”开始扫描');return;
+      }
       const result = await api<Root | { cancelled: true }>(pick ? '/api/roots/pick' : '/api/roots',
         pick ? { method: 'POST' } : json('POST', { path: path.trim() }));
       if (!('cancelled' in result)) {
@@ -61,6 +70,12 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     if (busy) return;
     setBusy(true); setNotice(''); setNoticeError(false);
     try {
+      if(window.avhubDesktop) {
+        if(!window.avhubDesktop.chooseFolder)throw new Error('请重新编译并启动 Electron 桌面组件');
+        const chosen=await window.avhubDesktop.chooseFolder('media');if('cancelled' in chosen)return;
+        await api(`/api/roots/${id}/relocate`,json('POST',{path:chosen.path}));
+        await reload();setNotice('目录已重新定位，请刷新媒体库重新扫描');return;
+      }
       const result = await api<Root | { cancelled: true }>(`/api/roots/${id}/relocate/pick`, { method: 'POST' });
       if (!('cancelled' in result)) { await reload(); setNotice(`目录已重新定位，关联 ${'relocated' in result ? result.relocated : 0} 个视频；请刷新媒体库重新扫描`); }
     } catch (e) { setNoticeError(true); setNotice(errorText(e)); }
@@ -97,6 +112,8 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       </section>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
       <AutoplaySettings busy={busy}/>
+      <ResumeBehaviorSettings busy={busy} changeBusy={setBusy}/>
+      <NativePrepareSettings busy={busy} changeBusy={setBusy}/>
       <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'}/>
       <section className="settings-section" aria-label="后台封面"><h3><Icon name="camera"/>后台封面</h3>
         <div className="thumbnail-task-summary"><span>待处理 {thumbnailStatus?.pending??0}</span><span>失败 {thumbnailStatus?.failed??0}</span><span>{thumbnailStatus?.paused?'已暂停':thumbnailStatus?.yielding?'播放优先，暂时让路':'独立后台处理'}</span></div>
@@ -104,9 +121,9 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
         <small>播放时自动让路，不改变手动暂停设置；离开播放器或活动信号超时后恢复。</small></section>
       <section className="preview-preference"><label><input type="checkbox" aria-label="封面悬停预览" disabled={busy} checked={previewEnabled} onChange={event=>changePreview(event.target.checked)} />封面悬停预览</label>
         <small>停留 0.65 秒后静音预览，每次仅播放一个原片片段。不兼容时保留封面，不触发转码；开启会增加读取与解码负载。</small></section>
-      </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
+      </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
       {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'info'}>{notice}</StatusMessage>}
-      <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics/></div>
+      <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Button icon="info" disabled={busy} onClick={()=>{close();window.setTimeout(requestAbout,0);}}>关于 AVHub</Button><Diagnostics/></div>
       {scanning && <p role="status">后台扫描正在进行，可关闭设置继续观看。扫描结束后可修改目录。</p>}
   </Dialog>;
 }

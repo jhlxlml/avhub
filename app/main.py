@@ -35,6 +35,7 @@ from .playlist_pages import summary as playlist_summary, page_query as playlist_
 from .subtitle_conversion import convert_ass, decode_text, MAX_SUBTITLE_BYTES
 from .video_color import color_metadata
 from .preferences import GLOBAL_KEYS, validate as validate_preference
+from . import media_order
 from .local_security import local_request_error, SECURITY_HEADERS
 from .build_info import BUILD
 from .diagnostics import report as diagnostics_report
@@ -46,6 +47,8 @@ from .scan_jobs import install as install_scan_jobs, ThumbnailJobs, ThumbnailSer
 from .db_timing import timing as database_timing, ReadGate
 from .process_owner import own_encoder
 from .packet_probe import stream_packets
+from .remux_window import run_remux_window
+from .native_prepare import NativePrepare,PinnedPreparedResponse
 from .runtime_evidence import RuntimeEvidence
 from . import library_backup
 from . import storage_management
@@ -213,6 +216,7 @@ def bootstrap() -> None:
             db.execute("ALTER TABLE media ADD COLUMN video_color TEXT NOT NULL DEFAULT '{}'")
         if 'manual_watched' not in columns:
             db.execute('ALTER TABLE media ADD COLUMN manual_watched INTEGER')
+        media_order.install(db)
         series_library.install(db)
         install_scan_jobs(db)
         playlist_columns = {row[1] for row in db.execute('PRAGMA table_info(playlists)')}
@@ -521,6 +525,17 @@ database_timing.on_slow=lambda sample:runtime_evidence.capture('database-long-ta
 scanner = ScanManager(persist_scan_checkpoint,runtime_evidence.capture)
 thumbnail_service = ThumbnailService(connection,process_thumbnail,read_connection,runtime_evidence.capture)
 data_jobs=DataJobs(lambda:DATA)
+def native_sources():
+    with read_connection() as db:paths={row['path'] for row in db.execute('SELECT path FROM media')}
+    # A retained rollback may reference a prepared file imported as a media
+    # source. Do not make that backup's source disappear during cache eviction.
+    for path in (DATA/'backups').glob('before-restore-*.db'):
+        try:
+            with closing(sqlite3.connect(path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+                paths.update(row[0] for row in db.execute('SELECT path FROM media'))
+        except (OSError,sqlite3.DatabaseError):raise HTTPException(409,'回滚副本的源文件记录无法确认，暂不清理原画缓存')
+    return paths
+native_prepare=NativePrepare(lambda:DATA,native_sources)
 
 
 @asynccontextmanager
@@ -542,6 +557,7 @@ async def lifespan(app):
         with suppress(asyncio.CancelledError):
             await task
         await asyncio.to_thread(playback.close)
+        await asyncio.to_thread(native_prepare.close)
         await asyncio.to_thread(scanner.close)
         await asyncio.to_thread(thumbnail_service.close)
         await asyncio.to_thread(data_jobs.close)
@@ -587,6 +603,9 @@ class FavoriteInput(BaseModel): favorite: bool
 class PlaybackActivityInput(BaseModel):
     owner: str = Field(pattern=r'^[a-f0-9]{32}$')
     playing: bool
+    media_id:int|None=Field(default=None,ge=1)
+    present:bool=True
+    prepared:bool=False
 class WatchedInput(BaseModel): watched: bool
 class PreferencesInput(BaseModel):
     values: dict[str,Any] = Field(max_length=100)
@@ -596,6 +615,12 @@ class PreferencesInput(BaseModel):
 @app.post('/api/playback/activity')
 def playback_activity(value:PlaybackActivityInput):
     thumbnail_service.playback_activity(value.owner,value.playing)
+    source=None
+    if value.media_id and value.present:
+        with read_connection() as db:
+            row=db.execute('SELECT path FROM media WHERE id=?',(value.media_id,)).fetchone()
+        if row:source=Path(row['path'])
+    native_prepare.activity(value.owner,source,value.playing,value.present,value.prepared)
     return {'ok':True}
 
 class StorageCleanupInput(BaseModel):
@@ -624,7 +649,10 @@ class PlaybackInput(BaseModel):
     force_transcode: bool = False
     prefer_original: bool = False
     skip_direct: bool = False
-    quality: Literal['auto','1080p','720p','480p'] = 'auto'
+    skip_prepared:bool=False
+    quality: Literal['auto','compat','1080p','720p','480p'] = 'auto'
+    allow_video_transcode:bool=False
+    allow_audio_transcode:bool=False
     audio_track_index: int | None = Field(default=None, ge=0)
 EditInput = MetadataInput
 class PlaylistInput(BaseModel):
@@ -653,6 +681,13 @@ def get_subtitle_preference(media_id:int):
         except (HTTPException,ValueError,TypeError):value=None
         return {'value':value}
 
+
+def native_prepare_enabled():
+    with read_connection() as db:
+        row=db.execute("SELECT value FROM preferences WHERE key='nativePrepare'").fetchone()
+    try:return bool(row) and json.loads(row['value']) is True
+    except (ValueError,TypeError):return False
+
 @app.patch('/api/preferences')
 def set_preferences(body:PreferencesInput):
     values={key:validate_preference(key,value) for key,value in body.values.items()}
@@ -664,6 +699,7 @@ def set_preferences(body:PreferencesInput):
                 db.execute('''INSERT INTO preferences VALUES(?,?,?) ON CONFLICT(key) DO UPDATE
                     SET value=excluded.value,updated_at=excluded.updated_at WHERE preferences.updated_at<=excluded.updated_at''',
                     (key,json.dumps(value),body.updated_at))
+    if 'nativePrepare' in values and not native_prepare_enabled():native_prepare.cancel_pending()
     return {'ok':True}
 
 class ScreenshotSettingsInput(BaseModel):
@@ -715,6 +751,25 @@ async def save_screenshot(media_id:int,request:Request,
 def saved_screenshot(capture_id:str):
     if not re.fullmatch(r'[a-f0-9]{32}',capture_id):raise HTTPException(422,'截图标识无效')
     return screenshot_store.lookup(capture_id)
+
+@app.get('/api/app-info')
+def app_info():
+    # Report the directory already chosen by the launcher; never select a new
+    # location or write a probe file merely to show this information.
+    return {'version':BUILD['version'],'build_id':BUILD['build_id'],'api_protocol':BUILD['api_protocol'],
+            'data_directory':str(DATA),'frozen':FROZEN}
+
+
+@app.post('/api/app-data/reveal')
+def reveal_app_data(request:Request):
+    if not request.headers.get('origin') or local_request_error(request,SERVER_PORT,bool(SESSION_TOKEN)):
+        raise HTTPException(403,'仅允许本机应用发起目录操作')
+    if sys.platform!='win32':raise HTTPException(501,'此操作仅支持 Windows')
+    if not DATA.is_dir():raise HTTPException(404,'数据目录不可访问')
+    try:os.startfile(str(DATA.resolve()))
+    except OSError as exc:raise HTTPException(503,'无法打开数据目录') from exc
+    return {'ok':True}
+
 
 @app.get("/api/health")
 def health():
@@ -1221,7 +1276,7 @@ def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: boo
           duration_band: Literal['short','medium','long'] | None = None,
           root_id: int | None = None, folder: str = '', recursive: bool = True, limit: int = Query(300, ge=1, le=1000),
           page: int | None = Query(None, ge=1), page_size: int = Query(48, ge=1, le=120),
-          sort: Literal['recent','added','name','duration_desc','duration_asc'] = 'recent'):
+          sort: Literal['recent','added','name','duration_desc','duration_asc','resolution_desc','resolution_asc','size_desc','size_asc'] = 'recent'):
     sql = "SELECT * FROM media WHERE missing=0"; args: list[Any] = []
     if q:
         literal_query = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -1251,12 +1306,7 @@ def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: boo
     if duration_band == 'short': sql += " AND duration>0 AND duration<=1800"
     elif duration_band == 'medium': sql += " AND duration>1800 AND duration<=5400"
     elif duration_band == 'long': sql += " AND duration>5400"
-    order = {
-        'recent': 'COALESCE(last_played,0) DESC,created_at DESC,id DESC',
-        'added': 'created_at DESC,id DESC', 'name': 'title COLLATE NOCASE ASC,id ASC',
-        'duration_desc': '(duration IS NULL OR duration<=0),duration DESC,id ASC',
-        'duration_asc': '(duration IS NULL OR duration<=0),duration ASC,id ASC',
-    }[sort]
+    order = media_order.ORDERS[sort]
     # Keep the legacy list endpoint compatible; new clients always supply page.
     if not isinstance(page, int):
         with read_connection() as db:
@@ -1665,6 +1715,46 @@ def media_file(media_id: int):
     return original_file_response(row["path"])
 
 
+@app.get('/api/media/{media_id}/native-prepare')
+def native_prepare_info(media_id:int):
+    try:return native_prepare.info(Path(media_record(media_id)['path']))|{'enabled':native_prepare_enabled()}
+    except OSError:raise HTTPException(404,'原视频不存在或不可访问，无法验证无损副本')
+
+
+@app.post('/api/media/{media_id}/native-prepare')
+def native_prepare_start(media_id:int):
+    item=media_record(media_id)
+    if item['missing']:raise HTTPException(404,'原视频已离线')
+    try:
+        with native_prepare.lock:
+            if not native_prepare_enabled():raise HTTPException(409,'MKV 无损播放准备已关闭，请在设置 → 播放偏好中启用')
+            return native_prepare.start(Path(item['path']),executable('ffmpeg'),executable('ffprobe'),scan_process,stream_packets)
+    except OSError:raise HTTPException(503,'无损准备无法读写，请检查原文件和应用缓存目录权限')
+
+
+@app.post('/api/media/{media_id}/native-prepare/cancel')
+def native_prepare_cancel(media_id:int):
+    try:return native_prepare.cancel(Path(media_record(media_id)['path']))
+    except OSError:raise HTTPException(404,'原文件或无损准备任务不存在')
+
+
+@app.delete('/api/media/{media_id}/native-prepare')
+def native_prepare_clear(media_id:int):
+    try:return native_prepare.clear(Path(media_record(media_id)['path']))
+    except OSError:raise HTTPException(409,'原文件或缓存不可访问，已停止清理')
+
+
+@app.api_route('/media/{media_id}/prepared',methods=['GET','HEAD'])
+def prepared_media_file(media_id:int):
+    if not native_prepare_enabled():raise HTTPException(409,'无损副本已停用，请使用原文件播放')
+    item=media_record(media_id)
+    if item['missing']:raise HTTPException(404,'原文件已离线，无法验证无损副本')
+    try:key,path=native_prepare.pin(Path(item['path']))
+    except OSError:raise HTTPException(404,'原文件或缓存不可访问')
+    try:return PinnedPreparedResponse(original_file_response(path),native_prepare,key)
+    except BaseException:native_prepare.unpin(key);raise
+
+
 @app.get("/media/{media_id}/subtitle")
 def subtitle(media_id: int, path: str):
     video = one_media(media_id)
@@ -1775,12 +1865,15 @@ def start_playback(media_id: int, body: PlaybackInput):
         raise HTTPException(400, "所选音轨不存在，请刷新媒体库后重试")
     if (not body.force_transcode and not body.skip_direct and body.quality == 'auto'
             and body.audio_track_index is None and (body.prefer_original or direct_playable(item))):
-        return measured({"mode": "direct", "state": "ready", "url": f"/media/{media_id}/file", "offset": 0, "start": start,
+        prepared=not body.skip_prepared and source.suffix.lower()=='.mkv' and native_prepare_enabled() and native_prepare.ready(source,touch=True)
+        return measured({"mode": "direct", "state": "ready", "url": f"/media/{media_id}/prepared" if prepared else f"/media/{media_id}/file", "offset": 0, "start": start,'prepared':bool(prepared),
                 'color':{'source':item.get('video_color') or {},'label':'原文件直放 · 不改编码、位深或色彩','warning':'HDR 实际显示取决于浏览器、显卡、系统 HDR 设置与显示器；旧索引的色彩信息会在需要兼容转码时补测'},
                 "reason": "由浏览器直接解码原视频，跳播按需读取文件"})
     if not body.force_transcode and body.quality == 'auto' and remux_playable(item):
         audio = selected_audio(item, body.audio_track_index)
-        copy_audio = audio is None or audio.get("codec", "").lower() == "aac"
+        copy_audio = audio is None or audio.get("codec", "").lower() in {'aac','mp3'}
+        if not copy_audio and not body.allow_audio_transcode:
+            raise HTTPException(422,'原画模式不会自动转换音轨；请选择浏览器支持的音轨、主动允许音频兼容，或用系统播放器播放原片')
         if (body.indexed_ts and item['ext'].lower() == '.ts' and body.audio_track_index is None and copy_audio):
             started=time.perf_counter()
             result=playback.create_indexed_ts(source, executable('ffprobe'), scan_process,
@@ -1791,7 +1884,8 @@ def start_playback(media_id: int, body: PlaybackInput):
         if body.indexed_remux and item['ext'].lower() in {'.mkv','.mp4','.m4v','.mov','.avi','.flv'}:
             started=time.perf_counter()
             result=playback.create_indexed_remux(source,executable('ffprobe'),executable('ffmpeg'),scan_process,
-                audio_track_index=body.audio_track_index,copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token)
+                audio_track_index=body.audio_track_index,copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token,
+                batch_run=run_remux_window if item['ext'].lower()=='.mkv' and copy_audio else None)
             stages['task_ms']=round((time.perf_counter()-started)*1000,2)
             return measured({'mode':'remux','start':start,
                 'reason':'关键帧索引按需封装，跳播不重建视频源；保留原视频编码',**result})
@@ -1805,6 +1899,12 @@ def start_playback(media_id: int, body: PlaybackInput):
                         audio_track_index=body.audio_track_index, copy_video=True, copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token)
         stages['task_ms']=round((time.perf_counter()-started)*1000,2)
         return measured({'mode':'remux','reason':reason,'start':start,**result})
+    if not body.allow_video_transcode:
+        raise HTTPException(422,'当前浏览器无法通过此路径保持原画播放；已停止自动转码，不会降低分辨率、位深或将 HDR 转为 SDR。可尝试无损准备、系统播放器，或主动确认有损兼容播放')
+    audio=selected_audio(item,body.audio_track_index)
+    copy_audio=audio is None or audio.get('codec','').lower() in {'aac','mp3'}
+    if not copy_audio and not body.allow_audio_transcode:
+        raise HTTPException(422,'音轨需要有损兼容转换，请明确允许音频转换后再继续')
     max_height = {'1080p':1080, '720p':720, '480p':480}.get(body.quality)
     color=item.get('video_color') or {}
     stat=source.stat()
@@ -1815,7 +1915,7 @@ def start_playback(media_id: int, body: PlaybackInput):
         color.update(source_modified=stat.st_mtime,source_size=stat.st_size)
         with connection() as db: db.execute('UPDATE media SET video_color=? WHERE id=?',(json.dumps(color),media_id))
     started=time.perf_counter()
-    result=playback.create(source, executable("ffmpeg"), start, max_height, body.audio_track_index,video_color=color,client_token=body.client_token)
+    result=playback.create(source, executable("ffmpeg"), start, max_height, body.audio_track_index,copy_audio=copy_audio,video_color=color,client_token=body.client_token)
     stages['task_ms']=round((time.perf_counter()-started)*1000,2)
     return measured({'mode':'hls','reason':"按所选画质重新编码" if max_height else "使用兼容编码播放，尽量保留源分辨率",**result})
 
@@ -1837,7 +1937,7 @@ def stop_playback_beacon(token: str):
     return stop_playback(token)
 
 @app.get("/media/hls/{token}/{name}")
-def hls_file(token: str, name: str):
+def hls_file(token: str, name: str, request:Request=None):
     if name.endswith('.m3u8'):
         # FFmpeg replaces this growing file atomically. FileResponse stats and
         # opens separately, so it can pair an old Content-Length with a newer
@@ -1845,11 +1945,22 @@ def hls_file(token: str, name: str):
         content = playback.manifest(token)
         return Response(content, media_type='application/vnd.apple.mpegurl', headers={'Cache-Control':'no-store'})
     def prepare(cancelled):
-        fragment=playback.remux_fragment(token,name,cancelled) or playback.indexed_fragment(token,name)
+        revision=request.headers.get('x-avhub-seek-revision','0') if request else '0'
+        revision=int(revision) if re.fullmatch(r'\d{1,10}',revision) and int(revision)<=2147483647 else 0
+        fragment=playback.remux_fragment(token,name,cancelled,revision) or playback.indexed_fragment(token,name)
         if fragment is not None:return fragment
         source=playback.open_fragment(token,name)
         return source,b'',os.fstat(source.fileno()).st_size
     return PreparedFragmentResponse(prepare,lambda reader:playback.release_fragment(token,reader))
+
+
+class SeekInput(BaseModel):
+    position:float=Field(ge=0,allow_inf_nan=False)
+    revision:int=Field(ge=1,le=2147483647)
+
+
+@app.post('/api/playback/{token}/seek')
+def prioritize_seek(token:str,value:SeekInput):return playback.seek(token,value.position,value.revision)
 
 STATIC = ROOT / "app" / "static"
 if STATIC.exists():

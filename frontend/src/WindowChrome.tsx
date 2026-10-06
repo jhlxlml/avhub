@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { connectWindowMode, setWindowMode, useWindowMode } from './windowMode';
 import './window-mode.css';
+import {requestAbout} from './AppTools';
 
 export function WindowChrome() {
   const state=useWindowMode();
@@ -23,7 +24,10 @@ export function WindowChrome() {
     catch {setError('无法切换窗口置顶，请重试。');}
   }
   return <div className="desktop-titlebar" role="toolbar" aria-label="窗口控制">
-    <div className="window-drag-area" title="拖动窗口 · 双击最大化或还原"><Icon name="play" size={12}/><span>AVHub{state.purePlayback?' · 纯净播放':''}</span></div>
+    <button className="window-about" aria-label="关于 AVHub" title="关于 AVHub" onClick={()=>{
+      if(document.querySelector('.modal-backdrop')){setError('请先关闭当前对话框');return;}setError('');requestAbout();
+    }}><Icon name="play" size={12}/><span>AVHub{state.purePlayback?' · 纯净播放':''}</span><Icon name="info" size={13}/></button>
+    <div className="window-drag-area" title="拖动窗口 · 双击最大化或还原"/>
     {error && <small role="alert">{error}</small>}
     <button className="window-pin" title={state.alwaysOnTop?'取消窗口置顶':'窗口置顶'} aria-label={state.alwaysOnTop?'取消窗口置顶':'窗口置顶'}
       aria-pressed={state.alwaysOnTop} disabled={state.busy} onClick={()=>void togglePinned()}><Icon name="pin" size={16} filled={state.alwaysOnTop}/></button>

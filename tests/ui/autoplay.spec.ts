@@ -140,7 +140,7 @@ for(const theme of ['dark','light'])test(`autoplay settings remain aligned in ${
   await page.setViewportSize({width:380,height:850});await page.goto('/');await settings(page);
   await expect(page.getByRole('combobox',{name:'连播范围',exact:true})).toBeVisible();
   expect(await page.getByRole('dialog').evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBeTruthy();
-  await page.locator('.autoplay-settings').screenshot({path:`test-results/autoplay-${theme}-narrow.png`});
+  await page.getByRole('region',{name:'视频连播设置'}).screenshot({path:`test-results/autoplay-${theme}-narrow.png`});
 });
 
 test('disabling autoplay while its final save is pending prevents the transition',async({page,request})=>{

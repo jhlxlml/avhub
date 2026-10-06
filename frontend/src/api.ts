@@ -5,6 +5,7 @@ export type ExternalSubtitle = { name: string; path: string };
 export type Media = {
   id: number; name: string; title: string; kind: string; season?: number; episode?: number;
   ext: string; duration: number; width?: number; height?: number; video_codec?: string;
+  size?:number|null;
   thumbnail_url?: string; favorite: boolean | number; progress: number; watched: boolean | number;
   missing?: boolean | number;
   manual_watched?:number|null;

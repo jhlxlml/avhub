@@ -22,6 +22,7 @@
     "test:electron:preferences": "npm run build && npm run build:electron && node electron/test/preferences.mjs",
     "test:electron:screenshots": "npm run build && npm run build:electron && node electron/test/screenshots.mjs",
     "test:electron:window": "npm run build && npm run build:electron && node electron/test/window-mode.mjs",
+    "test:electron:library-controls": "npm run build && npm run build:electron && node electron/test/directory-history.mjs && node electron/test/library-controls.mjs",
     "test:electron:permissions": "npm run build:electron && node electron/test/permission-policy.mjs",
     "test:electron:logs": "npm run build:electron && node electron/test/logs.mjs",
     "test:electron:data-commit": "npm run build && npm run build:electron && node electron/test/data-commit.mjs",

@@ -11,9 +11,13 @@ Two runtime modes are available:
 - **Electron desktop app**: a standalone window with always-on-top, aspect-ratio-adaptive borderless Pure Playback, and desktop folder operations.
 - **Browser app**: a Python-powered local server accessed through Edge / Chrome. It cannot pin or automatically resize the browser window.
 
+A browser-edition source snapshot is retained in [archive/web-legacy-2026-10-05](archive/web-legacy-2026-10-05/ARCHIVE.md). This archive-only operation does not change the main project's launchers or playback behavior.
+
 **The application UI is currently Chinese.** This English README does not imply English UI support. The repository primarily contains source code, not FFmpeg executables, generated web assets, personal library data, or portable EXEs.
 
 ## Features
+
+Recent library conveniences are implemented natively for AVHub: Electron-owned folder dialogs with separate persistent media/screenshot histories; three opening-position policies (ask by default, resume, restart); pixel-count and file-size sorting with unknown values last; file sizes on video cards; existing data-folder viewing/opening/copying without changing its location; and an About panel using the AVHub identity, version/build metadata, and a restricted project-homepage action. Watched videos start at zero during automatic continuation too. These features do not modify or re-encode source videos.
 
 ### Library
 
@@ -28,7 +32,7 @@ Two runtime modes are available:
 
 ### Player
 
-- Prefer original-file playback, try remuxing when needed, and use FFmpeg compatibility transcoding only when required.
+- Default to original-file playback or lossless remuxing, never automatic quality reduction; lossy compatibility playback requires confirmation.
 - Resume playback, seeking, volume, playback speed, audio-track selection, text subtitles, subtitle delay, and technical information.
 - Same-series, same-folder and playlist queues with sequential playback, shuffle and repeat-one. Settings → Playback preferences → Video autoplay lets you enable or disable automatic continuation.
 - Video fullscreen, picture-in-picture, and Pure Playback; desktop always-on-top is an independent switch.
@@ -147,16 +151,30 @@ An indexed file format is not necessarily a format the browser can decode direct
 Compatibility determines the playback path:
 
 1. **Direct play**: serves the original file with byte-range requests, without re-encoding.
-2. **Remux**: copies compatible video streams into a browser-playable container; audio may be transcoded separately.
-3. **Compatibility transcode**: produces H.264 HLS when required. Automatic quality aims to retain source resolution; lower-resolution presets are also available.
+2. **Lossless remux**: copies video and compatible audio into a browser-playable container; incompatible audio is not silently converted.
+3. **Manual compatibility transcode**: produces lossy H.264 HLS only after confirmation. Source-resolution and lower-resolution options are available; neither is lossless. Audio-only compatibility requires separate permission and leaves the video encoding unchanged.
 
-Keeping 4K resolution does not mean lossless output. Compatibility transcoding is lossy. HDR / high-bit-depth conversion may produce SDR / 8-bit output and cannot retain all original dynamic range or bit depth. Unsupported Dolby Vision conversions are explicitly rejected rather than labeled as original-quality playback.
+The default original-quality mode never silently re-encodes video/audio, downscales, or maps HDR/high-bit-depth video to SDR/8-bit. If native playback and lossless remuxing fail, playback stops with an explanation. Lossy compatibility options require explicit confirmation; switching back to original quality revokes both conversion permissions. The API also requires explicit `allow_video_transcode` / `allow_audio_transcode` flags for the respective conversion.
+
+Keeping 4K resolution does not mean lossless output. Manually authorized compatibility transcoding is lossy. HDR / high-bit-depth conversion may produce SDR / 8-bit output and cannot retain all original dynamic range or bit depth. Unsupported Dolby Vision conversions are explicitly rejected rather than labeled as original-quality playback.
 
 HEVC direct playback depends on browser, OS, and hardware support. Random seeking in MKV / TS may still require preparation when remuxing or transcoding. AVHub does not integrate MPV or another native playback engine, so native-player decoding and seeking performance cannot be guaranteed for every file.
 
 Compatible H.264 / AAC TS files can use **indexed TS playback**: the first playback builds a keyframe index cached in `data/ts-index/`. Later seeks read original-file ranges on demand while reusing the decoder, without copying or re-encoding the whole video. Initial indexing adds startup time; unusual timelines, nonstandard containers, and audio-track changes retain the compatibility fallback. See the [TS seeking and blank-frame validation report](docs/TS-INDEXED-PLAYBACK-2026-10-04.md) (Chinese).
 
-When remuxing is necessary, compatible H.264 MKV, AVI, MOV, MP4/M4V and FLV files can use **indexed on-demand remuxing**. Seeks prepare only the required keyframe interval without reloading the video source; video encoding and resolution are preserved, while unsupported audio is converted separately. Indexes live in `data/remux-index/`. Each session targets at most 256MB of fragments, with temporary overruns possible for oversized GOPs or open readers. Original playback remains preferred, and obsolete file reads are cancelled and closed promptly. Unsupported indexes retain the compatibility fallback. See the [multi-format seeking validation report](docs/MULTIFORMAT-SEEK-2026-10-04.md) (Chinese).
+When remuxing is necessary, compatible H.264 MKV, AVI, MOV, MP4/M4V and FLV files can use **indexed on-demand remuxing**. Seeks prepare only the required keyframe interval without reloading the video source; video encoding and resolution are preserved. Unsupported audio is converted only with separate permission. Indexes live in `data/remux-index/`. Each session targets at most 256MB of fragments, with temporary overruns possible for oversized GOPs or open readers. Original playback remains preferred, and obsolete file reads are cancelled and closed promptly. Unsupported indexes fall back to ordinary lossless remuxing, not video encoding. See the [multi-format seeking validation report](docs/MULTIFORMAT-SEEK-2026-10-04.md) (Chinese).
+
+### Optional lossless MKV preparation
+
+This feature is **off by default**. Enable **Settings → Playback preferences → MKV lossless playback preparation** to expose the video-menu entry and allow prepared-copy playback. It is intended only for expensive container seeks, not guaranteed acceleration for every MKV.
+
+Select **More actions → Lossless playback preparation** to create an optimized MKV copy with rebuilt, front-loaded container indexes, retaining every video/audio/subtitle stream, codec, resolution, bit depth and color information. Original files are read-only. Default-track native playback uses the prepared copy when valid; other audio selections retain the original source path. A failed prepared-source playback retries the original first.
+
+Disabling stops unfinished preparation, hides the menu entry and bypasses existing copies for new playback. Completed copies remain intact and can be reused or cleaned after re-enabling. Original-file playback and on-demand lossless remuxing are unchanged. The switch persists in the library database across restarts.
+
+Copies live in the application data directory's `native-cache/`, with an 8 GB total limit and free-space checks. A copy can be almost as large as its source. Insufficient space results in refusal, never quality reduction. Only verified, unused application-owned copies can be reclaimed; the same dialog supports individual cleanup. Open or paused prepared playback is protected. Source changes invalidate the copy. Progress and cancellation are available; resuming playback interrupts copying, which restarts once idle. Exit stops preparation. The full library is never prepared automatically.
+
+This optimizes container seeking, not decoding compatibility, and does not guarantee faster seeks for every MKV. See the [original-quality and native preparation audit](docs/NATIVE-QUALITY-2026-10-05.md) (Chinese).
 
 Embedded text subtitles and external SRT / VTT / ASS / SSA are supported. ASS / SSA is converted to WebVTT, without guaranteed preservation of complex styling or effects. Image-based subtitles such as PGS / VobSub are not currently supported.
 
@@ -251,6 +269,7 @@ npm run test:ui
 npm run test:electron
 npm run test:electron:screenshots
 npm run test:electron:window
+npm run test:electron:library-controls
 npm run test:electron:shutdown
 ```
 

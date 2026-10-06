@@ -19,10 +19,12 @@ import { setWindowMode, useWindowMode } from './windowMode';
 import { saveScreenshot,screenshotKey,screenshotShortcutLabel,revealScreenshot,trackScreenshot,type SavedScreenshot } from './screenshots';
 import './screenshots.css';
 import './playback.css';
+import {readResumeBehavior,startingPoint} from './resumeBehavior';
 
-type Session = { mode?: 'direct' | 'remux' | 'hls'; state: 'preparing' | 'ready' | 'failed'; token?: string; url?: string; offset: number; start?: number; complete?:boolean; delivery?:'indexed-ts'|'indexed-remux'; error?: string; reason?: string; color?:PlaybackColor; window_start?:number; window_end?:number; preparation?: BackendPreparation };
-type Quality = 'auto' | '1080p' | '720p' | '480p';
-type Request = { start: number; force_transcode: boolean; prefer_original: boolean; skip_direct?: boolean; indexed_ts?:boolean; indexed_remux?:boolean; autoplay?: boolean; quality: Quality; audio_track_index?: number; key: number };
+type RemuxStats={processes:number;cache_hits:number;cache_misses:number;published:number;cancelled:number;batch_failures:number;workers:number};
+type Session = { mode?: 'direct' | 'remux' | 'hls'; state: 'preparing' | 'ready' | 'failed'; token?: string; url?: string; offset: number; start?: number; complete?:boolean; delivery?:'indexed-ts'|'indexed-remux'; error?: string; reason?: string; color?:PlaybackColor; window_start?:number; window_end?:number; preparation?: BackendPreparation;remux_stats?:RemuxStats|null;prepared?:boolean };
+type Quality = 'auto' | 'compat' | '1080p' | '720p' | '480p';
+type Request = { start: number; force_transcode: boolean; prefer_original: boolean; skip_direct?: boolean; indexed_ts?:boolean; indexed_remux?:boolean; autoplay?: boolean; quality: Quality; audio_track_index?: number; key: number;allow_video_transcode?:boolean;allow_audio_transcode?:boolean;skip_prepared?:boolean };
 type SubtitleSource = { id: string; name: string; extension: string; text: string; assConverted?: boolean };
 type DragSession = { pointerId: number; startX: number; startY: number; panX: number; panY: number };
 const TEXT_SUBTITLE_CODECS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']);
@@ -91,8 +93,10 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const [isDraggingVideo, setIsDraggingVideo] = useState(false);
   const dragSession = useRef<DragSession | null>(null);
   const suppressStageClick = useRef(false);
-  const [request, setRequest] = useState<Request | null>(() =>
-    !automatic && media.progress > 0 && !media.watched ? null : { start: !media.watched?media.progress:0, force_transcode: false, prefer_original: true, quality: 'auto', key: 0 });
+  const [request, setRequest] = useState<Request | null>(() => {
+    const decision=startingPoint(media,automatic,readResumeBehavior());
+    return decision.ask?null:{start:decision.start,force_transcode:false,prefer_original:true,quality:'auto',key:0};
+  });
   const [phase, setPhase] = useState<'choice' | 'preparing' | 'ready' | 'error' | 'ended'>(request ? 'preparing' : 'choice');
   const [error, setError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -143,6 +147,8 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const [indexedPlayback,setIndexedPlayback]=useState(false);
   const [indexedRemuxPlayback,setIndexedRemuxPlayback]=useState(false);
   const [playbackColor,setPlaybackColor]=useState<PlaybackColor|null>(null);
+  const [remuxStats,setRemuxStats]=useState<RemuxStats|null>(null);
+  const [preparedPlayback,setPreparedPlayback]=useState(false);
   const preparation = usePreparationTrace();
   const [audioTrack, setAudioTrack] = useState('');
   const [openSetting, setOpenSetting] = useState<'quality' | 'audio' | 'speed' | 'subtitles' | 'more' | null>(null);
@@ -196,6 +202,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const hlsAvailableEnd = useRef(0);
   const hlsAvailableStart = useRef(0);
   const indexedTsPending = useRef(false);
+  const seekRevision=useRef(0);
   const indexedTsFailed = useRef(false);
   const indexedRemuxFailed = useRef(false);
   const cacheRecoveries = useRef(0);
@@ -211,14 +218,15 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   useEffect(()=>{
     const element=video.current;if(!element)return;
     const owner=crypto.randomUUID().replaceAll('-','');
-    const updateActivity=()=>{void api('/api/playback/activity',json('POST',{owner,playing:!element.paused&&!element.ended})).catch(()=>{});};
+    const updateActivity=()=>{void api('/api/playback/activity',json('POST',{owner,playing:!element.paused&&!element.ended,media_id:media.id,present:true,prepared:preparedPlayback})).catch(()=>{});};
     for(const event of ['playing','pause','ended'])element.addEventListener(event,updateActivity);
     const timer=window.setInterval(updateActivity,8000);
+    updateActivity();
     return()=>{
       clearInterval(timer);for(const event of ['playing','pause','ended'])element.removeEventListener(event,updateActivity);
-      navigator.sendBeacon('/api/playback/activity',new Blob([JSON.stringify({owner,playing:false})],{type:'application/json'}));
+      navigator.sendBeacon('/api/playback/activity',new Blob([JSON.stringify({owner,playing:false,media_id:media.id,present:false})],{type:'application/json'}));
     };
-  },[]);
+  },[media.id,preparedPlayback]);
   const ended = useRef(false);
   const stamp = useRef(0);
   const applied = useRef(0);
@@ -302,6 +310,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     let browserLoadTimer: number | undefined;
     const trace = preparation.begin();
     let fallbackStarted = false;
+    let preparedAttached=false;
     let cacheRecoveryStarted = false;
     let heartbeatBusy = false;
     let heartbeatFailures = 0;
@@ -327,6 +336,15 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     const fallback = () => {
       if (disposed || desktopQuitting.current || fallbackStarted) return;
       fallbackStarted = true;
+      if(preparedAttached&&!request.skip_prepared) {
+        const start=played.current?v.currentTime+offset.current:request.start;
+        const autoplay=played.current?!v.paused:request.autoplay;
+        void save().catch(()=>{});
+        setRequest({...request,start,autoplay,skip_prepared:true,prefer_original:true,skip_direct:false,key:request.key+1});return;
+      }
+      if(hls.current&&!request.allow_video_transcode) {
+        fail('原片及无损封装未能被当前浏览器正常解码；已停止，不会自动降低画质。可使用系统播放器，或主动确认有损兼容播放');return;
+      }
       const start = played.current ? v.currentTime + offset.current : request.start;
       if (!hls.current) originalFailed.current = true;
       void save().catch(() => {});
@@ -387,11 +405,14 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     hlsAvailableEnd.current = 0;
     hlsAvailableStart.current = 0;
     indexedTsPending.current = false;
+    seekRevision.current=0;
     setWaitingForIndex(false);
     diagnostics.sourceChanged();
     sourceChanging.current = true;
     setPhase('preparing'); setError(''); setPosition(request.start); setPlaybackMode(null); setPlaybackReason('');
     setPlaybackColor(null);
+    setRemuxStats(null);
+    setPreparedPlayback(false);
     setIndexedPlayback(false);
     setIndexedRemuxPlayback(false);
 
@@ -431,6 +452,9 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         setIndexedRemuxPlayback(session.delivery==='indexed-remux');
         setPlaybackReason(session.reason || '');
         setPlaybackColor(session.color || null);
+        setRemuxStats(session.remux_stats||null);
+        setPreparedPlayback(Boolean(session.prepared));
+        preparedAttached=Boolean(session.prepared);
         hls.current = session.mode === 'hls' || session.mode === 'remux';
         transcode.current = session.mode === 'hls';
         offset.current = session.offset;
@@ -481,7 +505,11 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
               backBufferLength: 30, maxBufferLength: 30, maxMaxBufferLength: 90,
               // Indexed TS is an offline EVENT timeline, not a broadcast whose
               // growing edge should move the user's playback position.
-              liveSyncDuration: session.delivery==='indexed-ts'?Math.max(120,media.duration+120):120 });
+              liveSyncDuration: session.delivery==='indexed-ts'?Math.max(120,media.duration+120):120,
+              xhrSetup:(xhr,url)=>{if(session.delivery==='indexed-remux') {
+                if(xhr.readyState===0)xhr.open('GET',url,true);
+                xhr.setRequestHeader('X-AVHub-Seek-Revision',String(seekRevision.current));
+              }} });
             hlsInstance.current = instance;
             let playlistRefreshPending=false;
             instance.on(HlsRuntime.Events.LEVEL_LOADED, (_, data) => {
@@ -582,6 +610,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
             const state = await api<Session>(`/api/playback/${sessionToken}?position=${Math.max(0, v.currentTime + offset.current)}`, { timeoutMs: 4000 });
             if (disposed) return;
             heartbeatFailures = 0;
+            setRemuxStats(state.remux_stats||null);
             if (state.window_start !== undefined) hlsAvailableStart.current = Math.max(hlsAvailableStart.current, state.window_start - offset.current);
             if (state.state === 'failed') {
               if(indexedTsPending.current)recoverPendingIndex();
@@ -776,7 +805,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   function startAt(start: number, force = transcode.current, selectedQuality = quality,
                    selectedAudio: number | null | undefined = audioTrack ? Number(audioTrack) : undefined,
                    preferOriginal = !force && selectedQuality === 'auto' && selectedAudio == null,
-                   autoplay = true) {
+                   autoplay = true, resetAudioPermission = false) {
     if (desktopQuitting.current) return;
     if (seekTimer.current !== null) clearTimeout(seekTimer.current);
     seekTimer.current = null; queuedSeek.current = null;
@@ -786,7 +815,8 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     if (phase === 'choice' || phase === 'ended' || phase === 'error') diagnostics.beginStartup();
     setRequest(previous => ({ start, force_transcode: force, prefer_original: preferOriginal && !originalFailed.current,
       skip_direct: originalFailed.current, quality: selectedQuality, audio_track_index: selectedAudio ?? undefined,
-      autoplay, key: (previous?.key || 0) + 1 }));
+      autoplay,allow_video_transcode:selectedQuality!=='auto',allow_audio_transcode:selectedQuality!=='auto'||(!resetAudioPermission&&request?.allow_audio_transcode===true),
+      key: (previous?.key || 0) + 1 }));
   }
   restartSeek.current = target => startAt(target, transcode.current, quality,
     audioTrack ? Number(audioTrack) : undefined, !transcode.current && quality === 'auto' && !audioTrack, seekAutoplay.current);
@@ -807,6 +837,12 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       seekFrame.clear();setPosition(target);return;
     }
     seekFrame.begin(target);
+    if(indexedRemuxPlayback&&token.current) {
+      const revision=++seekRevision.current;
+      // A user seek supersedes speculative work, not every sequential HTTP
+      // fragment. The matching header also protects against out-of-order hints.
+      void api(`/api/playback/${token.current}/seek`,json('POST',{position:target,revision})).catch(()=>{});
+    }
     const relative = target - offset.current;
     if(indexedTsPending.current&&!sourceChanging.current&&hlsInstance.current&&relative>hlsAvailableEnd.current-.05) {
       if(queuedSeek.current===null)seekAutoplay.current=!v.paused;
@@ -856,10 +892,17 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     seekTo(Math.max(0, Math.min(media.duration || Number.MAX_SAFE_INTEGER, target)));
   }
   function changeQuality(value: Quality) {
+    if(value!=='auto'&&!window.confirm('这是有损兼容播放，不是原画：会重新编码视频，HDR/高位深可能变为 SDR/8-bit，低分辨率选项还会缩小画面。仅在你明确接受时使用。继续吗？')) {setOpenSetting(null);return;}
+    if(value==='auto'){originalFailed.current=false;indexedTsFailed.current=false;indexedRemuxFailed.current=false;}
     setQuality(value);
     setOpenSetting(null);
     startAt(positionRef.current, value !== 'auto', value, audioTrack ? Number(audioTrack) : undefined,
-      value === 'auto' && !audioTrack, !(video.current?.paused ?? true));
+      value === 'auto' && !audioTrack, !(video.current?.paused ?? true),value==='auto');
+  }
+  function allowAudioCompatibility() {
+    if(!window.confirm('仅将不兼容的音轨转换为 AAC（音频有损），视频仍保持原编码、分辨率和色彩。继续吗？'))return;
+    setQuality('auto');setRequest(previous=>({...(previous||{quality:'auto' as const,key:0}),start:positionRef.current,
+      force_transcode:false,prefer_original:false,skip_direct:true,allow_video_transcode:false,allow_audio_transcode:true,key:(previous?.key||0)+1}));
   }
   function changeAudio(value: string) {
     setAudioTrack(value);
@@ -1087,8 +1130,10 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     setSubtitleDelay(current => Math.max(-10, Math.min(10, Math.round((current + delta) * 10) / 10)));
   }
   useEffect(() => {
-    function shortcuts(event: KeyboardEvent) {
-      const target = event.target;
+      function shortcuts(event: KeyboardEvent) {
+        const target = event.target;
+        if(target instanceof HTMLElement&&(target.closest('[aria-modal="true"]')||
+          target.closest('.window-about')&&['Space','Enter'].includes(event.code)))return;
       // Mouse focus on a player slider must not disable playback shortcuts.
       // Preserve native slider navigation for explicit keyboard/Tab focus.
       if(event.code==='Tab')pointerFocusedRange.current=null;
@@ -1161,7 +1206,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       await setWindowMode({purePlayback:!purePlayback,...(!purePlayback && videoAspectRatio!==undefined?{videoAspectRatio}:{})});
     } catch(e) {notify(`无法切换纯净播放：${errorText(e)}`);}
   }
-  const playbackModeLabel = indexedPlayback ? 'TS 索引直读' : indexedRemuxPlayback ? '索引按需封装' : playbackMode === 'direct' ? '原文件直放' : playbackMode === 'remux' ? '视频无损重封装' : playbackMode === 'hls' ? '兼容转码' : '正在尝试原片';
+  const playbackModeLabel = indexedPlayback ? 'TS 索引直读' : indexedRemuxPlayback ? '索引按需封装' : playbackMode === 'direct' ? preparedPlayback?'无损优化副本直放':'原文件直放' : playbackMode === 'remux' ? '视频无损重封装' : playbackMode === 'hls' ? '有损兼容转码（已确认）' : '正在尝试原片';
   const elapsedLabel = (milliseconds: number) => milliseconds < 1000 ? `${milliseconds} ms` : `${(milliseconds / 1000).toFixed(2)} 秒`;
   const seekRouteLabel = diagnostics.lastSeek ? { original: '原片按需读取', segments: '已有分段复用', restart: '重新准备播放流' }[diagnostics.lastSeek.route] : '';
   const sourceColor=playbackColor?.source || media.video_color || {};
@@ -1231,7 +1276,9 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       <button className="ui-button favorite-action" onClick={() => void changeFavorite(media)} disabled={favoriteBusy} aria-pressed={Boolean(media.favorite)}
         aria-label={favoriteBusy ? '正在保存收藏' : media.favorite ? '★ 已收藏' : '☆ 收藏'}>
         <Icon name="favorite" size={17} filled={Boolean(media.favorite)}/>{favoriteBusy ? '正在保存…' : media.favorite ? '已收藏' : '收藏'}</button>
-      <MediaActions media={media} update={update} notify={notify}/></div>
+      <MediaActions media={media} update={update} notify={notify} pauseForPreparation={()=>video.current?.pause()} playPrepared={()=>{
+        originalFailed.current=false;setQuality('auto');startAt(positionRef.current,false,'auto',audioTrack?Number(audioTrack):undefined,!audioTrack,true);
+      }}/></div>
     {saveError && <div className="notice" role="alert">{saveError} <button onClick={() => void save().catch(() => {})}>重试保存</button><button onClick={close}>直接返回</button></div>}
     <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}`} ref={videoWrap}
       style={{ '--player-height': `${videoWrapSize.height}px` } as CSSProperties}
@@ -1267,9 +1314,11 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       </div>
       {phase === 'choice' && <div className="resume"><b>继续上次观看？</b><span>上次看到 {duration(media.progress)}</span>
         <button onClick={() => startAt(media.progress, false, 'auto', undefined, true)}>继续播放</button><button className="ghost" onClick={() => startAt(0, false, 'auto', undefined, true)}>从头开始</button></div>}
-      {feedback.preparing && <div className="resume" role="status"><b>正在准备播放…</b><span>兼容视频直接播放，其他格式按需封装或转换</span></div>}
+      {feedback.preparing && <div className="resume" role="status"><b>正在准备播放…</b><span>{quality==='auto'?'原片直放或无损封装，不自动降低画质':'正在按已确认的有损兼容模式准备'}</span></div>}
       {feedback.buffering && <div className="buffering" role="status"><i />正在缓冲…</div>}
-      {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button></div>}
+      {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button>
+        <button className="ghost" onClick={()=>changeQuality('compat')}>兼容播放（有损，需确认）</button>
+        {media.video_codec==='h264'&&<button className="ghost" onClick={allowAudioCompatibility}>仅兼容音轨（视频原画）</button>}</div>}
       {phase === 'ended' && <div className="resume"><b>{nextEpisode ? (queue || media.kind!=='episode' ? '本条播放结束' : '本集播放结束') : '播放结束'}</b>
         {nextEpisode && <><span>{nextEpisode.id===media.id?'单条循环：':queueMode==='random'?'随机下一条：':queue ? '播放列表下一条：' : queueScope==='series'&&media.kind==='episode'?'下一集：':'下一条：'}{nextEpisode.title}{nextEpisode.season ? ` · 第 ${nextEpisode.season} 季` : ''}{nextEpisode.episode ? ` 第 ${nextEpisode.episode} 集` : ''}</span>
           <span>{nextStarting ? '正在切换…' : !autoNext?'自动连播已关闭':nextCancelled ? '自动连播已取消' : `${nextCountdown} 秒后自动播放`}</span>
@@ -1326,7 +1375,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
                   : quality}</small>
               </button>
               {openSetting === 'quality' && <Popover label="画质设置" close={() => setOpenSetting(null)}><label>画质<select aria-label="画质" value={quality} disabled={phase !== 'ready'} onChange={e => changeQuality(e.target.value as Quality)}>
-                <option value="auto">自动（优先原片）</option><option value="1080p">1080p</option><option value="720p">720p</option><option value="480p">480p</option>
+                <option value="auto">原画（不自动转码）</option><option value="compat">兼容原分辨率（有损）</option><option value="1080p">1080p（有损）</option><option value="720p">720p（有损）</option><option value="480p">480p（有损）</option>
               </select></label></Popover>}
             </div>
             {media.audio_tracks.length > 1 && <div className="player-setting">
@@ -1372,12 +1421,13 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       <details className="shortcut-help"><summary><Icon name="info" size={16}/>快捷键帮助</summary><p>空格 / K：播放暂停 · J / L：±10 秒 · ← / →：±5 秒 · ↑ / ↓：音量 · M：静音 · F：视频全屏 · W：纯净播放 · Esc：退出纯净播放（视频全屏时先退出全屏） · P：画中画 · {screenshotShortcutLabel()}：截图 · N：下一条 · R：旋转 · 滚轮：按指针缩放（Shift+滚轮调音量）</p><small>输入文字或选择菜单时不触发播放快捷键；桌面端纯净播放时，顶部区域可拖动窗口，窗口置顶可独立开关。</small></details>
       <details className="playback-diagnostics">
         <summary><Icon name="quality" size={16}/>播放信息 · {phase === 'choice' ? '待播放' : playbackModeLabel}</summary>
-        <p>{playbackReason || '优先交由浏览器解码原文件，不兼容时再尝试重封装或转码。'}</p>
+        <p>{playbackReason || '优先交由浏览器解码原文件，不兼容时仅尝试无损封装；有损兼容播放必须主动确认。'}</p>
         <dl>
           <div><dt>源视频编码</dt><dd>{media.video_codec || '未知'}</dd></div>
           <div><dt>源视频色彩</dt><dd><output aria-label="源视频色彩">{sourceColorLabel}</output></dd></div>
           <div><dt>播放色彩策略</dt><dd><output aria-label="播放色彩策略">{playbackColor?.label||'待播放'}</output></dd></div>
           <div><dt>实际解码分辨率</dt><dd><output aria-label="实际解码分辨率">{diagnostics.decodedSize.width ? `${diagnostics.decodedSize.width}×${diagnostics.decodedSize.height}` : '等待画面'}</output></dd></div>
+          {indexedRemuxPlayback&&remuxStats&&<div><dt>分片供给</dt><dd><output aria-label="分片供给统计">封装 {remuxStats.processes} 次 · 命中缓存 {remuxStats.cache_hits} 次 · 已供给 {remuxStats.published} 片{remuxStats.batch_failures?' · 已回退单片模式':''}</output></dd></div>}
           <div><dt>起播到首帧</dt><dd><output aria-label="起播耗时">{diagnostics.firstFrameMs !== null ? elapsedLabel(diagnostics.firstFrameMs) : phase === 'choice' ? '待播放' : phase === 'error' ? '播放失败' : '等待画面'}</output></dd></div>
           <div><dt>播放准备</dt><dd><output aria-label="播放准备阶段">{preparation.trace.current ? preparationLabels[preparation.trace.current] : preparation.trace.totalMs !== undefined ? `${preparation.trace.failed ? '未完成' : '已完成'} · ${elapsedLabel(preparation.trace.totalMs)}` : '待播放'}</output></dd></div>
           {Object.entries(preparation.trace.stages).map(([stage, ms]) => <div key={stage}><dt>{preparationLabels[stage as keyof typeof preparationLabels]}</dt><dd><output aria-label={`${preparationLabels[stage as keyof typeof preparationLabels]}耗时`}>{elapsedLabel(ms)}</output></dd></div>)}

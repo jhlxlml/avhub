@@ -1,0 +1,108 @@
+/* Display-only preferences: no changes to queries, pagination or media sources. */
+:root {--cover-card-min:190px}
+:root[data-cover-size="compact"] {--cover-card-min:160px}
+:root[data-cover-size="comfortable"] {--cover-card-min:240px}
+:root[data-cover-size="large"] {--cover-card-min:300px}
+:root .media-grid {grid-template-columns:repeat(auto-fill,minmax(min(var(--cover-card-min),100%),1fr))}
+
+:root[data-theme="light"] {
+  --ui-bg:#f4f6fa;
+  --ui-surface:#ffffff;
+  --ui-raised:#e9eef5;
+  --ui-hover:#dfe7f0;
+  --ui-field:#f7f9fc;
+  --ui-border:#ced7e3;
+  --ui-divider:#dfe5ee;
+  --ui-text:#1d2b3d;
+  --ui-secondary:#42546a;
+  --ui-muted:#596c80;
+  --ui-accent:#b84434;
+  --ui-accent-hover:#a5382b;
+  --ui-accent-soft:#b8443410;
+  --ui-danger:#a73042;
+  --ui-warning:#91601c;
+  --ui-success:#28724c;
+  --ui-on-accent:#ffffff;
+  --ui-shadow:0 18px 55px #25334b1f;
+  --ui-shadow-soft:0 2px 8px #25334b0d;
+  color-scheme:light;
+}
+:root[data-theme="light"] input::placeholder {color:var(--ui-muted)}
+:root[data-theme="light"] main>header,
+:root[data-theme="light"] .player-shell .player-top {background:var(--ui-surface)}
+:root .player-shell {background:var(--ui-bg);color:var(--ui-text)}
+:root .player-shell .player-top>span,
+:root .player-shell .player-info,
+:root .player-shell .player-info h2 {color:var(--ui-text)}
+:root .modal .screenshot-description {color:var(--ui-muted)}
+.library-view-controls {position:relative;display:flex;align-items:center;gap:7px;margin-left:auto;flex:none}
+.cover-size-control {flex:none}
+.cover-size-control>.ui-icon-button {background:var(--ui-surface);color:var(--ui-secondary);border:1px solid var(--ui-border)}
+.cover-size-control>.ui-icon-button[aria-expanded="true"] {color:var(--ui-accent);background:var(--ui-accent-soft)}
+.cover-size-popover {position:absolute;right:0;top:calc(100% + 8px);z-index:8;width:min(260px,calc(100vw - 32px));padding:15px;background:var(--ui-surface);color:var(--ui-text);border:1px solid var(--ui-border);border-radius:12px;box-shadow:var(--ui-shadow)}
+.cover-size-heading {display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;font-weight:600}
+.cover-size-heading output {color:var(--ui-accent);font-weight:500}
+.cover-size-popover input[type="range"] {width:100%;height:24px;margin:10px 0 6px;accent-color:var(--ui-accent);cursor:pointer}
+.cover-size-presets {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.cover-size-presets>button {padding:7px 2px;font-size:11px;background:var(--ui-field);color:var(--ui-secondary);border-radius:6px}
+.cover-size-presets>button[aria-pressed="true"] {background:var(--ui-accent-soft);color:var(--ui-accent);box-shadow:inset 0 0 0 1px var(--ui-accent-border)}
+.cover-size-popover>small {display:block;margin-top:10px;font-size:11px;color:var(--ui-muted);line-height:1.6}
+:root .player-shell .player-top>.theme-toggle {width:36px;min-width:36px;height:36px;flex:none;padding:8px}
+
+/* Fill older un-tokenized labels and fields, rather than invert the entire UI. */
+:root[data-theme="light"] .directory-filter small,
+:root[data-theme="light"] .root-pager span,
+:root[data-theme="light"] .folder-search-row small,
+:root[data-theme="light"] .folder-empty,
+:root[data-theme="light"] .folder-pager span,
+:root[data-theme="light"] .folder-tiles small,
+:root[data-theme="light"] .folder-breadcrumbs,
+:root[data-theme="light"] .playlist-index,
+:root[data-theme="light"] .playlist-detail small,
+:root[data-theme="light"] .playlist-empty,
+:root[data-theme="light"] .playlist-detail .queue-pager,
+:root[data-theme="light"] .player-shell .queue-heading small,
+:root[data-theme="light"] .player-shell .queue-hint,
+:root[data-theme="light"] .player-shell .queue-item-text small,
+:root[data-theme="light"] .player-shell .queue-pager {color:var(--ui-muted)}
+:root[data-theme="light"] .search input,
+:root[data-theme="light"] .playlist-item-title,
+:root[data-theme="light"] .player-shell .queue-item-text b {color:var(--ui-text)}
+:root[data-theme="light"] .playlist-field,
+:root[data-theme="light"] .playlist-item-actions>button,
+:root[data-theme="light"] .playlist-remove,
+:root[data-theme="light"] .playlist-rename button,
+:root[data-theme="light"] .media-editor label,
+:root[data-theme="light"] .editor-message {color:var(--ui-secondary)}
+:root[data-theme="light"] .playlist-rename button {background:var(--ui-raised)}
+:root[data-theme="light"] .playlist-list>button:hover,
+:root[data-theme="light"] .playlist-item-actions>button:hover:not(:disabled) {background:var(--ui-hover);color:var(--ui-text)}
+:root[data-theme="light"] .playlist-rename input {background:var(--ui-field);color:var(--ui-text);border-color:var(--ui-border)}
+:root[data-theme="light"] .root-info small {color:#91601c}
+:root[data-theme="light"] .scan-heading strong {color:var(--ui-text)}
+:root[data-theme="light"] .scan-current {color:var(--ui-muted)}
+:root[data-theme="light"] .scan-status {color:var(--ui-secondary)}
+:root[data-theme="light"] .scan-status details {color:#91601c}
+:root[data-theme="light"] .cover-placeholder {color:var(--ui-muted)}
+:root[data-theme="light"] .cover {box-shadow:0 2px 10px #25334b14,inset 0 0 0 1px #25334b08}
+:root[data-theme="light"] .card:hover .cover {box-shadow:0 3px 16px #25334b24,inset 0 0 0 1px var(--ui-accent-border)}
+:root[data-theme="light"] .modal-backdrop {background:#23334b66}
+:root[data-theme="light"] .player-shell:not(.is-pure-playback) .video-wrap:not(:fullscreen) {box-shadow:0 8px 28px #25334b24}
+
+/* Contrast over video is independent of the library theme. Never alter pixels. */
+:root .video-wrap {
+  --ui-bg:#0b0f16;--ui-surface:#121923;--ui-raised:#18212e;--ui-hover:#212d3d;
+  --ui-field:#0e151f;--ui-border:#283445;--ui-divider:#202c3a;
+  --ui-text:#e8edf5;--ui-secondary:#b0bdce;--ui-muted:#8797ad;
+  --ui-accent:#f3907e;--ui-accent-hover:#ffa18e;--ui-accent-soft:#f3907e14;
+  --ui-danger:#f49a9a;--ui-on-accent:#211612;--ui-shadow:0 20px 70px #0008;
+  --ui-warning:#efbe79;--ui-success:#8ac5a4;
+  --ui-danger-soft:color-mix(in srgb,var(--ui-danger) 9%,var(--ui-surface));
+  --ui-accent-border:color-mix(in srgb,var(--ui-accent) 22%,transparent);
+  --ui-focus-ring:color-mix(in srgb,var(--ui-accent) 16%,transparent);
+  --ui-shadow-soft:0 2px 8px #0002;
+  color-scheme:dark;
+}
+:root.pure-playback .desktop-titlebar {--ui-accent:#f3907e}
+.series-count,.episode-cover>.ui-icon {color:#e8edf5}
+@media(max-width:720px) {.library-view-controls{gap:6px}.cover-size-popover{padding:12px}}
