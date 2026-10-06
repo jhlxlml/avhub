@@ -4,6 +4,8 @@ from pathlib import PurePath
 
 
 class RootPathIndex:
+    # Paths are canonicalized by registration/relocation. Keep this trie
+    # strictly lexical: resolving thousands of offline roots would block scans.
     _owner = object()
 
     def __init__(self, roots):

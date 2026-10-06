@@ -792,10 +792,13 @@ def root_status(ids: str = Query(..., pattern=r'^\d+(,\d+)*$', max_length=1024))
 def add_root(body: RootInput):
     path = Path(body.path).expanduser()
     if not path.is_dir(): raise HTTPException(400, "目录不存在或无法访问")
+    # Resolve once at registration, including Windows 8.3 aliases. The scan
+    # trie relies on this contract and must not probe every offline root/file.
+    path = path.resolve()
     with scanner.lock, connection() as db:
         scanner.require_idle()
-        db.execute("INSERT OR IGNORE INTO roots(path,added_at) VALUES(?,?)", (str(path.resolve()), time.time()))
-        row = db.execute("SELECT * FROM roots WHERE path=?", (str(path.resolve()),)).fetchone()
+        db.execute("INSERT OR IGNORE INTO roots(path,added_at) VALUES(?,?)", (str(path), time.time()))
+        row = db.execute("SELECT * FROM roots WHERE path=?", (str(path),)).fetchone()
     return dict(row)
 
 @app.delete("/api/roots/{root_id}")

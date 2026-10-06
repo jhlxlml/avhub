@@ -77,7 +77,8 @@ class ScanTests(unittest.TestCase):
     def setUp(self):
         m.bootstrap()
         self.temp = tempfile.TemporaryDirectory(prefix='avhub-scan-test-')
-        self.folder = Path(self.temp.name)
+        # DB fixtures must obey the registration API's canonical-path contract.
+        self.folder = Path(self.temp.name).resolve()
         self.manager = ScanManager()
         with m.connection() as db:
             db.execute('DELETE FROM media')

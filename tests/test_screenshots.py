@@ -26,7 +26,7 @@ def png(width=320,height=180,raw=None):
 class ScreenshotTests(unittest.TestCase):
     def setUp(self):
         temporary=tempfile.TemporaryDirectory(prefix='avhub-screenshots-');self.addCleanup(temporary.cleanup)
-        self.folder=Path(temporary.name)
+        self.folder=Path(temporary.name).resolve()
         for name,value in [('DATA',self.folder),('DB',self.folder/'library.db'),('THUMBS',self.folder/'thumbnails'),('screenshot_store',s.ScreenshotStore())]:
             context=patch.object(m,name,value);context.start();self.addCleanup(context.stop)
         m.THUMBS.mkdir();m.bootstrap()

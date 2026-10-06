@@ -2,6 +2,10 @@
 
 English · [简体中文](README.md)
 
+### 0.2.7 update
+
+- Fixes CI fixture inconsistencies with Windows 8.3 path aliases and adds a real short-path regression. Registration resolves once; large root lookup remains disk-free. Full regressions pass with both normal and short temporary paths.
+
 ### 0.2.6 update
 
 - Adds GitHub Actions: regular commits run tests, stable version tags build and publish Windows portable releases with checksums/provenance. Manual Actions runs build artifacts only. See [workflow guide](docs/GITHUB-ACTIONS.md).

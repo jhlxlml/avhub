@@ -106,7 +106,7 @@ class LibraryTests(unittest.TestCase):
 
     def test_sidecar_subtitle_discovery_and_path_scope(self):
         with tempfile.TemporaryDirectory(prefix='avhub-subtitle-') as folder:
-            media_dir = Path(folder) / 'media'; media_dir.mkdir()
+            media_dir = Path(folder).resolve() / 'media'; media_dir.mkdir()
             video = media_dir / 'film.mp4'; video.write_bytes(b'video')
             subtitle = media_dir / 'film.zh-CN.srt'; subtitle.write_text('subtitle', encoding='utf-8')
             with m.connection() as db: db.execute('UPDATE media SET path=? WHERE id=1', (str(video),))

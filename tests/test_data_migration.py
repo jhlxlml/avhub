@@ -10,7 +10,7 @@ from app.data_migration import migrate,configured_directory
 
 class DataMigrationTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(prefix='avhub-migration-test-');self.root=Path(self.temp.name)
+        self.temp=tempfile.TemporaryDirectory(prefix='avhub-migration-test-');self.root=Path(self.temp.name).resolve()
         self.source=self.root/'old';self.source.mkdir();self.target=self.root/'new';self.target.mkdir();self.identity=str(uuid.uuid4())
         self.db=sqlite3.connect(self.source/'library.db')
         self.db.executescript('CREATE TABLE roots(id INTEGER,path TEXT); CREATE TABLE preferences(key TEXT,value TEXT); CREATE TABLE media(id INTEGER,thumbnail TEXT,custom_cover TEXT,progress REAL,favorite INTEGER); CREATE TABLE playlists(id INTEGER,name TEXT);')

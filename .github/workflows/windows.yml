@@ -54,6 +54,8 @@ jobs:
           npm run build:electron
       - name: Backend regression
         run: python -m unittest discover -s tests -p test_*.py
+      - name: Windows short-path regression
+        run: python tests/check_path_alias.py
       - name: Shared renderer regression
         run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/manual-updates.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts
       - name: Real Electron startup/exit
