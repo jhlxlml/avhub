@@ -29,6 +29,10 @@ test('C saves directly without downloads or dialogs, including paused and rotate
   await play(page);
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.pause();v.currentTime=5;});
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBe(5);
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+8);
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-7);
+  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
   await page.getByRole('button',{name:/旋转视频/}).click();
   await page.locator('.player-info h2').click();
   const firstSave=screenshotResponse(page);await page.keyboard.press('c');const first=await(await firstSave).json();
