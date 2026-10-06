@@ -9,6 +9,14 @@ def published(tag='v0.2.10',asset=True):
     number=tag.lstrip('v');filename=f'AVHub-portable-{number}-x64.exe'
     return {'tag_name':tag,'draft':False,'prerelease':False,'body':'原画播放与更新说明','assets':[{'name':filename,'state':'uploaded','size':100,'browser_download_url':f'{updates.REPOSITORY}/releases/download/{tag}/{filename}'}] if asset else []}
 class UpdateTests(unittest.TestCase):
+    def test_folder_only_dual_formats_and_wrong_zip_host(self):
+        value=published(asset=False);tag=value['tag_name'];filename='AVHub-folder-portable-0.2.10-x64.zip'
+        folder={'name':filename,'state':'uploaded','size':12345678,'browser_download_url':f'{updates.REPOSITORY}/releases/download/{tag}/{filename}'}
+        value['assets']=[folder]
+        info=updates.release_info(value,'0.2.9');self.assertEqual(info['status'],'available');self.assertEqual(info['downloads'][0]['format'],'folder')
+        value['assets']+=published()['assets'];self.assertEqual([d['format'] for d in updates.release_info(value,'0.2.9')['downloads']],['folder','single'])
+        value['assets']=[{**folder,'browser_download_url':'https://invalid.example/file.zip'}]
+        self.assertEqual(updates.release_info(value,'0.2.9')['status'],'pending')
     def test_semantic_versions_and_download_readiness(self):
         self.assertEqual(updates.release_info(published(),'0.2.9')['status'],'available')
         self.assertEqual(updates.release_info(published(asset=False),'0.2.9')['status'],'pending')

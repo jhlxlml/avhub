@@ -1,7 +1,8 @@
 type WindowPlaybackState = {purePlayback:boolean;alwaysOnTop:boolean;maximized:boolean;fullScreen:boolean};
 interface Window {
   avhubDesktop?: {
-    openRelease:(tag:string)=>Promise<{ok:boolean}>;
+    openRelease:(tag:string,format?:'folder'|'single')=>Promise<{ok:boolean}>;
+    startupReady?:()=>Promise<{ok:boolean}>;
     dataLocation:(action:'get'|'choose')=>Promise<{current:string;default:string;next:string;locked:boolean}|{cancelled:true}>;
     chooseFolder:(purpose:'media'|'screenshots')=>Promise<{path:string}|{cancelled:true}>;
     appCommand:(command:'data-folder'|'project-page')=>Promise<{ok:boolean}>;

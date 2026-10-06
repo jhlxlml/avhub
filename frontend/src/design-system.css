@@ -434,3 +434,10 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
   .settings-tabs>button {min-height:34px;font-size:12px;gap:7px}
   .settings-tabs>#settings-tab-help {grid-column:1 / -1}
 }
+.release-downloads {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;margin:12px 0}
+.release-download-card {min-width:0;padding:14px;border:1px solid var(--ui-border);border-radius:12px;background:var(--ui-surface)}
+.release-download-card>strong {display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--ui-text)}
+.release-download-card>strong>small {font-size:10px;color:var(--ui-accent);background:var(--ui-accent-soft);padding:3px 6px;border-radius:6px}
+.release-download-card>p,.release-upgrade-hint {font-size:12px;line-height:1.6;color:var(--ui-muted)}
+.release-download-card>.ui-button {max-width:100%;font-size:12px}
+.toast[data-kind="success"]>.ui-icon {color:var(--ui-success)}

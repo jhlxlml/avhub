@@ -1,5 +1,45 @@
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
+test('closing and reopening remembers expansion and uses the bounded cached listing',async({page,request})=>{
+  await request.post('/test/folder-fixture');await page.goto('/');
+  const calls:string[]=[];page.on('request',r=>{if(r.url().includes('/folders?'))calls.push(r.url());});
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await page.getByRole('button',{name:'展开目录 folder-library',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'Drama',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'展开目录 Drama',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'Season 1',exact:true})).toBeVisible();
+  const count=calls.length;
+  await page.getByRole('button',{name:'隐藏目录树',exact:true}).click();
+  await expect(page.getByRole('complementary',{name:'多级目录树'})).toHaveCount(0);
+  await page.waitForTimeout(400);expect(calls.length).toBe(count);
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'Season 1',exact:true})).toBeVisible();expect(calls.length).toBe(count);
+  await page.reload();await expect(page.getByRole('complementary',{name:'多级目录树'})).toHaveCount(0);
+});
+test('ten-thousand-child branch keeps its page after collapse and cached reopening',async({page,request})=>{
+  await request.post('/test/many-subfolders');await page.goto('/');
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await page.getByRole('button',{name:'展开目录 many-subfolders',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'folder-00000',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'下一页目录 many-subfolders',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'folder-00040',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'收起目录 many-subfolders',exact:true}).click();
+  await page.getByRole('button',{name:'展开目录 many-subfolders',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'folder-00040',exact:true})).toBeVisible();
+  await expect(page.getByRole('treeitem',{name:'folder-00000',exact:true})).toHaveCount(0);
+  expect(await page.getByRole('treeitem').count()).toBeLessThan(60);
+});
+test('directory scroll position survives sidebar hiding within the same session',async({page,request})=>{
+  await request.post('/test/many-subfolders');await page.goto('/');
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await page.getByRole('button',{name:'展开目录 many-subfolders',exact:true}).click();
+  await expect(page.getByRole('treeitem',{name:'folder-00039',exact:true})).toHaveCount(1);
+  const scroll=page.locator('.directory-tree-scroll');
+  await scroll.evaluate(el=>el.scrollTop=180);await expect(scroll).toHaveJSProperty('scrollTop',180);
+  await page.getByRole('button',{name:'隐藏目录树',exact:true}).click();
+  await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+  await expect(scroll).toHaveJSProperty('scrollTop',180);
+});
 test('desktop sidebar defaults closed and stays closed after reload without losing filters',async({page,request})=>{
   await request.post('/test/folder-fixture');await page.goto('/?root=50&folder=Drama&sort=name');
   const tree=page.getByRole('complementary',{name:'多级目录树'});

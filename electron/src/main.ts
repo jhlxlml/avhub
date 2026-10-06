@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, screen, shell, type IpcMainInvokeE
 import { fitPlaybackBounds, playbackMinimum } from './playbackGeometry';
 import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
+import {StartupTrace} from './startupTrace';
 import { stopOwnedBackend } from './backendShutdown';
 import { appendBoundedLog } from './desktopLogs';
 import { previousDirectory,rememberDirectory,type DirectoryPurpose } from './directoryHistory';
@@ -31,6 +32,7 @@ let normalPlaybackWindow: { contentBounds: Rectangle; maximized: boolean } | nul
 let playbackAspectRatio=0;
 let expandedPlaybackBounds:Rectangle|null=null;
 let fittingPlaybackWindow=false;
+const startupTrace=new StartupTrace(line=>appendDesktopLog(line));
 const dataHome=isPackaged?(process.env.PORTABLE_EXECUTABLE_DIR||path.dirname(app.getPath('exe'))):(process.env.AVHUB_APP_HOME||projectRoot);
 const dataConfigFile=path.join(dataHome,configName);
 const defaultDataDir=path.join(dataHome,'AVHub-data');
@@ -93,6 +95,7 @@ function publishWindowState(window: BrowserWindow) {
   if (!window.isDestroyed()) window.webContents.send('avhub:window-state-changed', windowState(window));
 }
 ipcMain.handle('avhub:window-state', event => windowState(trustedWindow(event)));
+ipcMain.handle('avhub:startup-ready',event=>{trustedWindow(event);startupTrace.mark('library-ready');return {ok:true};});
 ipcMain.handle('avhub:window-mode', (event, value: unknown) => {
   const window = trustedWindow(event);
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -102,6 +105,7 @@ ipcMain.handle('avhub:window-mode', (event, value: unknown) => {
     throw new Error('窗口模式参数无效');
   const update = value as {purePlayback?: boolean; alwaysOnTop?: boolean;videoAspectRatio?:number};
   let needsFit=false;
+  const pureTransition=update.purePlayback!==undefined && update.purePlayback!==purePlayback;
   if (update.purePlayback !== undefined && update.purePlayback !== purePlayback) {
     if (update.purePlayback) {
       const maximized=window.isMaximized();
@@ -130,7 +134,11 @@ ipcMain.handle('avhub:window-mode', (event, value: unknown) => {
     playbackAspectRatio=update.videoAspectRatio;needsFit=true;
   }
   if(needsFit)fitPlaybackWindow(window);
-  if (update.alwaysOnTop !== undefined) window.setAlwaysOnTop(update.alwaysOnTop);
+  // Enter/exit owns this transition, even if a combined IPC request conflicts.
+  // Manual pin toggles remain available while staying in the same mode; ratio
+  // updates and video switches must not undo a deliberate manual unpin.
+  if(pureTransition)window.setAlwaysOnTop(purePlayback);
+  else if (update.alwaysOnTop !== undefined) window.setAlwaysOnTop(update.alwaysOnTop);
   publishWindowState(window);
   return windowState(window);
 });
@@ -215,10 +223,13 @@ ipcMain.handle('avhub:app-command',async(event,command:unknown)=>{
   const error=await shell.openPath(directory);if(error)throw new Error('无法打开数据目录');
   return {ok:true};
 });
-ipcMain.handle('avhub:open-release',async(event,tag:unknown)=>{
+ipcMain.handle('avhub:open-release',async(event,tag:unknown,format:unknown)=>{
   trustedWindow(event);
   if(typeof tag!=='string'||!/^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)||tag.length>50)throw new Error('发布版本无效');
-  await shell.openExternal(`https://github.com/jhlxlml/avhub/releases/tag/${tag}`);return {ok:true};
+  if(format!==undefined && format!=='folder' && format!=='single')throw new Error('下载格式无效');
+  const version=tag.replace(/^v/,'');
+  const filename=format==='folder'?`AVHub-folder-portable-${version}-x64.zip`:`AVHub-portable-${version}-x64.exe`;
+  await shell.openExternal(format===undefined?`https://github.com/jhlxlml/avhub/releases/tag/${tag}`:`https://github.com/jhlxlml/avhub/releases/download/${tag}/${filename}`);return {ok:true};
 });
 
 function chooseDataDirectory(): string {
@@ -324,6 +335,7 @@ async function waitForBackend(child: ChildProcess): Promise<void> {
       const health = await response.json() as { ok?: boolean; port?: number; desktop_session?: boolean; session_id?: string };
       if (response.ok && health.ok && health.port === backendPort && health.desktop_session && health.session_id === expectedSessionId) {
         appendDesktopLog(`backend-ready port=${backendPort}`);
+        startupTrace.mark('backend-ready');
         return;
       }
     } catch { /* The Python server may still be starting. */ }
@@ -404,9 +416,11 @@ function createWindow(): BrowserWindow {
   window.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) =>
     callback(contents === window.webContents && permissionAllowed(permission, details.requestingUrl, allowedOrigin, details.isMainFrame)));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.once('did-finish-load',()=>{
+    appendDesktopLog('renderer-loaded');startupTrace.mark('renderer-loaded');
+  });
   if (!isPackaged && process.env.AVHUB_SMOKE_TEST === '1') {
     window.webContents.once('did-finish-load', () => {
-      appendDesktopLog('renderer-loaded');
       setTimeout(() => app.quit(), 300);
     });
     window.webContents.once('did-fail-load', (_event, code, description, _url, isMainFrame) => {
@@ -427,6 +441,7 @@ function createWindow(): BrowserWindow {
 
 async function startApplication() {
   appendDesktopLog('startup-begin');
+  startupTrace.mark('begin');
   if(pendingDataMigration) {
     const pending=pendingDataMigration;
     const executable=isPackaged?path.join(process.resourcesPath,'backend','AVHubServer.exe'):(process.env.AVHUB_PYTHON||'python');
@@ -443,6 +458,7 @@ async function startApplication() {
   backendPort = await freeLoopbackPort();
   sessionToken = randomBytes(32).toString('hex');
   appendDesktopLog(`backend-start port=${backendPort}`);
+  startupTrace.mark('backend-start');
   backend = startBackend();
   backend.stdout?.on('data', appendBackendLog);
   backend.stderr?.on('data', appendBackendLog);
@@ -461,6 +477,7 @@ async function startApplication() {
   mainWindow.on('closed', () => { mainWindow = null; });
   applicationStarted = true;
   appendDesktopLog('window-created');
+  startupTrace.mark('window-created');
 }
 
 async function stopBackend() {

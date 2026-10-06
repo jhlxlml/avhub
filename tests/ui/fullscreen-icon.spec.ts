@@ -22,6 +22,9 @@ async function fullscreenState(page:Page,active:boolean) {
       {x:4,y:15,width:5,height:5},{x:15,y:15,width:5,height:5},
     ]);
   } else await expect(button.locator('svg path')).toHaveCount(1);
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height/2);
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-7);
   return button;
 }
 
@@ -38,17 +41,17 @@ test(`fullscreen icon and accessible action track mouse, F, Esc and double-click
   const video=page.locator('video');
   await video.evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.instance='fullscreen-same-decoder';});
   const source=await video.evaluate((v:HTMLVideoElement)=>v.currentSrc);
-  if(mode==='pure')await page.getByRole('button',{name:'纯净播放',exact:true}).click();
+  if(mode==='pure')await page.keyboard.press('w');
   await (await fullscreenState(page,false)).click();
   const exit=await fullscreenState(page,true);
   await exit.screenshot({path:`test-results/fullscreen-exit-${theme}-${mode}.png`});
-  await exit.click();await fullscreenState(page,false);
+  await (await fullscreenState(page,true)).click();await fullscreenState(page,false);
   await page.keyboard.press('f');await fullscreenState(page,true);
   await page.keyboard.press('Escape');await fullscreenState(page,false);
   await page.keyboard.press('f');await fullscreenState(page,true);
   await page.keyboard.press('f');await fullscreenState(page,false);
-  await page.locator('.video-canvas').dblclick();await fullscreenState(page,true);
-  await page.locator('.video-canvas').dblclick();await fullscreenState(page,false);
+  await page.locator('.video-canvas').dblclick({position:{x:100,y:60}});await fullscreenState(page,true);
+  await page.locator('.video-canvas').dblclick({position:{x:100,y:60}});await fullscreenState(page,false);
   await expect(page.locator('.player-shell')).toHaveClass(mode==='pure'?/is-pure-playback/:/^player-shell$/);
   await expect(video).toHaveAttribute('data-instance','fullscreen-same-decoder');
   expect(await video.evaluate((v:HTMLVideoElement)=>v.currentSrc)).toBe(source);

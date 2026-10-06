@@ -11,6 +11,13 @@ from urllib.error import HTTPError
 
 ROOT=Path(__file__).resolve().parent.parent
 REPO='jhlxlml/avhub'
+
+def release_body(notes,version,sha,ci):
+    downloads=(f'\n\n## 下载 / Downloads\n\n'
+               f'- `AVHub-folder-portable-{version}-x64.zip`：推荐日常使用。完整解压到可写目录后运行 `AVHub.exe`，不要只复制 EXE 或直接在压缩包内启动。Extract the whole folder, then run AVHub.exe.\n'
+               f'- `AVHub-portable-{version}-x64.exe`：单文件便携版，每次启动先解压。Single-file portable app; extracts on launch.\n'
+               '两个版本均无需另装 Python、Node.js 或 FFmpeg；保留 AVHub-data 和 avhub-data-location.json。校验两个下载文件请使用 SHA256SUMS.txt。Both formats bundle their runtimes; preserve your data and verify SHA256SUMS.txt.\n')
+    return notes+downloads+(f'\n<!-- avhub-ci-release:{sha} -->' if ci else '')
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--probe',action='store_true');parser.add_argument('--publish',action='store_true');parser.add_argument('--ci',action='store_true');args=parser.parse_args()
     if args.probe==args.publish:parser.error('Choose --probe or --publish')
@@ -51,15 +58,17 @@ def main():
     else:
         remote_sha=subprocess.check_output(['git','ls-remote','origin','refs/heads/main'],cwd=ROOT,text=True).split()[0]
         if remote_sha!=sha:raise SystemExit('Push the committed release source before publishing')
+        runpy.run_path(str(ROOT/'scripts/ci-artifacts.py'))['verify'](artifact.parent,version,sha)
     existing=next((r for r in repository if r['tag_name']==tag),None)
-    body=notes.read_text(encoding='utf-8')+(f'\n<!-- avhub-ci-release:{sha} -->' if args.ci else '')
+    body=release_body(notes.read_text(encoding='utf-8'),version,sha,args.ci)
     if existing:
         if not args.ci or not existing.get('draft') or existing.get('body')!=body or existing.get('target_commitish')!=sha:raise SystemExit('Existing release is not an owned CI draft; refusing to overwrite')
         release=existing
     else:release=call('/releases','POST',{'tag_name':tag,'target_commitish':sha,'name':'AVHub '+version,'body':body,'draft':True,'prerelease':False})
     digest=hashlib.sha256(artifact.read_bytes()).hexdigest()
-    checksum=artifact.with_name('SHA256SUMS.txt');checksum.write_text(f'{digest}  {artifact.name}\n',encoding='utf-8')
-    files=(artifact,checksum,artifact.parent/'release-build.json') if args.ci else (artifact,checksum)
+    checksum=artifact.with_name('SHA256SUMS.txt')
+    files=(artifact,artifact.parent/f'AVHub-folder-portable-{version}-x64.zip',checksum,artifact.parent/'release-build.json')
+    if any(not file.is_file() or file.is_symlink() for file in files):raise SystemExit('Required EXE/ZIP release files missing')
     if any(a['name'] not in {f.name for f in files} for a in release.get('assets',[])):raise SystemExit('Unexpected assets in CI draft; refusing to publish')
     for file in files:
         previous=next((a for a in release.get('assets',[]) if a['name']==file.name),None)
@@ -69,7 +78,7 @@ def main():
             call('/releases/assets/'+str(previous['id']),'DELETE')
         uploaded=call(f'https://uploads.github.com/repos/{REPO}/releases/{release["id"]}/assets?name={file.name}','POST',file=file)
         if uploaded.get('state')!='uploaded' or uploaded.get('size')!=file.stat().st_size:raise SystemExit('Upload validation failed; release remains draft')
-        if file==artifact and uploaded.get('digest') not in (None,'sha256:'+digest):raise SystemExit('Remote digest mismatch; release remains draft')
+        if uploaded.get('digest') not in (None,'sha256:'+hashlib.sha256(file.read_bytes()).hexdigest()):raise SystemExit('Remote digest mismatch; release remains draft')
     published=call('/releases/'+str(release['id']),'PATCH',{'draft':False,'make_latest':'true'})
     print(json.dumps({'url':published['html_url'],'tag':tag,'commit':sha,'sha256':digest,'bytes':artifact.stat().st_size}))
 if __name__=='__main__':main()

@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import yaml
+from test_folder_portable import folder,fixture
 ROOT=Path(__file__).resolve().parents[1]
 def module(name,file):
     spec=importlib.util.spec_from_file_location(name,ROOT/file);value=importlib.util.module_from_spec(spec);spec.loader.exec_module(value);return value
@@ -18,6 +19,9 @@ class CITests(unittest.TestCase):
         self.assertEqual(prepare.validate_release('v'+version),version)
         with self.assertRaises(ValueError):prepare.validate_release('v0.0.0')
     def test_workflow_has_minimal_permissions_and_pins_actions(self):
+        package=json.loads((ROOT/'package.json').read_text())
+        backend=next(resource for resource in package['build']['extraResources'] if resource['to']=='backend')
+        self.assertIn('!**/.*/**',backend['filter'])
         workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)
         self.assertEqual(workflow['permissions']['contents'],'read')
         self.assertEqual(workflow['jobs']['publish']['permissions']['contents'],'write')
@@ -27,13 +31,23 @@ class CITests(unittest.TestCase):
             for step in job['steps']:
                 if 'uses' in step:self.assertRegex(step['uses'],r'@([a-f0-9]{40})$')
                 if step.get('name')=='Package only tags or explicit manual runs':self.assertIn('workflow_dispatch',step['if'])
+        steps=workflow['jobs']['verify']['steps']
+        folder_check=next(step for step in steps if step.get('name')=='Actual extracted folder ZIP acceptance')
+        self.assertIn('--folder',folder_check['run']);self.assertIn('workflow_dispatch',folder_check['if'])
+        upload=next(step for step in steps if step.get('name')=='Save verified release files')
+        self.assertIn('AVHub-folder-portable-*-x64.zip',upload['with']['path'])
     def test_manifest_rejects_corruption_or_different_source(self):
         with tempfile.TemporaryDirectory() as directory:
             directory=Path(directory);file=directory/'AVHub-portable-1.2.3-x64.exe';file.write_bytes(b'MZ-test')
-            info={'version':'1.2.3','commit':'a'*40,'filename':file.name,'bytes':file.stat().st_size,'sha256':artifacts.digest(file)}
-            (directory/'release-build.json').write_text(json.dumps(info));(directory/'SHA256SUMS.txt').write_text(f"{info['sha256']}  {file.name}\n")
+            archive=directory/artifacts.names('1.2.3')[1];folder.create(fixture(directory),archive,'1.2.3','test-build')
+            records=[{'filename':asset.name,'bytes':asset.stat().st_size,'sha256':artifacts.digest(asset)} for asset in (file,archive)]
+            info={'schema':2,'version':'1.2.3','commit':'a'*40,'build_id':'test-build','artifacts':records}
+            (directory/'release-build.json').write_text(json.dumps(info));(directory/'SHA256SUMS.txt').write_text(artifacts.checksums(records))
             self.assertEqual(artifacts.verify(directory,'1.2.3','a'*40),info)
             with self.assertRaises(ValueError):artifacts.verify(directory,'1.2.3','b'*40)
+            original=archive.read_bytes();archive.write_bytes(original+b'changed')
+            with self.assertRaises(ValueError):artifacts.verify(directory,'1.2.3','a'*40)
+            archive.write_bytes(original)
             file.write_bytes(b'MZ-bad')
             with self.assertRaises(ValueError):artifacts.verify(directory,'1.2.3','a'*40)
     def test_ci_publisher_resumes_only_its_draft_and_handles_empty_delete_responses(self):
@@ -42,8 +56,10 @@ class CITests(unittest.TestCase):
             (root/'package.json').write_text('{"version":"1.2.3"}')
             (root/'docs/RELEASE-1.2.3.md').write_text('notes')
             (root/'dist/electron/AVHub-portable-1.2.3-x64.exe').write_bytes(b'MZ-test')
+            (root/'dist/electron/AVHub-folder-portable-1.2.3-x64.zip').write_bytes(b'fake ZIP for mocked publisher')
+            (root/'dist/electron/SHA256SUMS.txt').write_text('two assets verified by mock')
             (root/'dist/electron/release-build.json').write_text('{}')
-            sha='a'*40;draft={'id':1,'tag_name':'v1.2.3','draft':True,'target_commitish':sha,'body':f'notes\n<!-- avhub-ci-release:{sha} -->','assets':[{'id':77,'name':'AVHub-portable-1.2.3-x64.exe','state':'uploaded','size':1,'digest':'wrong'}]}
+            sha='a'*40;draft={'id':1,'tag_name':'v1.2.3','draft':True,'target_commitish':sha,'body':publisher.release_body('notes','1.2.3',sha,True),'assets':[{'id':77,'name':'AVHub-portable-1.2.3-x64.exe','state':'uploaded','size':1,'digest':'wrong'}]}
             calls=[]
             def git(command,**kwargs):
                 if command[1:3]==['remote','get-url']:return 'https://github.com/jhlxlml/avhub.git\n'
@@ -62,3 +78,5 @@ class CITests(unittest.TestCase):
                 publisher.main()
             self.assertIn(('DELETE','https://api.github.com/repos/jhlxlml/avhub/releases/assets/77'),calls)
             self.assertEqual(calls[-1][0],'PATCH')
+            self.assertTrue(any('AVHub-folder-portable-1.2.3-x64.zip' in url and method=='POST' for method,url in calls))
+            self.assertEqual((root/'dist/electron/SHA256SUMS.txt').read_text(),'two assets verified by mock')

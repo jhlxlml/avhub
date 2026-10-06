@@ -2,36 +2,7 @@
 
 English · [简体中文](README.md)
 
-### 0.2.7 update
-
-- Fixes CI fixture inconsistencies with Windows 8.3 path aliases and adds a real short-path regression. Registration resolves once; large root lookup remains disk-free. Full regressions pass with both normal and short temporary paths.
-
-### 0.2.6 update
-
-- Adds GitHub Actions: regular commits run tests, stable version tags build and publish Windows portable releases with checksums/provenance. Manual Actions runs build artifacts only. See [workflow guide](docs/GITHUB-ACTIONS.md).
-
-### 0.2.5 update
-
-- Electron desktop is the only supported product. `npm run dev` and the batch launcher open the desktop window; native operations use Electron only.
-- React, FastAPI and localhost playback remain internals. Browser component/decoder harnesses are explicitly marked tests, not a supported browser edition. The archive stays frozen and excluded from packages.
-
-### 0.2.4 update
-
-- Cover-wall favorite buttons appear on hover or keyboard focus, matching playlist actions. Favorite changes update in place without remounting images/previews, while favorite views and pagination remain accurate.
-
-### 0.2.3 update
-
-- Added an explicit manual update button beside the About version. No background checks, automatic downloads or installation. See [release notes](docs/RELEASE-0.2.3.md).
-
-### 0.2.2 update
-
-- The directory sidebar starts collapsed. Open it from the toolbar folder icon; reloads and new launches collapse it without changing directory filters.
-
-### 0.2.1 update
-
-- Added a collapsible multi-level directory sidebar with lazy expansion, per-level pagination, video counts, keyboard navigation, and deep-link reveal. It uses indexed directories and adapts to narrow windows.
-- Added persistent sort field/direction (date added by default), separate resolution filters, consistent badges, and an About settings page.
-- Data defaults to `AVHub-data`; desktop users can choose an empty custom directory and migrate on the next launch while retaining the original library.
+Downloads and version-specific release notes are available on [GitHub Releases](https://github.com/jhlxlml/avhub/releases).
 
 AVHub is an offline local video library and player for Windows. It brings multiple video directories into one interface, lets you browse by folder or by movie and series, and remembers favorites, playlists, and viewing progress.
 
@@ -77,6 +48,8 @@ Recent library conveniences are implemented natively for AVHub: Electron-owned f
 
 ## Use an existing portable build
 
+Releases provide two portable formats. For everyday use, extract the entire folder ZIP to a writable location and run its `AVHub.exe`; this avoids the outer self-extraction on each launch. Keep all adjacent runtime files and do not launch from inside the ZIP. The single-file EXE remains available and extracts before starting.
+
 If you already have a portable EXE built from this project, put it in a writable directory and double-click it to start desktop mode. Python, Node.js, and FFmpeg do not need separate installation. The first launch may take time to extract the app and start the local service.
 
 The library defaults to `AVHub-data/` beside the EXE. Do not delete it as if it were temporary cache. Follow “First use” below to add video directories. The source repository itself does not include this EXE.
@@ -116,6 +89,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 npm ci
+node node_modules/electron/install.js
 ```
 
 If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in the current terminal, then activate again. This changes the policy only for the current process.
@@ -226,9 +200,11 @@ On the playback page:
 
 The mouse wheel zooms around the pointer. Drag the image while zoomed, and use the reset icon to restore the default view. Shift + wheel adjusts volume.
 
+Controls hide immediately outside the control area. Move into the bottom control area to reveal them; they remain visible while the pointer stays there, even without movement. The pointer stays visible during movement and hides after about 400 ms of inactivity over the picture. Slider dragging, open menus and Tab navigation remain operable; the same behavior applies while paused.
+
 After clicking a playback control, Space still plays or pauses instead of activating that button again. Text fields, open menus, and settings keep their own keyboard behavior.
 
-**Pure Playback** hides library information, adapts the desktop window to the video's aspect ratio, overlays controls and restores the previous window when exiting. Encoded black bars are not automatically cropped.
+**Pure Playback** hides library information, adapts the desktop window to the video's aspect ratio and overlays controls. Entering automatically pins the window; exiting unpins it and restores the previous window. Manual pin toggles remain available during playback. Encoded black bars are not automatically cropped.
 
 ## Screenshots
 
@@ -312,9 +288,10 @@ Output:
 
 ```text
 dist/electron/AVHub-portable-<version>-x64.exe
+dist/electron/AVHub-folder-portable-<version>-x64.zip
 ```
 
-The current `package.json` version is `0.2.0`. Existing EXEs do not load updated workspace source; rebuild the package to update the distributed app.
+The build version comes from `package.json`. Existing EXEs do not load updated workspace source; rebuild the package to update the distributed app.
 
 If `pwsh` is not recognized, install PowerShell 7 and reopen the terminal. Windows' built-in `powershell.exe` is commonly version 5.1 and is not equivalent to `pwsh`. The current script contains UTF-8 Chinese text, which can cause parsing errors under 5.1. Investigate build errors rather than mistaking an existing old EXE for a successful new build.
 

@@ -126,6 +126,13 @@ function App() {
   const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q,libraryRetry);
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
   const loading=!rootsReady||library.loading,requestError=library.error;
+  const reportedStartup=useRef(false);
+  useEffect(()=>{
+    if(!reportedStartup.current && rootsReady && library.data && !loading && !requestError) {
+      reportedStartup.current=true;
+      void window.avhubDesktop?.startupReady?.().catch(()=>{});
+    }
+  },[rootsReady,loading,requestError,library.data]);
   const setItems=useCallback((change:(value:Media[])=>Media[])=>library.update(value=>value?{...value,items:change(value.items)}:value),[library.update]);
   useEffect(() => { setPicked([]); setBulkMode(false); }, [filters.view, filters.root, filters.folder, filters.recursive, filters.q, filters.format, filters.watch, filters.duration, filters.resolution, grouped]);
   function pick(ids: number[]) {
@@ -304,8 +311,8 @@ function App() {
           <button className="ui-icon-button" aria-label="媒体库设置" title="媒体库设置" onClick={() => setSettings(true)}><Icon name="settings"/></button></div>
       </header>
       <div className={`app-layout${treeOpen?' with-directory-tree':''}`}>
-      {treeOpen&&<DirectoryTree roots={roots} root={filters.root} folder={filters.folder} revision={revision} active={!router.route.mediaId&&!routeLoading}
-        close={()=>setTreeOpen(false)} select={(root,folder)=>setFilters(f=>({...f,root,folder,show:'',season:'',page:1,recursive:root?f.recursive:true,grouped:folder?false:f.grouped}))}/>}
+      <DirectoryTree roots={roots} root={filters.root} folder={filters.folder} revision={revision} visible={treeOpen} active={treeOpen&&!router.route.mediaId&&!routeLoading}
+        close={()=>setTreeOpen(false)} select={(root,folder)=>setFilters(f=>({...f,root,folder,show:'',season:'',page:1,recursive:root?f.recursive:true,grouped:folder?false:f.grouped}))}/>
       <section className="library">
         <ScanProgress job={scan.job} cancel={scan.cancel} connectionError={scan.connectionError} />
         <div className="toolbar">

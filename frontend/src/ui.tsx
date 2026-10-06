@@ -45,7 +45,8 @@ export function Toast({ message, close, autoDismissMs = 0, children }: { message
     const timer = window.setTimeout(() => latestClose.current(), autoDismissMs);
     return () => window.clearTimeout(timer);
   }, [message, autoDismissMs]);
-  return <div className="toast" role="alert"><Icon name="info"/><span className="toast-message">{message}</span>{children}<IconButton icon="close" label="关闭提示" onClick={close}/></div>;
+  const success=autoDismissMs>0;
+  return <div className="toast" data-kind={success?'success':'info'} role={success?'status':'alert'} aria-live={success?'polite':'assertive'}><Icon name={success?'check':'info'}/><span className="toast-message">{message}</span>{children}<IconButton icon="close" label="关闭提示" onClick={close}/></div>;
 }
 
 // Player popovers stay inside the fullscreen element and keep focus local without

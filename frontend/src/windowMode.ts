@@ -31,7 +31,10 @@ export function setWindowMode(value:{purePlayback?:boolean;alwaysOnTop?:boolean;
     // Late metadata from an old player must never resize the library window.
     if(value.videoAspectRatio!==undefined && value.purePlayback===undefined && !state.purePlayback)return;
     if(window.avhubDesktop)update(await window.avhubDesktop.setWindowMode(value));
-    else if(rendererTest)update({purePlayback:value.purePlayback??state.purePlayback}); // Component layout simulation only.
+    else if(rendererTest) {
+      const purePlayback=value.purePlayback??state.purePlayback;
+      update({purePlayback,alwaysOnTop:purePlayback!==state.purePlayback?purePlayback:value.alwaysOnTop??state.alwaysOnTop});
+    } // Component layout simulation only; native acceptance uses real Electron.
     else throw new Error('窗口操作需要 AVHub 桌面组件');
   });
   writes=task.catch(()=>{});

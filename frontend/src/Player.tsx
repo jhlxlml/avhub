@@ -19,6 +19,7 @@ import { setWindowMode, useWindowMode } from './windowMode';
 import { saveScreenshot,screenshotKey,screenshotShortcutLabel,revealScreenshot,trackScreenshot,type SavedScreenshot } from './screenshots';
 import './screenshots.css';
 import './playback.css';
+import {usePlaybackChrome} from './usePlaybackChrome';
 import {readResumeBehavior,startingPoint} from './resumeBehavior';
 
 type RemuxStats={processes:number;cache_hits:number;cache_misses:number;published:number;cancelled:number;batch_failures:number;workers:number};
@@ -136,7 +137,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       void setWindowMode({videoAspectRatio}).catch(e=>notify(`无法适配视频窗口：${errorText(e)}`));
   },[purePlayback,videoAspectRatio,notify]);
   const [videoFullscreen, setVideoFullscreen] = useState(false);
-  const [controlsVisible, setControlsVisible] = useState(()=>!nextPlayerControlsHidden);
+
   const quietNext=useRef(false);
   useEffect(()=>{nextPlayerControlsHidden=false;},[]);
   const [seekHover, setSeekHover] = useState<{ time: number; x: number } | null>(null);
@@ -241,8 +242,13 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     return () => observer.disconnect();
   }, []);
   const updateRef = useRef(update);
-  const controlsTimer = useRef<number | null>(null);
-  const controlsHovered = useRef(false);
+  const {controlsVisible,cursorVisible,controlsHovered,controlsPressed,controlsKeyboardFocus,controlsIdleDelay,revealControls,hideControlsSoon,trackControlsMouse,scheduleControlsHide,scheduleCursorHide}=usePlaybackChrome({
+    phase,openSetting,purePlayback,videoFullscreen,isPlaying,initialVisible:!nextPlayerControlsHidden,videoWrap,
+    dragging:()=>Boolean(dragSession.current),onHide:()=>setSeekHover(null),onReveal:visible=>{
+      quietNext.current=false;
+      if(!visible && video.current && queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);
+    },
+  });
   updateRef.current = update;
 
   const save = useCallback(async (keepalive = false) => {
@@ -704,23 +710,11 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       current.removeEventListener('leavepictureinpicture', left);
     };
   }, []);
-  useEffect(()=>{
-    document.documentElement.classList.toggle('controls-visible',controlsVisible);
-    return()=>document.documentElement.classList.remove('controls-visible');
-  },[controlsVisible]);
   useEffect(() => {
     const updateVideoFullscreen = () => setVideoFullscreen(document.fullscreenElement === videoWrap.current);
     document.addEventListener('fullscreenchange', updateVideoFullscreen);
     return () => document.removeEventListener('fullscreenchange', updateVideoFullscreen);
   }, []);
-  useEffect(() => {
-    if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
-    controlsTimer.current=null;
-    // Playback events (including keyboard pause/resume and seek completion)
-    // must not reveal controls. Only explicit interaction/menu focus does so.
-    if(openSetting) {setControlsVisible(true);return;}
-    if (controlsVisible) scheduleControlsHide(videoFullscreen || purePlayback ? 850 : 2600);
-  }, [videoFullscreen, purePlayback, phase, isPlaying, openSetting,controlsVisible]);
   useEffect(() => {
     if(phase!=='ended')return;
     setNextEpisode(null);setNextCountdown(8);setNextCancelled(!autoNext);
@@ -745,7 +739,6 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       setNextCancelled(true);void startNextEpisode(true);
     }
   }, [desktopClosing, autoNext, phase, nextEpisode, nextCountdown, nextCancelled,nextStarting]);
-  useEffect(() => () => { if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current); }, []);
 
   async function back() {
     if (desktopQuitting.current || navigationBusy.current) return;
@@ -951,28 +944,6 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     }
     if (current.paused) void current.play().catch(()=>{}); else current.pause();
   }
-  function scheduleControlsHide(delay:number) {
-    if (controlsTimer.current !== null) window.clearTimeout(controlsTimer.current);
-    controlsTimer.current=null;
-    // Pausing freezes the picture, not the UI idle timer. Hover and open
-    // menus retain controls in either playback state.
-    if (controlsHovered.current || phase !== 'ready' || openSetting) return;
-    controlsTimer.current=window.setTimeout(()=>{
-      controlsTimer.current=null;
-      // Pointer entry may have cancelled a timer already queued by the host.
-      if(!controlsHovered.current)setControlsVisible(false);
-    },delay);
-  }
-  function revealControls() {
-    quietNext.current=false;
-    if(!controlsVisible && video.current && queuedSeek.current===null)setPosition(video.current.currentTime+offset.current);
-    setControlsVisible(true);
-    scheduleControlsHide(videoFullscreen || purePlayback ? 850 : 2600);
-  }
-  function hideControlsSoon() {
-    controlsHovered.current=false;
-    scheduleControlsHide(videoFullscreen || purePlayback ? 150 : 500);
-  }
   function changeVolumeByWheel(event: WheelEvent) {
     if (!event.deltaY) return;
     const current = video.current;
@@ -1041,6 +1012,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     dragSession.current = null;
     setIsDraggingVideo(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    scheduleCursorHide();
   }
   function updateSeekHover(event: React.MouseEvent<HTMLDivElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -1136,7 +1108,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           target.closest('.window-about')&&['Space','Enter'].includes(event.code)))return;
       // Mouse focus on a player slider must not disable playback shortcuts.
       // Preserve native slider navigation for explicit keyboard/Tab focus.
-      if(event.code==='Tab')pointerFocusedRange.current=null;
+      if(event.code==='Tab'){pointerFocusedRange.current=null;controlsKeyboardFocus.current=true;}
       const playerRange=target instanceof HTMLInputElement&&target.type==='range'&&!!target.closest('.player-controls');
       const rangePlaybackKey=playerRange&&(['Space','KeyK','KeyJ','KeyL','KeyR','KeyM','KeyF','KeyW','KeyC','KeyP','KeyN'].includes(event.code)||
         pointerFocusedRange.current===target&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.code));
@@ -1280,10 +1252,29 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
         originalFailed.current=false;setQuality('auto');startAt(positionRef.current,false,'auto',audioTrack?Number(audioTrack):undefined,!audioTrack,true);
       }}/></div>
     {saveError && <div className="notice" role="alert">{saveError} <button onClick={() => void save().catch(() => {})}>重试保存</button><button onClick={close}>直接返回</button></div>}
-    <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}`} ref={videoWrap}
+    <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}${cursorVisible?'':' cursor-hidden'}`} ref={videoWrap}
       style={{ '--player-height': `${videoWrapSize.height}px` } as CSSProperties}
-      onMouseMove={revealControls} onMouseLeave={hideControlsSoon}
-      onPointerDownCapture={event=>{revealControls();const target=event.target;pointerFocusedRange.current=target instanceof HTMLInputElement&&target.type==='range'?target:null;}}
+      onMouseMove={trackControlsMouse} onMouseLeave={hideControlsSoon}
+      onPointerDownCapture={event=>{
+        controlsKeyboardFocus.current=false;
+        const target=event.target as HTMLElement;
+        controlsPressed.current=Boolean(target.closest('.player-controls'));
+        if(event.pointerType==='mouse' && !controlsPressed.current) {
+          const bounds=event.currentTarget.getBoundingClientRect();
+          const bar=event.currentTarget.querySelector<HTMLElement>('.player-controls');
+          if(bar && event.clientY>=bounds.bottom-bar.offsetHeight && event.clientY<=bounds.bottom) {
+            // An idle pointer may click the invisible bottom hot zone without
+            // moving first. Reveal it, never accidentally pause the picture.
+            controlsHovered.current=true;controlsPressed.current=true;
+            suppressStageClick.current=true;revealControls();
+          }
+        }
+        if(event.pointerType!=='mouse'){controlsIdleDelay.current=2600;revealControls();}
+        else if(controlsPressed.current)revealControls();
+        pointerFocusedRange.current=target instanceof HTMLInputElement&&target.type==='range'?target:null;
+      }}
+      onPointerUpCapture={()=>{controlsPressed.current=false;if(controlsHovered.current)scheduleControlsHide(controlsIdleDelay.current);else hideControlsSoon();}}
+      onPointerCancelCapture={()=>{controlsPressed.current=false;hideControlsSoon();}}
       onFocusCapture={event=>{if((event.target as HTMLElement).matches(':focus-visible'))revealControls();}}
       onClick={event => { if (suppressStageClick.current) { suppressStageClick.current = false; event.preventDefault(); return; } const target = event.target as HTMLElement; if (target === video.current || target === videoWrap.current || target.closest('.video-canvas')) togglePlayback(); }}
       onDoubleClick={event => { if (suppressStageClick.current) { suppressStageClick.current = false; event.preventDefault(); return; } const target = event.target as HTMLElement; if ((target === video.current || target === videoWrap.current || target.closest('.video-canvas')) && phase === 'ready') toggleFullscreen(); }}>
@@ -1338,7 +1329,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       </div>}
       <div className={`timeline player-controls${narrowControls ? ' is-narrow' : ''}`} aria-label="播放控制"
         onPointerEnter={event=>{if(event.pointerType==='mouse'){controlsHovered.current=true;revealControls();}}}
-        onPointerLeave={event=>{if(event.pointerType==='mouse'){controlsHovered.current=false;revealControls();}}}>
+        onPointerLeave={event=>{if(event.pointerType==='mouse'){controlsHovered.current=false;hideControlsSoon();}}}>
         <div className="player-progress-row">
           <span>{duration(seek ?? position)}</span>
           <div className="seek-control" style={{'--seek-progress': `${Math.min(100,Math.max(0,(seek ?? position)/Math.max(.1,media.duration-.1)*100))}%`} as CSSProperties} onMouseMove={updateSeekHover} onMouseLeave={() => setSeekHover(null)}>

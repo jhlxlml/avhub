@@ -17,13 +17,17 @@ def version(value):
 def release_info(value,current):
     if not isinstance(value,dict) or value.get('draft') is not False or value.get('prerelease') is not False:raise ValueError('不是正式发布')
     tag=value.get('tag_name');remote=version(tag);local=version(current)
-    number='.'.join(map(str,remote));filename=f'AVHub-portable-{number}-x64.exe'
-    asset_url=f'{REPOSITORY}/releases/download/{tag}/{filename}'
+    number='.'.join(map(str,remote))
     assets=value.get('assets',[])
     if not isinstance(assets,list):raise ValueError('下载文件信息无效')
-    ready=any(isinstance(a,dict) and a.get('name')==filename and a.get('state')=='uploaded' and type(a.get('size')) is int and a['size']>0 and a.get('browser_download_url')==asset_url for a in assets)
+    downloads=[]
+    for kind,filename in [('folder',f'AVHub-folder-portable-{number}-x64.zip'),('single',f'AVHub-portable-{number}-x64.exe')]:
+        asset_url=f'{REPOSITORY}/releases/download/{tag}/{filename}'
+        asset=next((a for a in assets if isinstance(a,dict) and a.get('name')==filename and a.get('state')=='uploaded' and type(a.get('size')) is int and 0<a['size']<2*1024**3 and a.get('browser_download_url')==asset_url),None)
+        if asset:downloads.append({'format':kind,'filename':filename,'bytes':asset['size']})
+    ready=bool(downloads)
     status='available' if remote>local and ready else 'pending' if remote>local else 'current' if remote==local else 'ahead'
-    return {'status':status,'version':number,'tag':tag,'published_at':str(value.get('published_at') or '')[:50],'notes':str(value.get('body') or '')[:5000],'download_ready':ready}
+    return {'status':status,'version':number,'tag':tag,'published_at':str(value.get('published_at') or '')[:50],'notes':str(value.get('body') or '')[:5000],'download_ready':ready,'downloads':downloads}
 def check(current):
     request=Request(ENDPOINT,headers={'Accept':'application/vnd.github+json','User-Agent':'AVHub-manual-update-check','X-GitHub-Api-Version':'2026-03-10'})
     try:

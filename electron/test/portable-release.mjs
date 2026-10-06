@@ -2,28 +2,45 @@ import assert from 'node:assert/strict';
 import {chromium,expect} from '@playwright/test';
 import {spawn,spawnSync} from 'node:child_process';
 import {createServer} from 'node:net';
-import {mkdirSync,mkdtempSync,copyFileSync,readFileSync,existsSync,readdirSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,copyFileSync,readFileSync,writeFileSync,existsSync,readdirSync} from 'node:fs';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 const root=path.resolve(import.meta.dirname,'../..'),version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
-const folder=mkdtempSync(path.join(root,'build','portable-release-test-')),home=path.join(folder,'app'),custom=path.join(folder,'custom');mkdirSync(home);mkdirSync(custom);
-const exe=path.join(home,`AVHub-portable-${version}-x64.exe`);copyFileSync(path.join(root,'dist/electron',path.basename(exe)),exe);
+const folderMode=process.argv.includes('--folder');
+const folder=mkdtempSync(path.join(root,'build',folderMode?'folder-release-test-':'portable-release-test-'));
+const home=path.join(folder,'app',...(folderMode?[`AVHub-folder-portable-${version}-x64`]:[])),custom=path.join(folder,'custom');mkdirSync(custom);
+let exe;
+if(folderMode) {
+  const extracted=spawnSync(process.env.AVHUB_PYTHON||'python',['scripts/folder-portable.py','--extract-to',path.join(folder,'app')],{cwd:root,windowsHide:true,encoding:'utf8',timeout:120000});
+  assert.equal(extracted.status,0,`actual folder ZIP must extract safely: ${extracted.stderr}`);
+  exe=path.join(home,'AVHub.exe');assert.ok(existsSync(exe));
+} else {
+  mkdirSync(home);exe=path.join(home,`AVHub-portable-${version}-x64.exe`);copyFileSync(path.join(root,'dist/electron',path.basename(exe)),exe);
+}
 // Seed a new isolated empty library so upgrade detection cannot import the
 // user's legacy profile while verifying the actual default sibling directory.
 const seed=spawnSync(process.env.AVHUB_PYTHON||'python',['-c','from app import main as m; m.bootstrap(); m.playback.close()'],{cwd:root,env:{...process.env,AVHUB_DATA_DIR:path.join(home,'AVHub-data')},windowsHide:true,timeout:30000});
 assert.equal(seed.status,0,'isolated portable test database must initialize');
 let child,browser,page,port;
+const startupSamples=[];
 async function launch(){
   const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));port=server.address().port;await new Promise(r=>server.close(r));
   const env={...process.env,AVHUB_HEADLESS_TEST:'1'};delete env.AVHUB_DATA_DIR;delete env.AVHUB_APP_HOME;delete env.ELECTRON_RUN_AS_NODE;
+  delete env.PORTABLE_EXECUTABLE_DIR;delete env.PORTABLE_EXECUTABLE_FILE;delete env.PORTABLE_EXECUTABLE_APP_FILENAME;
+  const started=performance.now();
   child=spawn(exe,[`--remote-debugging-port=${port}`,'--remote-debugging-address=127.0.0.1'],{cwd:home,env,windowsHide:true,stdio:'ignore'});
   const deadline=Date.now()+120000;let ready=false;
   while(Date.now()<deadline){try{const r=await fetch(`http://127.0.0.1:${port}/json/version`,{signal:AbortSignal.timeout(600)});if(r.ok){ready=true;break;}}catch{}await delay(250);}
   assert.ok(ready,'portable Chromium must start');browser=await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  const chromiumReadyMs=Math.round(performance.now()-started);
   const context=browser.contexts()[0];page=context.pages()[0]||await context.waitForEvent('page',{timeout:60000});
   await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor({timeout:60000});
   const health=await page.evaluate(async()=> (await(await fetch('/api/health')).json()));assert.equal(health.frozen,true);assert.equal(health.ffmpeg,true);assert.equal(health.ffprobe,true);assert.equal(health.version,version);
   assert.equal(health.build_id,JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')).build_id);
+  const launchLog=()=>{const text=readFileSync(path.join(health.data_dir,'desktop.log'),'utf8');return text.slice(text.lastIndexOf('startup-begin'));};
+  await expect.poll(()=>launchLog().includes('stage=library-ready')).toBe(true);
+  const stages=Array.from(launchLog().matchAll(/startup-stage stage=([\w-]+) elapsed_ms=(\d+)/g),match=>({stage:match[1],elapsedMs:Number(match[2])}));
+  startupSamples.push({kind:folderMode?'folder':'single',run:startupSamples.length+1,chromiumReadyMs,libraryReadyMs:Math.round(performance.now()-started),migration:startupSamples.length===1,stages});
   return health;
 }
 async function close(){
@@ -54,6 +71,8 @@ try {
   const prefs=await page.evaluate(async()=> (await(await fetch('/api/preferences')).json()).values);assert.equal(prefs.librarySort,'modified_asc');assert.equal(prefs.resumeBehavior,'resume');
   assert.ok(existsSync(path.join(home,'AVHub-data/library.db')));assert.ok(existsSync(path.join(custom,'library.db')));
   await close();
+  await launch();await close(); // Repeat launch without another migration.
   assert.ok(!readdirSync(path.join(root,'dist/electron/win-unpacked/resources')).includes('archive'));
-  console.log(JSON.stringify({passed:true,report:folder,checks:['actual portable EXE','frozen backend/FFmpeg','0 background checks',process.env.CI==='true'?'manual update UI (mock GitHub response)':'manual real GitHub check','default sibling data','packaged migration command','preferences retained','old data retained']}));
+  writeFileSync(path.join(folder,'startup-timings.json'),JSON.stringify({startupSamples,limitations:['Isolated empty library; no OS cache flush; polling has up to 250 ms granularity; run 2 includes data migration.']},null,2));
+  console.log(JSON.stringify({passed:true,report:folder,startupSamples,limitations:['Isolated empty library; first run is not OS-cache-controlled cold boot. Second run includes explicit data migration.'],checks:[folderMode?'actual extracted folder ZIP':'actual portable EXE','frozen backend/FFmpeg','0 background checks',process.env.CI==='true'?'manual update UI (mock GitHub response)':'manual real GitHub check','default sibling data','packaged migration command','preferences retained','old data retained']}));
 }finally{if(page)await close();if(browser)await browser.close().catch(()=>{});if(child&&child.exitCode===null)spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}

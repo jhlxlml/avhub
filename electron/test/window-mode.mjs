@@ -140,15 +140,15 @@ try {
   assert.equal((await scroller.boundingBox()).y,0);
   await expect(scroller).toHaveCSS('overflow-y','hidden');
   await expectRatio(page,16/9);
-  let current=await stats();assert.equal(current.full,false);assert.deepEqual(current.minimum,[480,270]);
+  let current=await stats();assert.equal(current.top,true);assert.equal(current.full,false);assert.deepEqual(current.minimum,[480,270]);
   assert.equal(await page.evaluate(()=>document.fullscreenElement),null);
   await expect(page.locator('video')).toHaveAttribute('data-instance','same-native-decoder');
   assert.equal(await page.locator('video').evaluate(v=>v.currentSrc),src);
   assert.equal(await page.locator('video').evaluate(v=>v.currentTime),12);
   await page.mouse.move(200,180);
-  await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveCSS('background-color',
-    await page.getByRole('button',{name:'旋转视频，当前 0 度',exact:true}).evaluate(button=>getComputedStyle(button).backgroundColor));
-  const floatingStyle=await titlebar.getByRole('button',{name:'窗口置顶',exact:true}).evaluate(button=>{
+  await expect(titlebar.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveCSS('background-color',
+    await page.getByRole('button',{name:'退出纯净播放',exact:true}).evaluate(button=>getComputedStyle(button).backgroundColor));
+  const floatingStyle=await titlebar.getByRole('button',{name:'取消窗口置顶',exact:true}).evaluate(button=>{
     const style=getComputedStyle(button),rect=button.getBoundingClientRect();
     return {radius:style.borderRadius,width:rect.width,height:rect.height,background:style.backgroundColor,y:rect.y};
   });
@@ -164,9 +164,9 @@ try {
   await titlebar.getByRole('button',{name:'关闭窗口',exact:true}).hover();
   await expect(titlebar.getByRole('button',{name:'关闭窗口',exact:true})).toHaveCSS('background-color','rgb(197, 60, 78)');
   await page.emulateMedia({reducedMotion:'reduce'});
-  await titlebar.getByRole('button',{name:'窗口置顶',exact:true}).hover();
-  await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveCSS('transform','none');
-  await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveCSS('transition-duration','0s');
+  await titlebar.getByRole('button',{name:'取消窗口置顶',exact:true}).hover();
+  await expect(titlebar.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveCSS('transform','none');
+  await expect(titlebar.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveCSS('transition-duration','0s');
   await page.emulateMedia({reducedMotion:'no-preference'});await page.mouse.move(200,180);
   await page.keyboard.press('r');await expectRatio(page,9/16);
   await expect(page.locator('video')).toHaveAttribute('data-instance','same-native-decoder');
@@ -238,6 +238,9 @@ try {
   await expect.poll(()=>page.locator('video').evaluate(v=>!v.paused)).toBe(true);
   await expect(page.locator('.player-controls')).toHaveCSS('opacity','0');
   await page.locator('video').evaluate(v=>v.pause());
+  await revealPlayerControls(page);
+  await page.getByRole('button',{name:'取消窗口置顶',exact:true}).click();
+  await expect.poll(async()=>(await stats()).top).toBe(false);
   await page.getByRole('button',{name:'窗口置顶',exact:true}).click();
   await expect.poll(async()=>(await stats()).top).toBe(true);
   await expect(page.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveAttribute('aria-pressed','true');
@@ -250,13 +253,12 @@ try {
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:path.join(build,'pure-playback-desktop.png')});
   await page.keyboard.press('Escape');await expect(page.locator('.player-top')).toBeVisible();
-  current=await stats();assert.equal(current.top,true);assert.equal(current.full,false);assert.deepEqual(current.minimum,[760,560]);assert.deepEqual(current.bounds,original.bounds);
+  current=await stats();assert.equal(current.top,false);assert.equal(current.full,false);assert.deepEqual(current.minimum,[760,560]);assert.deepEqual(current.bounds,original.bounds);
   assert.equal((await scroller.boundingBox()).y,32);
-  await expect(titlebar.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveCSS('border-radius','0px');
-  await page.getByRole('button',{name:'取消窗口置顶',exact:true}).click();assert.equal((await stats()).top,false);
+  await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveCSS('border-radius','0px');
   await page.mouse.move(220,240);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
-  await clickPlayerAction(page,'纯净播放');await page.getByRole('button',{name:'窗口置顶',exact:true}).click();
+  await clickPlayerAction(page,'纯净播放');assert.equal((await stats()).top,true);
   await clickPlayerAction(page,'播放下一条');
   await expect.poll(()=>page.locator('video').evaluate(v=>v.currentSrc.includes('/media/2/file') && v.readyState>=2)).toBe(true);
   await expectRatio(page,9/16);
@@ -293,9 +295,15 @@ try {
   assert.deepEqual((await stats()).bounds,original.bounds);
   // Repeat mode switches without growing the window on fractional-DPI Windows.
   for(let i=0;i<3;i++) {
-    await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:true,videoAspectRatio:9/16}));
+    await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:true,alwaysOnTop:false,videoAspectRatio:9/16}));
+    assert.equal((await stats()).top,true);
     await expectRatio(page,9/16);
-    await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:false}));
+    await page.evaluate(()=>window.avhubDesktop.setWindowMode({alwaysOnTop:false}));
+    await page.evaluate(()=>window.avhubDesktop.setWindowMode({videoAspectRatio:9/16}));
+    assert.equal((await stats()).top,false);
+    await page.evaluate(()=>window.avhubDesktop.setWindowMode({alwaysOnTop:true}));
+    await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:false,alwaysOnTop:true}));
+    assert.equal((await stats()).top,false);
     assert.deepEqual((await stats()).bounds,original.bounds);
   }
   // A formerly maximized library must restore both maximization and its normal

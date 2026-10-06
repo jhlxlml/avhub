@@ -8,6 +8,9 @@ for(const theme of ['dark','light'])test(`${theme}: Help contains accurate offli
   await outer.getByRole('tab',{name:'帮助',exact:true}).click();
   const help=page.getByRole('region',{name:'帮助中心'});
   await expect(help.getByRole('tabpanel',{name:'使用指南'})).toContainText('目前没有上一帧 / 下一帧功能');
+  await expect(help.getByRole('tabpanel',{name:'使用指南'})).toContainText('自动置顶');
+  await expect(help.getByRole('tabpanel',{name:'使用指南'})).toContainText('400 毫秒');
+  await expect(help.getByRole('tabpanel',{name:'使用指南'})).toContainText('文件夹 ZIP');
   const tabs=help.getByRole('tablist',{name:'帮助内容'});
   await tabs.getByRole('tab',{name:'使用指南'}).focus();await page.keyboard.press('ArrowRight');
   await expect(tabs.getByRole('tab',{name:'快捷操作'})).toBeFocused();

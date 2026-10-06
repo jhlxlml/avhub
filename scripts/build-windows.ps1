@@ -19,6 +19,8 @@ if (-not $SkipDependencyInstall) {
     npm ci
     if ($LASTEXITCODE -ne 0) { throw 'Frontend and Electron dependency installation failed.' }
 }
+node node_modules/electron/install.js
+if ($LASTEXITCODE -ne 0) { throw 'Electron runtime installation failed.' }
 npm run build
 if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
 npm run build:electron
@@ -41,6 +43,8 @@ if ($LASTEXITCODE -ne 0) { throw 'FastAPI backend packaging failed.' }
 
 npm run package:windows
 if ($LASTEXITCODE -ne 0) { throw 'Electron Windows portable packaging failed.' }
+python scripts/folder-portable.py
+if ($LASTEXITCODE -ne 0) { throw 'Folder portable ZIP creation failed.' }
 
 $artifact = Get-ChildItem 'dist\electron\AVHub-portable-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $artifact) { throw 'Portable EXE was not found after the build.' }

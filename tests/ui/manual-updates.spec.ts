@@ -1,4 +1,23 @@
 import {test,expect} from '@playwright/test';
+test('dual-format downloads fit narrow themes and open only the explicitly selected format',async({page,request})=>{
+  await request.post('/test/reset');
+  await page.route('**/api/updates/check',r=>r.fulfill({json:{status:'available',version:'0.2.99',tag:'v0.2.99',downloads:[{format:'folder',filename:'folder.zip',bytes:100000000},{format:'single',filename:'single.exe',bytes:80000000}]}}));
+  await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  await page.getByRole('tab',{name:'帮助',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();
+  await page.evaluate(()=>{(window as any).chosenDownloads=[];(window as any).avhubDesktop={openRelease:async(tag:string,format:string)=>{(window as any).chosenDownloads.push([tag,format]);return {ok:true};}};});
+  await page.getByRole('button',{name:'检查更新',exact:true}).click();
+  await expect(page.getByText('推荐日常使用',{exact:true})).toBeVisible();
+  for(const theme of ['dark','light']) {
+    await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);await page.setViewportSize({width:390,height:820});
+    expect(await page.locator('.release-downloads').evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    await page.waitForTimeout(250); // Let theme color transitions settle for visual QA.
+    await page.locator('.release-downloads').scrollIntoViewIfNeeded();
+    await page.screenshot({path:`test-results/download-formats-${theme}-narrow.png`});
+  }
+  expect(await page.evaluate(()=>(window as any).chosenDownloads)).toEqual([]);
+  await page.getByRole('button',{name:/下载文件夹版/}).click();await page.getByRole('button',{name:/下载单文件版/}).click();
+  expect(await page.evaluate(()=>(window as any).chosenDownloads)).toEqual([['v0.2.99','folder'],['v0.2.99','single']]);
+});
 test('checks only on click, prevents duplicates and clears results on close',async({page,request})=>{
   await request.post('/test/reset');let checks=0;
   await page.route('**/api/updates/check',async route=>{checks++;await new Promise(resolve=>setTimeout(resolve,250));await route.fulfill({json:{status:'available',version:'0.2.10',tag:'v0.2.10',published_at:'2026-10-06T00:00:00Z',notes:'<img src=x onerror=alert(1)>\n测试更新说明'}});});
