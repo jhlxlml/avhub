@@ -95,6 +95,10 @@ try {
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
   await page.getByRole('toolbar',{name:'窗口控制'}).getByRole('button',{name:'关于 AVHub',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(255, 255, 255)');await page.screenshot({path:path.join(folder,'about-light.png')});await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'帮助',exact:true}).click();
+  await expect(page.getByRole('region',{name:'帮助中心'})).toContainText('目前没有上一帧 / 下一帧功能');
+  await page.getByRole('tab',{name:'快捷操作',exact:true}).click();await expect(page.locator('.help-center kbd').filter({hasText:/^C$/})).toHaveCount(1);
+  await page.screenshot({path:path.join(folder,'help-light.png')});await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   const calls=await desktop.evaluate(()=>globalThis.__directoryCalls);assert.ok(calls.every(call=>call.properties.join(',')==='openDirectory'));
   await close();page=await launch();await stub([null,null]);
   assert.equal(await page.evaluate(async()=> (await (await fetch('/api/preferences')).json()).values.resumeBehavior),'resume');

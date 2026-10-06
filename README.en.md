@@ -205,6 +205,8 @@ Embedded text subtitles and external SRT / VTT / ASS / SSA are supported. ASS / 
 
 ## Keyboard and mouse controls
 
+Settings → **帮助** (Help) includes usage guidance, shortcuts and About. Version details and manual update checks remain in About; opening Help does not check for updates.
+
 On the playback page:
 
 | Action | Key |

@@ -73,7 +73,7 @@ test('data tools show the existing location; about dialog uses shared styling an
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();
   await expect(page.getByRole('region',{name:'应用数据目录'})).toContainText(info.data_directory);
   await expect(page.getByRole('button',{name:'打开数据目录',exact:true})).toBeEnabled();
-  await page.getByRole('tab',{name:'关于',exact:true}).dblclick();
+  await page.getByRole('tab',{name:'帮助',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).dblclick();
   await expect(page.getByRole('region',{name:'关于 AVHub'})).toBeVisible();await expect(page.getByRole('dialog')).toHaveCount(1);
   await expect(page.getByRole('region',{name:'关于 AVHub'})).toContainText('自动记住观看进度');
   await expect(page.getByText('请先关闭当前对话框',{exact:true})).toHaveCount(0);

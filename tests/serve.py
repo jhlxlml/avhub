@@ -12,30 +12,33 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 temp = tempfile.TemporaryDirectory(prefix="avhub-regression-")
-os.environ["AVHUB_DATA_DIR"] = str(Path(temp.name) / "data")
+# Hosted Windows TEMP can use RUNNER~1. Match production canonical paths once,
+# before seeding the database or exposing fixture directories to UI assertions.
+fixture_root = Path(temp.name).resolve()
+os.environ["AVHUB_DATA_DIR"] = str(fixture_root / "data")
 from app import main as m
 m.app.state.renderer_test=True  # Component harness, not a browser product.
 import uvicorn
 frontend_route = next(r for r in m.app.routes if r.path == '/{path:path}')
 m.app.router.routes.remove(frontend_route)
 
-source = Path(temp.name) / "source.mp4"
+source = fixture_root / "source.mp4"
 subprocess.run([m.executable("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=320x180:r=25",
                 "-f", "lavfi", "-i", "sine=frequency=440", "-t", "120", "-c:v", "libx264", "-preset", "ultrafast",
                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", str(source)], check=True)
-transport_stream = Path(temp.name) / "source.ts"
+transport_stream = fixture_root / "source.ts"
 subprocess.run([m.executable("ffmpeg"), "-v", "error", "-i", str(source), "-map", "0", "-c", "copy",
                 "-f", "mpegts", str(transport_stream)], check=True)
 source.with_suffix('.srt').write_text('1\n00:00:02,000 --> 00:00:04,000\n测试字幕：离线正常\n', encoding='utf-8')
-second = Path(temp.name) / "second.mp4"
+second = fixture_root / "second.mp4"
 shutil.copyfile(source, second)
-third = Path(temp.name) / "third.mkv"
+third = fixture_root / "third.mkv"
 subprocess.run([m.executable("ffmpeg"), "-v", "error", "-i", str(source), "-i", str(source.with_suffix('.srt')),
                 "-map", "0:v:0", "-map", "0:a:0", "-map", "1:s:0", "-c:v", "copy", "-c:a", "copy",
                 "-c:s", "srt", str(third)], check=True)
-invalid = Path(temp.name) / "broken.mkv"
+invalid = fixture_root / "broken.mkv"
 invalid.write_bytes(b"invalid video fixture")
-scan_source = Path(temp.name) / 'scan-source'
+scan_source = fixture_root / 'scan-source'
 scan_source.mkdir()
 shutil.copyfile(source, scan_source / 'New title.mp4')
 original_scan_file = m.scan_file
@@ -157,9 +160,9 @@ def reset():
         db.execute('DELETE FROM roots')
         db.execute('DELETE FROM scan_checkpoint')
         db.execute('DELETE FROM preferences')
-        db.executemany('INSERT INTO roots(id,path,added_at) VALUES(?,?,0)', [(1,str(Path(temp.name)/'A')), (2,str(Path(temp.name)/'B'))])
+        db.executemany('INSERT INTO roots(id,path,added_at) VALUES(?,?,0)', [(1,str(fixture_root/'A')), (2,str(fixture_root/'B'))])
         for i in range(1,348):
-            path = {1:source,2:second,3:third,4:invalid,5:transport_stream}.get(i, Path(temp.name)/f'video-{i}.mp4')
+            path = {1:source,2:second,3:third,4:invalid,5:transport_stream}.get(i, fixture_root/f'video-{i}.mp4')
             db.execute('''INSERT INTO media(id,path,root_id,name,title,kind,ext,duration,width,height,video_codec,audio_tracks,subtitles,
                 favorite,progress,watched,last_played,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)''',
                 (i,str(path),2 if i==2 else 1,f'video-{i}',f'视频 {i:03d}','episode' if i==3 else 'movie',path.suffix,
@@ -171,7 +174,7 @@ def reset():
 
 @m.app.get('/test/screenshot-directory')
 def screenshot_test_directory():
-    directory=Path(temp.name)/'custom-screenshots';directory.mkdir(exist_ok=True)
+    directory=fixture_root/'custom-screenshots';directory.mkdir(exist_ok=True)
     return {'directory':str(directory)}
 
 @m.app.get('/test/sessions')
@@ -180,7 +183,7 @@ def sessions():
 
 @m.app.post('/test/two-audio-fixture')
 def two_audio_fixture():
-    path = Path(temp.name) / 'two-audio.mp4'
+    path = fixture_root / 'two-audio.mp4'
     if not path.exists():
         subprocess.run([m.executable('ffmpeg'),'-v','error','-i',str(source),'-f','lavfi','-i','sine=frequency=880',
                         '-map','0:v:0','-map','0:a:0','-map','1:a:0','-t','120','-c:v','copy','-c:a','aac',str(path)],check=True)
@@ -191,13 +194,13 @@ def two_audio_fixture():
 
 @m.app.post('/test/indexed-ts-fixture')
 def indexed_ts_fixture(fresh:bool=False):
-    target=Path(temp.name)/'indexed.ts'
+    target=fixture_root/'indexed.ts'
     if not target.exists():
         subprocess.run([m.executable('ffmpeg'),'-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=25',
             '-f','lavfi','-i','sine=frequency=440','-t','120','-c:v','libx264','-preset','ultrafast',
             '-g','50','-c:a','aac','-f','mpegts',str(target)],check=True,timeout=15)
     if fresh:
-        copied=Path(temp.name)/f'indexed-{uuid.uuid4().hex}.ts';shutil.copyfile(target,copied);target=copied
+        copied=fixture_root/f'indexed-{uuid.uuid4().hex}.ts';shutil.copyfile(target,copied);target=copied
     with m.connection() as db:db.execute('UPDATE media SET path=? WHERE id=5',(str(target),))
     return {'ok':True}
 
@@ -207,7 +210,7 @@ def indexed_remux_fixture(container:str='mkv',audio:str='aac',gop:int=10):
     if container not in {'mkv','avi','mov','mp4','flv'} or audio not in {'aac','ac3','mp3'}:
         raise m.HTTPException(400,'invalid test fixture')
     if gop not in (2,10):raise m.HTTPException(400,'invalid test GOP')
-    target=Path(temp.name)/f'indexed-{audio}-{gop}.{container}'
+    target=fixture_root/f'indexed-{audio}-{gop}.{container}'
     if not target.exists():
         command=[m.executable('ffmpeg'),'-v','error','-f','lavfi','-i','testsrc2=s=320x180:r=25',
             '-f','lavfi','-i','sine=frequency=440','-f','lavfi','-i','sine=frequency=880',
@@ -254,18 +257,18 @@ def remux_window_gate(hold:bool=False):
 def many_roots():
     with m.connection() as db:
         db.executemany('INSERT INTO roots(id,path,added_at) VALUES(?,?,0)',
-                       [(1000 + index, str(Path(temp.name) / f'folder-{index:05}')) for index in range(10_000)])
+                       [(1000 + index, str(fixture_root / f'folder-{index:05}')) for index in range(10_000)])
     return {'ok': True}
 
 @m.app.post('/test/series-fixture')
 def series_fixture():
-    path=Path(temp.name)/'episode.mp4'
+    path=fixture_root/'episode.mp4'
     if not path.exists():shutil.copyfile(source,path)
     with m.connection() as db:
         db.executemany('''INSERT INTO media(id,path,root_id,name,title,kind,season,episode,missing,
             ext,duration,width,height,video_codec,audio_tracks,created_at,updated_at)
             VALUES(?,?,1,?,?,'episode',?,?,?,'.mp4',120,320,180,'h264','[]',0,0)''',
-            [(1000+i,str(path if i==1 else Path(temp.name)/f'episode-{i}.mp4'),f'S{(i-1)//60:02}E{(i-1)%60+1:02}.mp4',
+            [(1000+i,str(path if i==1 else fixture_root/f'episode-{i}.mp4'),f'S{(i-1)//60:02}E{(i-1)%60+1:02}.mp4',
               '测试剧集' if i<=180 else f'剧集 {(i-181)//10:03}',(i-1)//60 if i<=180 else 1,(i-1)%60+1,int(i==2)) for i in range(1,1001)])
     return {'ok':True}
 
@@ -286,7 +289,7 @@ def repair_thumbnail_fixture():
 
 @m.app.post('/test/folder-fixture')
 def folder_fixture():
-    root = Path(temp.name) / 'folder-library'
+    root = fixture_root / 'folder-library'
     paths = ['root.mp4', 'Drama/first.mp4', 'Drama/Season 1/second.mp4', 'Drama-long/other.mp4', '100%_clips/literal.mp4']
     with m.connection() as db:
         db.execute('INSERT INTO roots(id,path,added_at) VALUES(50,?,0)', (str(root),))
@@ -301,7 +304,7 @@ def folder_fixture():
 
 @m.app.post('/test/many-subfolders')
 def many_subfolders():
-    root = Path(temp.name) / 'many-subfolders'
+    root = fixture_root / 'many-subfolders'
     with m.connection() as db:
         db.execute('INSERT INTO roots(id,path,added_at) VALUES(60,?,0)', (str(root),))
         db.executemany('''INSERT INTO media(id,path,root_id,name,title,created_at,updated_at)
@@ -320,13 +323,13 @@ def large_playlist():
         db.execute("INSERT INTO playlists(id,name,created_at) VALUES(500,'万条片单',0)")
         db.executemany('''INSERT INTO media(id,path,name,title,ext,missing,created_at,updated_at)
             VALUES(?,?,?,? ,'.mp4',0,0,0)''',
-            [(30000+i,str(Path(temp.name)/f'large-{i:05}.mp4'),f'large-{i:05}.mp4',f'大片单 {i:05}') for i in range(1,9999)])
+            [(30000+i,str(fixture_root/f'large-{i:05}.mp4'),f'large-{i:05}.mp4',f'大片单 {i:05}') for i in range(1,9999)])
         db.executemany('INSERT INTO playlist_items VALUES(500,?,?)',[(1,0),(2,1)]+[(30000+i,i+1) for i in range(1,9999)])
     return {'id':500}
 
 @m.app.post('/test/hdr-fixture')
 def hdr_fixture():
-    path=Path(temp.name)/'hdr.mkv'
+    path=fixture_root/'hdr.mkv'
     if not path.exists():
         subprocess.run([m.executable('ffmpeg'),'-v','error','-f','lavfi','-i','testsrc2=s=160x90:r=12',
                         '-t','3','-c:v','libx264','-preset','ultrafast','-pix_fmt','yuv420p10le',

@@ -432,5 +432,5 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 @media(max-width:420px) {
   .settings-tabs {grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .settings-tabs>button {min-height:34px;font-size:12px;gap:7px}
-  .settings-tabs>#settings-tab-about {grid-column:1 / -1}
+  .settings-tabs>#settings-tab-help {grid-column:1 / -1}
 }

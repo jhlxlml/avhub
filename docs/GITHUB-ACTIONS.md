@@ -28,7 +28,7 @@ git push origin vX.Y.Z
 
 1. Windows 2025 runner 准备 Node 24.19.0、Python 3.13.11 和已测试的 Python 直接依赖。npm 使用 package-lock.json。
 2. 下载固定 Gyan FFmpeg 9.0.2 essentials 压缩包，校验 `ci/ffmpeg.json` 中的 SHA-256；不自动切换最新版本、不上传 FFmpeg 二进制到 Git。
-3. 构建 UI / Electron，运行后端、共享界面测试以及真实 Electron 启动/退出验证。
+3. 构建 UI / Electron，运行后端、共享界面测试以及真实 Electron 启动/退出验证。另以真实 Windows 8.3 短临时目录运行截图回归，防止 hosted runner 的 `RUNNER~1` 与完整路径差异造成误判；验证保存目录、实际文件位置及 PNG 文件头，不跳过保存断言。
 4. 标签或手动运行才调用 Windows 打包脚本，并验证实际便携 EXE 的内部 FFmpeg、默认目录和迁移。CI 中更新提示使用模拟 GitHub 响应，避免共享 IP 限流影响可重复性；真实 GitHub 检查有独立逻辑测试和既往本地 EXE 验收，不把模拟检查声称为联网验收。
 5. 生成 EXE、SHA256SUMS.txt、release-build.json；只上传这三个发布文件，不上传整个 build/dist、个人配置、视频或缓存。
 6. 独立发布任务校验版本、提交和文件哈希，然后创建私有草稿；文件上传验证后才公开。仅发布任务拥有 `contents: write`，使用 GitHub 自动提供的临时 GITHUB_TOKEN，无需个人 Token。Actions 按已核实的完整提交固定。
@@ -38,3 +38,5 @@ git push origin vX.Y.Z
 失败不会把未通过验收的包公开。中断后可重跑，只允许恢复同提交、同说明的本流程草稿；已公开版本不会覆盖，应提高版本号发布新版。Artifacts 保留 14 天。自动包仍未代码签名，SmartScreen 提示不会因使用 CI 自动消失。
 
 手动打包仍可用：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1`。`-SkipDependencyInstall` 仅供已准备依赖的 CI 使用。
+
+本地复现短路径截图回归（先安装依赖并运行 `npm run build`）：`python tests/check_path_alias.py --ui`。仅在子测试进程中设置临时目录，不修改系统 TEMP，不访问真实媒体库；系统未提供不同的 8.3 别名时明确报告 SKIP，不能视为短路径验收通过。

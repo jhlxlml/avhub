@@ -37,7 +37,7 @@ try {
   // Hosted runners may share an exhausted anonymous GitHub rate limit.
   // CI checks deterministic UI behavior; unit tests cover the actual API parser.
   if(process.env.CI==='true')await page.route('**/api/updates/check',route=>route.fulfill({json:{status:'unpublished'}}));
-  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();assert.equal(checks,0);
+  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'帮助',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();assert.equal(checks,0);
   await expect(page.getByRole('region',{name:'关于 AVHub'})).toContainText(version);
   await page.getByRole('button',{name:'检查更新',exact:true}).click();await expect(page.getByRole('button',{name:'检查更新',exact:true})).toBeEnabled({timeout:15000});assert.equal(checks,1);
   await expect(page.locator('.manual-update-result [role="alert"]')).toHaveCount(0);

@@ -3,7 +3,7 @@ for(const theme of ['dark','light'])test(`about settings ${theme}: repeat clicks
   await request.post('/test/reset');await page.goto('/');
   if(theme==='light')await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
-  await page.getByRole('tab',{name:'关于',exact:true}).dblclick();
+  await page.getByRole('tab',{name:'帮助',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).dblclick();
   const panel=page.getByRole('tabpanel',{name:'关于',exact:true});
   await expect(panel).toContainText('本地离线视频库');await expect(panel).toContainText('原画优先');
   await expect(page.getByRole('dialog')).toHaveCount(1);
@@ -12,11 +12,11 @@ for(const theme of ['dark','light'])test(`about settings ${theme}: repeat clicks
   await expect(panel).toContainText('版本信息已复制');
   await expect(panel.getByText('版本信息已复制',{exact:true})).toHaveCount(0,{timeout:5000});
   await page.setViewportSize({width:390,height:820});
-  expect(await page.getByRole('tablist').evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  expect(await page.getByRole('tablist',{name:'设置分类'}).evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
   await page.screenshot({path:`test-results/about-settings-${theme}.png`});
   await panel.getByRole('button',{name:'复制项目地址',exact:true}).click();await expect(panel).toContainText('项目地址已复制');
   await page.getByRole('tab',{name:'媒体目录',exact:true}).click();
-  await page.getByRole('tab',{name:'关于',exact:true}).click();
+  await page.getByRole('tab',{name:'帮助',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();
   await expect(panel.getByText('项目地址已复制',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await expect(page.getByText('请先关闭当前对话框',{exact:true})).toHaveCount(0);

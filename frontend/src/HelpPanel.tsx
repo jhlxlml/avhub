@@ -1,0 +1,36 @@
+import {useState,type KeyboardEvent} from 'react';
+import {AboutPanel} from './AppTools';
+import {Icon,type IconName} from './Icon';
+import './help.css';
+
+const sections:{id:string;label:string;icon:IconName}[]=[{id:'guide',label:'使用指南',icon:'library'},{id:'shortcuts',label:'快捷操作',icon:'keyboard'},{id:'about',label:'关于',icon:'info'}];
+const shortcuts=[
+  {title:'播放与跳转',items:[['播放 / 暂停',['空格','K']],['后退 / 前进 5 秒',['←','→']],['后退 / 前进 10 秒',['J','L']],['音量减 / 加 5%',['↓','↑']],['静音 / 取消静音',['M']],['下一条视频（按当前队列）',['N']]]},
+  {title:'画面与截图',items:[['视频全屏 / 退出全屏',['F']],['进入 / 退出纯净播放',['W']],['退出视频全屏或纯净播放',['Esc']],['画中画 / 退出画中画',['P']],['画面旋转 90°',['R']],['保存当前解码画面的截图',['C']]]},
+] as const;
+
+export function HelpPanel({changeBusy,busy}:{changeBusy:(busy:boolean)=>void;busy:boolean}) {
+  const [section,setSection]=useState('guide');
+  function navigate(event:KeyboardEvent<HTMLButtonElement>,index:number) {
+    if(busy||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?sections.length-1:(index+(event.key==='ArrowRight'?1:-1)+sections.length)%sections.length;
+    setSection(sections[next].id);document.getElementById('help-tab-'+sections[next].id)?.focus();
+  }
+  return <section className="help-center" aria-label="帮助中心">
+    <div className="help-heading"><Icon name="help" size={20}/><div><h3>帮助与使用</h3><p>常用操作、快捷键与应用信息，随时查阅。</p></div></div>
+    <div className="help-tabs" role="tablist" aria-label="帮助内容">{sections.map((item,index)=><button key={item.id} id={'help-tab-'+item.id} type="button" role="tab" aria-selected={section===item.id} tabIndex={section===item.id?0:-1} aria-controls={'help-panel-'+item.id} disabled={busy}
+      onClick={()=>setSection(item.id)} onKeyDown={event=>navigate(event,index)}><Icon name={item.icon} size={15}/>{item.label}</button>)}</div>
+    <div role="tabpanel" id={'help-panel-'+section} aria-labelledby={'help-tab-'+section}>
+      {section==='guide'&&<div className="help-guide">
+        <section className="help-card"><h4><Icon name="folder" size={16}/>开始观看</h4><ol><li>在“媒体目录”中浏览本地文件夹或输入路径，添加一个或多个目录。</li><li>点击“刷新媒体库”扫描。首次扫描需要时间，封面在后台逐步生成。</li><li>使用顶部分类、目录树、搜索和分辨率筛选查找视频，点击封面开始播放。</li></ol></section>
+        <section className="help-card"><h4><Icon name="camera" size={16}/>截图与画面</h4><p>播放页按 C 或点击相机图标，直接保存 PNG，不弹保存窗口。默认目录可在“播放偏好 → 视频截图”中设置并保存。</p><p>截图来自当前解码画面，不包含控制栏、外挂文字字幕或显示层缩放与旋转；片源烧录的字幕会保留。目前没有上一帧 / 下一帧功能。</p><p>HDR / 10-bit 截图不保证保留原始色彩与位深；显示缩放不会增加片源本身的细节。</p></section>
+        <section className="help-card"><h4><Icon name="shield" size={16}/>原画与数据安全</h4><p>优先播放原文件；需要换容器时优先无损重新封装。确实不兼容时，只有经过确认才允许有损兼容转换。</p><p>收藏、标签、进度等保存到本地数据库，原视频只读。更换数据目录在下次启动迁移，旧目录保留；升级或迁移前建议完整备份。</p></section>
+        <details className="help-faq"><summary>常见问题</summary><dl><dt>为什么找不到视频？</dt><dd>检查目录是否在线、筛选条件是否清空，并刷新媒体库。盘符或位置改变时使用“重新定位”。</dd><dt>为什么快捷键没有响应？</dt><dd>关闭设置或菜单，退出输入框后再试。明确用 Tab 聚焦滑块时，方向键优先调整该滑块。</dd><dt>是否自动检查更新？</dt><dd>不会。切到“关于”，点击版本号旁的“检查更新”才联网，不自动下载或安装。</dd></dl></details>
+      </div>}
+      {section==='shortcuts'&&<><p className="help-hint">以下操作仅在播放页生效；输入文字、设置对话框、菜单中不会抢占快捷键。</p><div className="help-shortcut-grid">{shortcuts.map(group=><section className="help-card" key={group.title}><h4>{group.title}</h4><dl className="help-shortcuts">{group.items.map(([label,keys])=><div key={label}><dt>{label}</dt><dd>{keys.map((key,index)=><span key={key}>{index>0&&<i>/</i>}<kbd>{key}</kbd></span>)}</dd></div>)}</dl></section>)}</div>
+        <section className="help-card help-mouse"><h4><Icon name="coverSize" size={16}/>鼠标操作</h4><dl className="help-shortcuts"><div><dt>以鼠标位置为中心缩放画面</dt><dd>播放器内滚轮</dd></div><div><dt>调整音量</dt><dd><kbd>Shift</kbd> + 滚轮</dd></div><div><dt>移动放大的画面</dt><dd>按住左键拖动</dd></div><div><dt>视频全屏 / 退出全屏</dt><dd>双击画面</dd></div><div><dt>恢复默认缩放与画面位置</dt><dd>点击画面还原图标</dd></div></dl></section>
+        <p className="help-hint">Esc 在视频全屏时先退出视频全屏，再按一次可退出纯净播放。截图只保留 C 键；方向键是按秒跳转，不是逐帧选图。</p></>}
+      {section==='about'&&<AboutPanel changeBusy={changeBusy}/>}
+    </div>
+  </section>;
+}

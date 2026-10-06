@@ -57,7 +57,9 @@ jobs:
       - name: Windows short-path regression
         run: python tests/check_path_alias.py
       - name: Shared renderer regression
-        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/manual-updates.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts
+        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts
+      - name: Windows short-path screenshot regression
+        run: python tests/check_path_alias.py --ui
       - name: Real Electron startup/exit
         run: node electron/test/smoke.mjs
       - name: Package only tags or explicit manual runs

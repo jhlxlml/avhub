@@ -11,10 +11,11 @@ import { ScreenshotSettings } from './ScreenshotSettings';
 import { AutoplaySettings } from './AutoplaySettings';
 import { NativePrepareSettings } from './NativePrepareSettings';
 import {ResumeBehaviorSettings} from './ResumeBehaviorSettings';
-import {AppDataTools,AboutPanel} from './AppTools';
+import {AppDataTools} from './AppTools';
+import {HelpPanel} from './HelpPanel';
 import {requireDesktop} from './nativeDesktop';
 
-const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'about',label:'关于',icon:'play'}];
+const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'help',label:'帮助',icon:'help'}];
 
 export function Settings({ roots, close, reload, scanning, scan, previewEnabled, changePreview,thumbnailStatus,changeThumbnailStatus }: { roots: Root[]; close: () => void; reload: () => Promise<void>; scanning: boolean; scan: (root?: number) => Promise<void>; previewEnabled:boolean; changePreview:(enabled:boolean)=>void;thumbnailStatus:ThumbnailStatus|null;changeThumbnailStatus:(value:ThumbnailStatus)=>void }) {
   const [tab,setTab]=useState('directories');
@@ -118,7 +119,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
       {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'info'}>{notice}</StatusMessage>}
       <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics/></div>
-      <div className="settings-panel" role="tabpanel" id="settings-panel-about" aria-labelledby="settings-tab-about" hidden={tab!=='about'}>{tab==='about'&&<AboutPanel changeBusy={setBusy}/>}</div>
+      <div className="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" hidden={tab!=='help'}>{tab==='help'&&<HelpPanel changeBusy={setBusy} busy={busy}/>}</div>
       {scanning && <p role="status">后台扫描正在进行，可关闭设置继续观看。扫描结束后可修改目录。</p>}
   </Dialog>;
 }

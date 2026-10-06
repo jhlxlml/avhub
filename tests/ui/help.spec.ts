@@ -1,0 +1,26 @@
+import {test,expect} from '@playwright/test';
+for(const theme of ['dark','light'])test(`${theme}: Help contains accurate offline guidance, shortcuts and About in a unified layout`,async({page,request})=>{
+  await request.post('/test/reset');let checks=0;page.on('request',r=>{if(r.url().endsWith('/api/updates/check'))checks++;});
+  await page.goto('/');if(theme==='light')await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
+  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  const outer=page.getByRole('tablist',{name:'设置分类'});
+  await expect(outer.getByRole('tab',{name:'关于',exact:true})).toHaveCount(0);
+  await outer.getByRole('tab',{name:'帮助',exact:true}).click();
+  const help=page.getByRole('region',{name:'帮助中心'});
+  await expect(help.getByRole('tabpanel',{name:'使用指南'})).toContainText('目前没有上一帧 / 下一帧功能');
+  const tabs=help.getByRole('tablist',{name:'帮助内容'});
+  await tabs.getByRole('tab',{name:'使用指南'}).focus();await page.keyboard.press('ArrowRight');
+  await expect(tabs.getByRole('tab',{name:'快捷操作'})).toBeFocused();
+  await expect(help.getByRole('tabpanel',{name:'快捷操作'})).toContainText('后退 / 前进 5 秒');
+  await expect(help.getByRole('tabpanel',{name:'快捷操作'})).toContainText('方向键是按秒跳转，不是逐帧选图');
+  await expect(help.locator('kbd').filter({hasText:/^C$/})).toHaveCount(1);
+  await expect(help.locator('kbd').filter({hasText:/F8|Shift\+S/})).toHaveCount(0);
+  await page.screenshot({path:`test-results/help-shortcuts-${theme}-desktop.png`});
+  await page.setViewportSize({width:390,height:820});
+  for(const element of await page.locator('.help-tabs,.help-card,.settings-tabs').all())expect(await element.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  await page.screenshot({path:`test-results/help-shortcuts-${theme}-narrow.png`});
+  await tabs.getByRole('tab',{name:'关于',exact:true}).click();
+  await expect(help.getByRole('region',{name:'关于 AVHub'})).toBeVisible();await expect(help.getByRole('button',{name:'检查更新',exact:true})).toBeEnabled();
+  expect(checks).toBe(0);await page.getByRole('button',{name:'关闭设置',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+});

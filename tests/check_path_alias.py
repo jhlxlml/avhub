@@ -2,6 +2,8 @@
 import argparse
 import ctypes
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -25,13 +27,28 @@ def short_path(path):
     if not 0<length<len(buffer) or Path(buffer.value)==Path(path).resolve():return None
     return Path(buffer.value)
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--all',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser()
+    mode=parser.add_mutually_exclusive_group()
+    mode.add_argument('--all',action='store_true')
+    mode.add_argument('--ui',action='store_true',help='Run screenshot renderer tests with a real Windows short TEMP')
+    args=parser.parse_args()
     tests=Path(__file__).resolve().parent;sys.path.insert(0,str(tests));sys.path.insert(0,str(tests.parent))
     with tempfile.TemporaryDirectory(prefix='avhub-ci-alias-regression-') as directory:
         alias=short_path(directory)
         if alias is None:
             print('SKIP: this system does not provide a distinct Windows 8.3 alias');return
         if not alias.samefile(directory):raise RuntimeError('Alias does not identify the owned test directory')
+        if args.ui:
+            npx=shutil.which('npx.cmd') or shutil.which('npx')
+            if not npx:raise RuntimeError('npx is required for renderer regression')
+            # Only the child runner/server inherit this owned alias. Do not change
+            # persistent user TEMP settings or canonicalize away the reproduction.
+            env={**os.environ,'TEMP':str(alias),'TMP':str(alias),'TMPDIR':str(alias),'PYTHONUTF8':'1'}
+            result=subprocess.run([npx,'playwright','test','tests/ui/screenshots.spec.ts'],
+                                  cwd=tests.parent,env=env,timeout=600)
+            if result.returncode:raise SystemExit(result.returncode)
+            print('Windows 8.3 screenshot renderer regression passed')
+            return
         previous=tempfile.tempdir
         try:
             tempfile.tempdir=str(alias)  # Child test process only; not a user/system setting.

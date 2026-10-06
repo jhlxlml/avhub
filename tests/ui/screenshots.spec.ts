@@ -1,5 +1,6 @@
 import { test,expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
@@ -14,6 +15,14 @@ async function play(page:any) {
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.paused&&v.readyState>=2)).toBeTruthy();
 }
 const screenshotResponse=(page:any)=>page.waitForResponse((response:any)=>response.url().includes('/screenshot?')&&response.request().method()==='POST');
+
+async function expectSavedPng(shot:any,directory:string) {
+  // Keep strict canonical-directory assertions AND prove that the returned file
+  // was actually saved there. Do not hide alias mismatches by ignoring paths.
+  expect(shot.directory).toBe(directory);
+  expect(dirname(shot.path)).toBe(directory);
+  expect((await readFile(shot.path)).subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');
+}
 
 test('C saves directly without downloads or dialogs, including paused and rotated decoded frames',async({page})=>{
   let downloads=0,dialogs=0;page.on('download',()=>downloads++);page.on('dialog',()=>dialogs++);
@@ -59,7 +68,7 @@ test('settings picker only selects screenshot directory; fixed C and directory s
   await page.reload();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好'}).click();
   await expect(settings.getByLabel('默认保存目录')).toHaveValue(directory);await expect(settings.getByLabel('截图快捷键')).toContainText('C');
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();await play(page);await page.locator('.player-info h2').click();
-  const saved=screenshotResponse(page);await page.keyboard.press('c');const shot=await(await saved).json();expect(shot.directory).toBe(directory);
+  const saved=screenshotResponse(page);await page.keyboard.press('c');const shot=await(await saved).json();await expectSavedPng(shot,directory);
 });
 
 test('invalid settings preserve old values and recovery to default requires explicit save',async({page,request})=>{
@@ -114,6 +123,6 @@ test('rollback removes frame tools and old screenshot keys even with a legacy pr
   expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBe(5);
   const removed=await request.post('/api/media/2/frame',{data:{time:5,direction:1}});expect(removed.status()).toBe(404);expect(removed.headers()['content-type']).toContain('application/json');
   const saved=screenshotResponse(page);await page.keyboard.press('c');const result=await(await saved).json();
-  expect(result.directory).toBe(directory);expect(result.time).toBe(5);expect(saves).toBe(1);
+  await expectSavedPng(result,directory);expect(result.time).toBe(5);expect(saves).toBe(1);
   await page.keyboard.press('Space');await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.paused)).toBe(true);
 });
