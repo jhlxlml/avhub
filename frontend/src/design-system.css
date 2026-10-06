@@ -105,6 +105,9 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 .card:hover .cover {outline:0;box-shadow:0 3px 18px #0006,inset 0 0 0 1px #f3907e60}
 .star,.queue-add,.history-remove {display:grid;place-items:center;width:29px;height:29px;border-radius:7px;padding:0;background:#0b111dbf;border:1px solid #ffffff14;color:#e6ebf4}
 .star[aria-pressed="true"] {color:var(--ui-overlay-accent)}
+.media-grid .star {opacity:0;transition:opacity .16s,background .16s,color .16s}
+.media-grid .cover:hover .star,.media-grid .star:focus-visible {opacity:1}
+@media(hover:none) {.media-grid .star {opacity:1}}
 .star:hover:not(:disabled),.queue-add:hover {background:#253041e8;color:var(--ui-overlay-accent)}
 .queue-add {top:42px}
 .progress {background:#0b111daa;height:3px}

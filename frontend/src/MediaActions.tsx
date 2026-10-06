@@ -3,6 +3,7 @@ import { api, json, errorText, type Media, type MediaUpdate } from './api';
 import { Icon } from './Icon';
 import {NativePrepareDialog} from './NativePrepareDialog';
 import {useNativePreparation} from './nativePreparation';
+import {requireDesktop} from './nativeDesktop';
 
 export function MediaActions({media,update,changed,notify,pauseForPreparation,playPrepared}: {
   media:Media;update:(value:MediaUpdate)=>void;changed?:()=>void;notify:(message:string)=>void;pauseForPreparation?:()=>void;playPrepared?:()=>void;
@@ -32,8 +33,7 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
         update(value);changed?.();notify(action==='auto'?'已恢复自动判断观看状态':value.watched?'已标记为已看':'已标记为未看');
       } else if(action==='copy') {await navigator.clipboard.writeText(media.path);notify('视频路径已复制');}
       else {
-        if(window.avhubDesktop?.mediaAction)await window.avhubDesktop.mediaAction(media.id,action);
-        else await api(`/api/media/${media.id}/native/${action}`,{method:'POST'});
+        await requireDesktop('mediaAction').mediaAction(media.id,action);
         notify(action==='reveal'?'已在资源管理器中定位视频':'已请求系统播放器打开原片；外部播放进度不会同步');
       }
       setOpen(false);

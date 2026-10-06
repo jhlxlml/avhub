@@ -118,11 +118,12 @@ function App() {
     setNotification(current => ({message, autoDismissMs:4000, id:current.id+1}));
   }, []);
   const [revision, setRevision] = useState(0);
+  const [libraryRetry,setLibraryRetry]=useState(0);
   const [bulkMode, setBulkMode] = useState(false);
   const [picked, setPicked] = useState<number[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const grouped = filters.view === 'series' && filters.grouped;
-  const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q);
+  const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q,libraryRetry);
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
   const loading=!rootsReady||library.loading,requestError=library.error;
   const setItems=useCallback((change:(value:Media[])=>Media[])=>library.update(value=>value?{...value,items:change(value.items)}:value),[library.update]);
@@ -223,8 +224,20 @@ function App() {
     if (favoriteLocks.current.has(m.id)) return;
     favoriteLocks.current.add(m.id); setFavoritePending([...favoriteLocks.current]);
     try {
-      updateMedia(await api<Media>(`/api/media/${m.id}/favorite`, json('PUT', { favorite: !m.favorite })));
-      if (!selected && filters.view === 'favorites') setRevision(x => x + 1);
+      const value=await api<Media>(`/api/media/${m.id}/favorite`, json('PUT', { favorite: !m.favorite }));
+      // A favorite write changes no image or playback source. Keep this page's
+      // mounted cards/preview while invalidating other classifications.
+      libraryCache.clear();
+      library.update(current=>{
+        if(!current)return current;
+        const old=current.items.find(item=>item.id===value.id);
+        const total=filters.view==='favorites'&&old?.favorite&&!value.favorite?Math.max(0,current.total-1):current.total;
+        return {...current,total,pages:Math.max(1,Math.ceil(total/current.page_size)),items:current.items.map(item=>item.id===value.id?{...item,favorite:value.favorite}:item)};
+      });
+      setSelected(current=>current?.id===value.id?{...current,favorite:value.favorite}:current);
+      // Removing a favorite may require filling/clamping a page. Revalidate
+      // against the server without changing the current query identity.
+      if (!selected && filters.view === 'favorites') setLibraryRetry(x => x + 1);
     }
     catch (e) { setNotice(errorText(e)); }
     finally { favoriteLocks.current.delete(m.id); setFavoritePending([...favoriteLocks.current]); }

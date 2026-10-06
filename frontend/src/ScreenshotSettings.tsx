@@ -4,6 +4,7 @@ import { rememberSavedPreference } from './preferences';
 import { Icon } from './Icon';
 import { Button,StatusMessage } from './ui';
 import { revealScreenshot,type ScreenshotSettings as Settings } from './screenshots';
+import {requireDesktop} from './nativeDesktop';
 import './screenshots.css';
 
 export function ScreenshotSettings({busy,changeBusy,enabled}:{busy:boolean;changeBusy:(value:boolean)=>void;enabled:boolean}) {
@@ -32,13 +33,8 @@ export function ScreenshotSettings({busy,changeBusy,enabled}:{busy:boolean;chang
     <label htmlFor="screenshot-directory">默认保存目录</label>
     <div className="screenshot-directory-field"><input id="screenshot-directory" disabled={locked} value={directory} placeholder="留空使用应用数据目录" onChange={event=>setDirectory(event.target.value)}/>
       <Button icon="folder" disabled={locked} onClick={()=>void action(async()=>{
-        if(window.avhubDesktop) {
-          if(!window.avhubDesktop.chooseFolder)throw new Error('请重新编译并启动 Electron 桌面组件');
-          const selected=await window.avhubDesktop.chooseFolder('screenshots');
-          if('path' in selected)setDirectory(selected.path);return;
-        }
-        const value=await api<{directory?:string;cancelled?:boolean}>('/api/screenshots/pick',{method:'POST'});
-        if(value.directory)setDirectory(value.directory);
+        const selected=await requireDesktop('chooseFolder').chooseFolder('screenshots');
+        if('path' in selected)setDirectory(selected.path);
       })}>浏览</Button></div>
     <small className="screenshot-path" title={settings?.effective_directory}>当前保存到：{settings?.effective_directory??'正在读取…'}</small>
     {settings&&!settings.available&&<StatusMessage kind="error">{settings.warning}</StatusMessage>}
@@ -49,9 +45,8 @@ export function ScreenshotSettings({busy,changeBusy,enabled}:{busy:boolean;chang
     })}>保存截图设置</Button>
       <Button disabled={locked} onClick={()=>setDirectory('')}>使用默认目录</Button>
       <Button icon="reveal" disabled={locked} onClick={()=>void action(async()=>{
-        if(window.avhubDesktop)await revealScreenshot();
-        else {await navigator.clipboard.writeText(settings!.effective_directory);setNotice('保存目录路径已复制');}
-      })}>{window.avhubDesktop?'打开截图目录':'复制目录路径'}</Button></div>
+        await revealScreenshot();
+      })}>打开截图目录</Button></div>
     <small>文件名包含视频标题、播放时间与截图时间，连续截图不会覆盖。自定义目录须已存在；默认目录在首次保存时创建。</small>
     {notice&&<StatusMessage kind={failed?'error':'info'}>{notice}</StatusMessage>}
     {!settings&&!loading&&<Button disabled={busy} icon="refresh" onClick={()=>void action(async()=>{

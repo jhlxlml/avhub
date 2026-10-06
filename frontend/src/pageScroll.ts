@@ -1,5 +1,5 @@
-// Desktop titlebar is outside the page's scroll viewport. Browsers keep their
-// normal document scrolling; navigation uses the matching scroll owner.
+// Desktop titlebar is outside the page viewport. Explicit component harnesses
+// without a native shell use document scrolling to verify shared layout only.
 function desktopScroller() {
   return window.avhubDesktop?document.getElementById('app-scroll-area'):null;
 }

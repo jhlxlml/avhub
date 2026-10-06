@@ -12,6 +12,7 @@ import { AutoplaySettings } from './AutoplaySettings';
 import { NativePrepareSettings } from './NativePrepareSettings';
 import {ResumeBehaviorSettings} from './ResumeBehaviorSettings';
 import {AppDataTools,AboutPanel} from './AppTools';
+import {requireDesktop} from './nativeDesktop';
 
 const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'about',label:'关于',icon:'play'}];
 
@@ -46,14 +47,12 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     if (busy) return;
     setBusy(true); setNotice(''); setNoticeError(false);
     try {
-      if(pick&&window.avhubDesktop) {
-        if(!window.avhubDesktop.chooseFolder)throw new Error('请重新编译并启动 Electron 桌面组件');
-        const chosen=await window.avhubDesktop.chooseFolder('media');if('cancelled' in chosen)return;
+      if(pick) {
+        const chosen=await requireDesktop('chooseFolder').chooseFolder('media');if('cancelled' in chosen)return;
         await api<Root>('/api/roots',json('POST',{path:chosen.path}));
         setPath('');await reload();setNotice('目录已加入，点击顶栏“刷新媒体库”开始扫描');return;
       }
-      const result = await api<Root | { cancelled: true }>(pick ? '/api/roots/pick' : '/api/roots',
-        pick ? { method: 'POST' } : json('POST', { path: path.trim() }));
+      const result = await api<Root>('/api/roots',json('POST', { path: path.trim() }));
       if (!('cancelled' in result)) {
         setPath(''); await reload(); setNotice('目录已加入，点击顶栏“刷新媒体库”开始扫描');
       }
@@ -70,14 +69,9 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     if (busy) return;
     setBusy(true); setNotice(''); setNoticeError(false);
     try {
-      if(window.avhubDesktop) {
-        if(!window.avhubDesktop.chooseFolder)throw new Error('请重新编译并启动 Electron 桌面组件');
-        const chosen=await window.avhubDesktop.chooseFolder('media');if('cancelled' in chosen)return;
-        await api(`/api/roots/${id}/relocate`,json('POST',{path:chosen.path}));
-        await reload();setNotice('目录已重新定位，请刷新媒体库重新扫描');return;
-      }
-      const result = await api<Root | { cancelled: true }>(`/api/roots/${id}/relocate/pick`, { method: 'POST' });
-      if (!('cancelled' in result)) { await reload(); setNotice(`目录已重新定位，关联 ${'relocated' in result ? result.relocated : 0} 个视频；请刷新媒体库重新扫描`); }
+      const chosen=await requireDesktop('chooseFolder').chooseFolder('media');if('cancelled' in chosen)return;
+      await api(`/api/roots/${id}/relocate`,json('POST',{path:chosen.path}));
+      await reload();setNotice('目录已重新定位，请刷新媒体库重新扫描');
     } catch (e) { setNoticeError(true); setNotice(errorText(e)); }
     finally { setBusy(false); }
   }

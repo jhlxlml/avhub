@@ -31,10 +31,13 @@ export const views: { id: View; label: string }[] = [
 ];
 export const SERVICE_MISMATCH = '本地服务与网页版本不匹配，请完全退出并重新启动 AVHub';
 export const CLIENT_BUILD = __AVHUB_BUILD__;
+export let rendererTest=false;
 export async function checkServiceBuild() {
-  const health = await api<{ api_protocol?:number; build_id?:string }>('/api/health');
+  const health = await api<{ api_protocol?:number; build_id?:string;renderer_test?:boolean }>('/api/health');
   if (health.api_protocol !== CLIENT_BUILD.api_protocol || health.build_id !== CLIENT_BUILD.build_id)
     throw new Error(`${SERVICE_MISMATCH}；网页 ${CLIENT_BUILD.build_id} / 服务 ${health.build_id ?? '旧服务'}。开发模式请先执行 npm run build 再重启服务`);
+  rendererTest=health.renderer_test===true;
+  if(!window.avhubDesktop&&!rendererTest)throw new Error('AVHub 仅支持桌面版，请使用启动AVHub.bat、npm run dev 或便携 EXE 打开应用');
 }
 export const isJsonResponse = (response: Response) => /(?:^|\/)json(?:\s*;|$)|\+json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '');
 export const isHtmlResponse = (response: Response) => /(?:text\/html|application\/xhtml\+xml)/i.test(response.headers.get('content-type') ?? '');

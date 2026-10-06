@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 temp = tempfile.TemporaryDirectory(prefix="avhub-regression-")
 os.environ["AVHUB_DATA_DIR"] = str(Path(temp.name) / "data")
 from app import main as m
+m.app.state.renderer_test=True  # Component harness, not a browser product.
 import uvicorn
 frontend_route = next(r for r in m.app.routes if r.path == '/{path:path}')
 m.app.router.routes.remove(frontend_route)

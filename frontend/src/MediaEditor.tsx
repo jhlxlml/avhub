@@ -22,12 +22,6 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
   const dirty = JSON.stringify([title, kind, season, episode, rating, tags, seriesTitle]) !== baseline;
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
-  useEffect(() => {
-    if (!dirty || window.avhubDesktop) return;
-    const leaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
-    window.addEventListener('beforeunload', leaving);
-    return () => window.removeEventListener('beforeunload', leaving);
-  }, [dirty]);
 
   useEffect(() => {
     // Unrelated full-media responses (favorite/progress/watched) must not replace

@@ -10,6 +10,7 @@ export function useLibraryQuery<T>(url:string|null,revision:number,cache:Library
   const [snapshot,setSnapshot]=useState<Snapshot<T>|null>(null);
   const [feedback,setFeedback]=useState('');
   const previousSearch=useRef(search);
+  const previousRetry=useRef(retry);
   const active=useRef({url,revision});active.current={url,revision};
   const cached=url?cache.get<T>(url,revision):undefined;
   const matches=!!url&&snapshot?.url===url&&snapshot.revision===revision;
@@ -19,9 +20,10 @@ export function useLibraryQuery<T>(url:string|null,revision:number,cache:Library
   const identity=`${revision}:${url}`;
   useEffect(()=>{
     const typing=previousSearch.current!==search;previousSearch.current=search;
+    const forced=previousRetry.current!==retry;previousRetry.current=retry;
     if(!url)return;
     const entry=cache.get<T>(url,revision);
-    if(entry&&Date.now()-entry.time<=cache.freshMs) {
+    if(!forced&&entry&&Date.now()-entry.time<=cache.freshMs) {
       setSnapshot({url,revision,data:entry.data,error:'',pending:false});return;
     }
     const controller=new AbortController();

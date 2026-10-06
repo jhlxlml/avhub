@@ -718,20 +718,6 @@ def save_screenshot_settings(body:ScreenshotSettingsInput):
                       SET value=excluded.value,updated_at=excluded.updated_at''',(json.dumps(value),stamp))
     return screenshot_settings()
 
-@app.post('/api/screenshots/pick')
-def pick_screenshot_directory():
-    window=None
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        window=tk.Tk();window.withdraw();window.attributes('-topmost',True)
-        selected=filedialog.askdirectory(title='选择截图默认保存目录',mustexist=True)
-        return {'directory':selected} if selected else {'cancelled':True}
-    except Exception as exc:raise HTTPException(500,'无法打开目录选择器，请手动输入现有目录的完整路径') from exc
-    finally:
-        if window:
-            with suppress(Exception):window.destroy()
-
 @app.get('/api/screenshots/directory')
 def screenshot_directory():
     return {'path':str(screenshots.destination(DATA,screenshots.preferences(connection),True))}
@@ -755,23 +741,13 @@ def app_info():
             'data_directory':str(DATA),'frozen':FROZEN}
 
 
-@app.post('/api/app-data/reveal')
-def reveal_app_data(request:Request):
-    if not request.headers.get('origin') or local_request_error(request,SERVER_PORT,bool(SESSION_TOKEN)):
-        raise HTTPException(403,'仅允许本机应用发起目录操作')
-    if sys.platform!='win32':raise HTTPException(501,'此操作仅支持 Windows')
-    if not DATA.is_dir():raise HTTPException(404,'数据目录不可访问')
-    try:os.startfile(str(DATA.resolve()))
-    except OSError as exc:raise HTTPException(503,'无法打开数据目录') from exc
-    return {'ok':True}
-
-
 @app.get("/api/health")
 def health():
     return {"ok": True, "ffmpeg": Path(executable("ffmpeg")).is_file() or shutil.which(executable("ffmpeg")) is not None,
             "ffprobe": Path(executable("ffprobe")).is_file() or shutil.which(executable("ffprobe")) is not None,
             "data_dir": str(DATA), "frozen": FROZEN, "port": SERVER_PORT, **BUILD,
             "desktop_session": bool(SESSION_TOKEN),
+            "renderer_test":not FROZEN and getattr(app.state,'renderer_test',False) is True,
             "session_id": hashlib.sha256(SESSION_TOKEN.encode()).hexdigest()[:16] if SESSION_TOKEN else None}
 
 
@@ -822,23 +798,6 @@ def add_root(body: RootInput):
         row = db.execute("SELECT * FROM roots WHERE path=?", (str(path.resolve()),)).fetchone()
     return dict(row)
 
-@app.post("/api/roots/pick", status_code=201)
-def pick_root():
-    """Open Windows' native folder picker and immediately add the chosen folder."""
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        window = tk.Tk()
-        window.withdraw()
-        window.attributes("-topmost", True)
-        selected = filedialog.askdirectory(title="选择要加入 AVHub 的视频文件夹", mustexist=True)
-        window.destroy()
-    except Exception as exc:
-        raise HTTPException(500, f"无法打开系统文件夹选择器：{exc}") from exc
-    if not selected:
-        return JSONResponse({"cancelled": True}, status_code=200)
-    return add_root(RootInput(path=selected))
-
 @app.delete("/api/roots/{root_id}")
 def remove_root(root_id: int):
     with scanner.lock, thumbnail_service.mutation(), connection() as db:
@@ -879,22 +838,6 @@ def relocate_root(root_id: int, body: RelocateInput):
         db.execute('DELETE FROM thumbnail_jobs WHERE root_id=?',(root_id,))
     return {"id": root_id, "path": str(target), "available": True, "relocated": len(replacements)}
 
-
-@app.post("/api/roots/{root_id}/relocate/pick")
-def pick_relocation(root_id: int):
-    with connection() as db:
-        if not db.execute("SELECT 1 FROM roots WHERE id=?", (root_id,)).fetchone():
-            raise HTTPException(404, "媒体目录不存在")
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-        window = tk.Tk(); window.withdraw(); window.attributes("-topmost", True)
-        selected = filedialog.askdirectory(title="选择该媒体库的新位置", mustexist=True)
-        window.destroy()
-    except Exception as exc:
-        raise HTTPException(500, f"无法打开系统文件夹选择器：{exc}") from exc
-    if not selected: return {"cancelled": True}
-    return relocate_root(root_id, RelocateInput(path=selected))
 
 
 @app.get("/api/backup")
@@ -1528,23 +1471,16 @@ def automatic_watched(media_id:int):
     return one_media(media_id)
 
 def native_media_path(media_id:int)->Path:
-    source=Path(one_media(media_id)['path']).resolve()
+    item=one_media(media_id)
+    if item.get('missing'):raise HTTPException(404,'视频文件已离线')
+    source=Path(item['path']).resolve()
     if source.suffix.lower() not in VIDEO_EXTENSIONS or not source.is_file():raise HTTPException(404,'视频文件不存在或格式不受支持')
     return source
 
-@app.post('/api/media/{media_id}/native/{action}')
-def native_media_action(media_id:int,action:Literal['reveal','open'],request:Request):
-    # Browser mode has no desktop session cookie: require a same-origin user UI
-    # request before handing any indexed media ID to an operating-system action.
-    if request.url.hostname not in {'127.0.0.1','localhost'} or request.headers.get('origin')!=str(request.base_url).rstrip('/'):
-        raise HTTPException(403,'仅允许本机应用发起文件操作')
-    if sys.platform!='win32':raise HTTPException(501,'此功能仅支持 Windows')
-    source=native_media_path(media_id)
-    try:
-        if action=='reveal':subprocess.Popen(['explorer.exe','/select,',str(source)],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-        else:os.startfile(str(source))
-    except OSError as exc:raise HTTPException(503,'无法打开，请检查系统默认视频播放器或文件权限') from exc
-    return {'ok':True}
+@app.get('/api/media/{media_id}/native-path')
+def indexed_native_path(media_id:int):
+    # Resolve an indexed ID only. OS actions belong to trusted Electron IPC.
+    return {'path':str(native_media_path(media_id))}
 
 @app.put("/api/media/{media_id}/progress")
 def save_progress(media_id: int, body: ProgressInput):

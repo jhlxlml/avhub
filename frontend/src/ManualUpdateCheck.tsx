@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {api,errorText} from './api';
 import {Button,StatusMessage} from './ui';
-import {Icon} from './Icon';
+import {requireDesktop} from './nativeDesktop';
 type Result={status:'available'|'pending'|'current'|'ahead'|'unpublished';version?:string;tag?:string;published_at?:string;notes?:string};
 export function useManualUpdateCheck() {
   const [checking,setChecking]=useState(false),[result,setResult]=useState<Result|null>(null),[error,setError]=useState('');
@@ -23,7 +23,7 @@ export function UpdateResult({result,error}:{result:Result|null;error:string}) {
     {error&&<StatusMessage kind="error">{error}</StatusMessage>}
     {result&&<><StatusMessage>{messages[result.status]}</StatusMessage>
       {result.status==='available'&&result.tag&&<>{result.published_at&&<small>发布时间：{result.published_at.slice(0,10)}</small>}
-        <div className="app-tool-actions">{window.avhubDesktop?<Button icon="external" onClick={()=>{setOpenError('');void window.avhubDesktop!.openRelease(result.tag!).catch(e=>setOpenError(errorText(e)));}}>前往下载</Button>:<a className="ui-button" href={`https://github.com/jhlxlml/avhub/releases/tag/${encodeURIComponent(result.tag)}`} target="_blank" rel="noopener noreferrer"><Icon name="external" size={16}/>前往下载</a>}</div>
+        <div className="app-tool-actions"><Button icon="external" onClick={()=>{setOpenError('');void (async()=>requireDesktop('openRelease').openRelease(result.tag!))().catch(e=>setOpenError(errorText(e)));}}>前往下载</Button></div>
         {result.notes&&<details><summary>更新说明</summary><p>{result.notes}</p></details>}</>}
     </>}
     {openError&&<StatusMessage kind="error">{openError}</StatusMessage>}

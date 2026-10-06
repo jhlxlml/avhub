@@ -44,8 +44,10 @@ test('pure playback screenshot shortcut leaves hidden controls hidden and video 
 
 test('settings picker only selects screenshot directory; fixed C and directory survive reload',async({page,request})=>{
   const {directory}=await(await request.get('/test/screenshot-directory')).json();
-  await page.route('**/api/screenshots/pick',route=>route.fulfill({json:{directory}}));
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好'}).click();
+  // The component harness supplies only the chooser under test. Actual IPC
+  // and Windows dialogs are exercised by test:electron:screenshots.
+  await page.evaluate(directory=>{(window as any).avhubDesktop={chooseFolder:async(purpose:string)=>{if(purpose!=='screenshots')throw new Error('unexpected purpose');return {path:directory};}};},directory);
   const settings=page.getByRole('region',{name:'视频截图设置'});
   await settings.getByRole('button',{name:'浏览',exact:true}).click();
   await expect(settings.getByLabel('默认保存目录')).toHaveValue(directory);

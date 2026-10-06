@@ -2,6 +2,19 @@
 
 English · [简体中文](README.md)
 
+### 0.2.6 update
+
+- Adds GitHub Actions: regular commits run tests, stable version tags build and publish Windows portable releases with checksums/provenance. Manual Actions runs build artifacts only. See [workflow guide](docs/GITHUB-ACTIONS.md).
+
+### 0.2.5 update
+
+- Electron desktop is the only supported product. `npm run dev` and the batch launcher open the desktop window; native operations use Electron only.
+- React, FastAPI and localhost playback remain internals. Browser component/decoder harnesses are explicitly marked tests, not a supported browser edition. The archive stays frozen and excluded from packages.
+
+### 0.2.4 update
+
+- Cover-wall favorite buttons appear on hover or keyboard focus, matching playlist actions. Favorite changes update in place without remounting images/previews, while favorite views and pagination remain accurate.
+
 ### 0.2.3 update
 
 - Added an explicit manual update button beside the About version. No background checks, automatic downloads or installation. See [release notes](docs/RELEASE-0.2.3.md).
@@ -20,12 +33,9 @@ AVHub is an offline local video library and player for Windows. It brings multip
 
 Videos stay in their original locations. The app does not offer operations to move, rename, or delete source videos. Indexes, artwork, settings, and viewing records are stored separately. Once dependencies are installed or a portable build is ready, everyday scanning and playback work offline, without online artwork or metadata scraping.
 
-Two runtime modes are available:
+The main project supports **Electron desktop only**, with always-on-top, adaptive borderless Pure Playback and native folder operations. React, FastAPI and localhost delivery are internal architecture, not a standalone browser product.
 
-- **Electron desktop app**: a standalone window with always-on-top, aspect-ratio-adaptive borderless Pure Playback, and desktop folder operations.
-- **Browser app**: a Python-powered local server accessed through Edge / Chrome. It cannot pin or automatically resize the browser window.
-
-A browser-edition source snapshot is retained in [archive/web-legacy-2026-10-05](archive/web-legacy-2026-10-05/ARCHIVE.md). This archive-only operation does not change the main project's launchers or playback behavior.
+The historical [browser source snapshot](archive/web-legacy-2026-10-05/ARCHIVE.md) stays frozen, unmaintained and excluded from desktop packages.
 
 **The application UI is currently Chinese.** This English README does not imply English UI support. The repository primarily contains source code, not FFmpeg executables, generated web assets, personal library data, or portable EXEs.
 
@@ -79,7 +89,7 @@ Run the following commands in PowerShell from the project root. Initial dependen
 | Python | 3.10 or newer; the current local validation environment uses 3.13 |
 | Node.js | 22.12 or newer, satisfying the currently locked frontend and Electron dependencies |
 | FFmpeg / FFprobe | Windows executables in the project `bin/` directory or on PATH |
-| Browser | Edge / Chrome for browser mode; Electron includes Chromium |
+| Rendering engine | Chromium is bundled; Edge is needed only for UI component tests |
 | PowerShell 7 | Required for the current Windows packaging script, not for ordinary startup |
 
 If you do not already have the source:
@@ -123,16 +133,13 @@ $env:AVHUB_PYTHON = (Resolve-Path .\.venv\Scripts\python.exe).Path
 npm run electron:dev
 ```
 
-### 4. Start browser mode
+### 4. Unified desktop launcher
 
 ```powershell
-npm run build
-python run.py
+npm run dev
 ```
 
-The default URL is `http://127.0.0.1:8765`. Startup opens the system's default browser. After installing dependencies and building the UI, you can also double-click [启动AVHub.bat](启动AVHub.bat). That launcher starts browser mode only; it does not install dependencies or build assets.
-
-Use `python run.py --no-browser` to skip opening a browser, or `python run.py --port 8870` if the default port is occupied.
+After installing dependencies, [启动AVHub.bat](启动AVHub.bat) builds and opens the same desktop app. `npm run electron:dev` remains an alias. `run.py` is an internal backend/migration entry; it never opens a browser. Do not launch a separate localhost page.
 
 ## First use
 
@@ -215,13 +222,13 @@ The mouse wheel zooms around the pointer. Drag the image while zoomed, and use t
 
 After clicking a playback control, Space still plays or pauses instead of activating that button again. Text fields, open menus, and settings keep their own keyboard behavior.
 
-**Pure Playback** hides library and page information. Desktop mode also adapts the window to the video's aspect ratio, with controls overlaid on the image, and restores the previous window when exiting. Browser mode changes only the page layout; it cannot resize or pin the browser window. Black bars encoded into the video itself are not automatically cropped.
+**Pure Playback** hides library information, adapts the desktop window to the video's aspect ratio, overlays controls and restores the previous window when exiting. Encoded black bars are not automatically cropped.
 
 ## Screenshots
 
 Open Settings → **播放偏好** (Playback preferences) → **视频截图** (Video screenshots), choose a destination, and click “保存截图设置” (Save screenshot settings). An empty path uses `screenshots/` under the active data directory. A custom directory must already exist and be writable.
 
-Click the camera icon or press **C** to save a PNG. Filenames include the video title, playback position, and capture time; successive captures do not overwrite one another. There is no save dialog. Playing videos keep playing, and paused videos stay paused. Desktop mode can open the destination folder; browser mode can copy its path.
+Click the camera icon or press **C** to save a PNG without a dialog or interruption. Filenames include title, playback time and capture time and do not overwrite each other. Native actions reveal images and open their destination.
 
 Screenshots capture the **currently decoded image** at its decoded dimensions, excluding controls, text-subtitle overlays, and display-layer zoom or rotation. Subtitles burned into the source remain visible. During transcoded playback, the screenshot captures the transcoded output, not guaranteed original HDR / 10-bit data. Paused frame-by-frame selection is not currently available. **C is the only screenshot shortcut.**
 
@@ -231,7 +238,6 @@ The default is `AVHub-data/` beside the app. Do not run multiple instances again
 
 | Runtime | Default location |
 | --- | --- |
-| Source browser mode | `AVHub-data/` in the project root |
 | Source Electron mode | `AVHub-data/` in the project root |
 | Electron portable EXE | `AVHub-data/` next to the EXE, falling back to Electron's user configuration directory if unwritable |
 | Custom location | Electron Settings → Data management → Custom data directory; `AVHUB_DATA_DIR` still takes highest priority |
@@ -242,11 +248,11 @@ Choose an **empty directory** in desktop Settings. The current session keeps its
 
 The location is stored beside the app in `avhub-data-location.json`, excluded from Git. An old default library is copied to an empty `AVHub-data/` on upgrade; separate libraries are not merged. Custom absolute paths do not automatically relocate with a portable app.
 
-For example, run browser mode with a dedicated data directory:
+For example, run the desktop development app with a dedicated data directory:
 
 ```powershell
 $env:AVHUB_DATA_DIR = 'D:\AVHubData'
-python run.py
+npm run dev
 ```
 
 - **Database backup** contains SQLite data only, not artwork, videos, or screenshots.
@@ -258,22 +264,13 @@ python run.py
 
 ## Development and tests
 
-### Web hot reload
-
-After installing dependencies, build once and start the backend:
-
-```powershell
-npm run build
-python run.py --no-browser
-```
-
-In another terminal at the project root:
+### Desktop development
 
 ```powershell
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. Vite proxies `/api`, `/media`, and `/thumbs` to `127.0.0.1:8765`; use the default backend port for this setup. Restart the service after Python backend changes.
+Exit normally and rerun this command after edits. Vite builds the internal UI only. Browser tests use an explicitly marked isolated harness; acceptance uses real Electron or the portable EXE.
 
 ### Common verification commands
 
@@ -329,7 +326,7 @@ avhub/
 │  └─ build-windows.ps1   Windows portable build entry point
 ├─ tests/                 Backend and Playwright regression tests
 ├─ docs/                  Iteration, audit, and targeted validation records
-├─ run.py                 Browser / backend entry point
+├─ run.py                 Internal Electron backend / migration entry
 ├─ requirements.txt       Python runtime dependencies
 ├─ requirements-build.txt Python packaging dependencies
 └─ package.json           Frontend, desktop, and verification commands
@@ -341,7 +338,7 @@ React / TypeScript implements the UI, with hls.js for HLS playback. FastAPI bind
 
 - **Blank page, build mismatch, or updates not appearing**: fully exit old instances, run `npm run build`, and restart. For source desktop mode, use `npm run electron:dev`. Generated web assets are not tracked by Git.
 - **Scan, artwork, or transcoding fails**: check FFmpeg / FFprobe paths, folder permissions, disk availability, and thumbnail queue status. Inspect Runtime diagnostics.
-- **The library appears empty**: check the active runtime and data directory. Source browser, source desktop, and portable modes have different defaults.
+- **The library appears empty**: check the current/pending data location and AVHUB_DATA_DIR. Source desktop and portable builds use directories beside their respective app locations.
 - **A file still seeks slowly or does not play**: inspect the actual playback path, codecs, and errors in diagnostics. Remuxing, transcoding, keyframe structure, and hardware capabilities can all affect playback.
 - **Videos are missing after restore or migration**: backups do not include source videos. Restore their accessibility or relocate the directory in Settings, then refresh.
 - **Offline operation, platform, and privacy**: everyday functions do not depend on external services, but initial dependency installation and build downloads are not offline. Data and diagnostics can include local paths and video titles; redact reports before sharing them publicly.

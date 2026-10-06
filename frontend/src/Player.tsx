@@ -1331,7 +1331,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           <strong>{screenshotError|| (screenshotBusy?'正在保存截图…':`截图已保存 · ${savedScreenshot!.width} × ${savedScreenshot!.height}`)}</strong>
           {savedScreenshot&&<small title={savedScreenshot.path}>{savedScreenshot.filename}</small>}
           <div className="screenshot-toast-actions">
-            {savedScreenshot&&<button onClick={()=>void (window.avhubDesktop?revealScreenshot(savedScreenshot.id):navigator.clipboard.writeText(savedScreenshot.directory)).catch(error=>setScreenshotError(errorText(error)))}>{window.avhubDesktop?'在文件夹中显示':'复制保存目录'}</button>}
+            {savedScreenshot&&<button onClick={()=>void revealScreenshot(savedScreenshot.id).catch(error=>setScreenshotError(errorText(error)))}>在文件夹中显示</button>}
             {screenshotError&&captureId&&!savedScreenshot&&<button onClick={()=>void api<SavedScreenshot>(`/api/screenshots/${captureId}`).then(saved=>{setScreenshotError('');setSavedScreenshot(saved);}).catch(error=>setScreenshotError(errorText(error)))}>检查保存结果</button>}
           </div></div>
         {!screenshotBusy&&<button aria-label="关闭截图提示" onClick={()=>{setScreenshotError('');setSavedScreenshot(null);}}><Icon name="close" size={15}/></button>}
@@ -1406,7 +1406,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
           </div>
           <div className="player-end-actions">
             {!tinyControls && navigationActions}
-            <button aria-label={purePlayback?'退出纯净播放':'纯净播放'} title={purePlayback?'退出纯净播放 (W / Esc)':window.avhubDesktop?'纯净播放：窗口适配视频比例 (W)':'纯净播放：视频铺满当前页面 (W)'} aria-pressed={purePlayback}
+            <button aria-label={purePlayback?'退出纯净播放':'纯净播放'} title={purePlayback?'退出纯净播放 (W / Esc)':'纯净播放：窗口适配视频比例 (W)'} aria-pressed={purePlayback}
               disabled={windowModeBusy || !purePlayback && phase!=='ready'} onClick={()=>void togglePurePlayback()}><Icon name={purePlayback?'exitPurePlayback':'purePlayback'} size={20}/></button>
             <button aria-label={pipActive ? '退出画中画' : '画中画'} disabled={phase !== 'ready' || !document.pictureInPictureEnabled}
               title={pipActive ? '退出画中画' : '画中画'} onClick={() => void togglePictureInPicture()}><Icon name={pipActive ? 'exitPip' : 'pip'} size={19} /></button>

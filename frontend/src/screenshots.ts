@@ -1,4 +1,5 @@
 import { api } from './api';
+import {requireDesktop} from './nativeDesktop';
 
 export type ScreenshotPreference = {directory:string;shortcut:'C'};
 export type ScreenshotSettings = ScreenshotPreference & {effective_directory:string;default_directory:string;available:boolean;warning:string};
@@ -15,8 +16,7 @@ export function screenshotKey(event:KeyboardEvent) {
   return event.code==='KeyC'&&!event.shiftKey;
 }
 export async function revealScreenshot(id?:string) {
-  if(!window.avhubDesktop)throw new Error('请在桌面版中定位截图，或复制保存目录路径');
-  await window.avhubDesktop.screenshotAction(id??null,id?'reveal':'folder');
+  await requireDesktop('screenshotAction').screenshotAction(id??null,id?'reveal':'folder');
 }
 export async function saveScreenshot(mediaId:number,point:number,blob:Blob,captureId:string):Promise<SavedScreenshot> {
   return api(`/api/media/${mediaId}/screenshot?time=${point}&capture_id=${captureId}`,{method:'POST',headers:{'Content-Type':'image/png'},body:blob});

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import {rendererTest} from './api';
 
 // Runtime window state, not a preference: never reopen an unexpectedly pinned
 // window. A shared store survives video/playlist remounts without decoder resets.
@@ -30,7 +31,8 @@ export function setWindowMode(value:{purePlayback?:boolean;alwaysOnTop?:boolean;
     // Late metadata from an old player must never resize the library window.
     if(value.videoAspectRatio!==undefined && value.purePlayback===undefined && !state.purePlayback)return;
     if(window.avhubDesktop)update(await window.avhubDesktop.setWindowMode(value));
-    else update({purePlayback:value.purePlayback??state.purePlayback});
+    else if(rendererTest)update({purePlayback:value.purePlayback??state.purePlayback}); // Component layout simulation only.
+    else throw new Error('窗口操作需要 AVHub 桌面组件');
   });
   writes=task.catch(()=>{});
   return task.finally(()=>{pending--;update({busy:pending>0});});

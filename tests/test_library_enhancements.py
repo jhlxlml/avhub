@@ -85,10 +85,4 @@ class LibraryEnhancementTests(unittest.TestCase):
         self.assertEqual(info['data_directory'],str(previous));self.assertEqual(m.DATA,previous)
         self.assertEqual(info['build_id'],m.BUILD['build_id'])
     def test_data_folder_open_never_accepts_a_renderer_path_and_requires_local_origin(self):
-        def request(origin):return Request({'type':'http','method':'POST','scheme':'http','path':'/api/app-data/reveal','server':('127.0.0.1',8765),
-            'headers':[(b'host',b'127.0.0.1:8765')]+([(b'origin',origin.encode())] if origin else [])})
-        with patch.object(m,'SERVER_PORT',8765),patch.object(m,'SESSION_TOKEN',''),patch.object(m.sys,'platform','win32'),patch.object(m.os,'startfile',create=True) as opened:
-            for origin in (None,'https://evil.example'):
-                with self.assertRaises(HTTPException):m.reveal_app_data(request(origin))
-            opened.assert_not_called();m.reveal_app_data(request('http://127.0.0.1:8765'))
-            opened.assert_called_once_with(str(m.DATA.resolve()))
+        self.assertNotIn('/api/app-data/reveal',{route.path for route in m.app.routes})

@@ -6,7 +6,7 @@ test('checks only on click, prevents duplicates and clears results on close',asy
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();expect(checks).toBe(0);
   await page.getByRole('button',{name:'检查更新',exact:true}).click();await expect(page.getByRole('button',{name:'检查中…',exact:true})).toBeDisabled();
   await expect(page.getByText('发现新版本 0.2.10',{exact:true})).toBeVisible();expect(checks).toBe(1);
-  await expect(page.getByRole('link',{name:'前往下载',exact:true})).toHaveAttribute('href','https://github.com/jhlxlml/avhub/releases/tag/v0.2.10');
+  await expect(page.getByRole('button',{name:'前往下载',exact:true})).toBeEnabled();
   await page.getByText('更新说明',{exact:true}).click();await expect(page.locator('.manual-update-result details p')).toContainText('<img');await expect(page.locator('.manual-update-result img')).toHaveCount(0);
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(page.getByText('发现新版本 0.2.10',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();expect(checks).toBe(1);

@@ -78,7 +78,7 @@ test('data tools show the existing location; about dialog uses shared styling an
   await expect(page.getByRole('region',{name:'关于 AVHub'})).toContainText('自动记住观看进度');
   await expect(page.getByText('请先关闭当前对话框',{exact:true})).toHaveCount(0);
   await expect(page.getByRole('dialog')).toContainText(info.build_id);
-  await expect(page.getByRole('link',{name:'打开项目主页',exact:true})).toHaveAttribute('href','https://github.com/jhlxlml/avhub');
+  await expect(page.getByRole('button',{name:'打开项目主页',exact:true})).toBeEnabled();
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 

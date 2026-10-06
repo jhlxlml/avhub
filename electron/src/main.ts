@@ -152,7 +152,7 @@ ipcMain.handle('avhub:media-action',async(event,mediaId:unknown,action:unknown)=
     throw new Error('文件操作来源无效');
   if(typeof mediaId!=='number' || !Number.isSafeInteger(mediaId) || mediaId<=0 || !['reveal','open'].includes(String(action)))
     throw new Error('文件操作参数无效');
-  const response=await fetch(`${origin}/api/media/${mediaId}`,{headers:{'X-AVHub-Token':sessionToken},signal:AbortSignal.timeout(5000)});
+  const response=await fetch(`${origin}/api/media/${mediaId}/native-path`,{headers:{'X-AVHub-Token':sessionToken},signal:AbortSignal.timeout(5000)});
   if(!response.ok)throw new Error('视频索引不存在');
   const item=await response.json() as {path?:string;missing?:boolean};
   if(!item.path || item.missing)throw new Error('视频文件已离线');
@@ -302,11 +302,11 @@ function startBackend(): ChildProcess {
   };
   if (isPackaged) {
     const executable = path.join(process.resourcesPath, 'backend', 'AVHubServer.exe');
-    return spawn(executable, ['--port', String(backendPort), '--no-browser'], {
+    return spawn(executable, ['--port', String(backendPort)], {
       cwd: path.dirname(executable), env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     });
   }
-  return spawn(process.env.AVHUB_PYTHON || 'python', ['run.py', '--port', String(backendPort), '--no-browser'], {
+  return spawn(process.env.AVHUB_PYTHON || 'python', ['run.py', '--port', String(backendPort)], {
     cwd: projectRoot, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
   });
 }

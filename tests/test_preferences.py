@@ -138,11 +138,7 @@ class PortableStateTests(unittest.TestCase):
             self.assertIsNone(m.random_next(1)['next'])
 
     def test_native_actions_reject_cross_origin_missing_and_non_video(self):
-        request=Request({'type':'http','method':'POST','scheme':'http','path':'/api/media/1/native/open',
-                         'server':('127.0.0.1',8877),'headers':[(b'host',b'127.0.0.1:8877'),(b'origin',b'https://outside.invalid')]})
-        with patch.object(m.os,'startfile') as opened:
-            with self.assertRaises(HTTPException) as error:m.native_media_action(1,'open',request)
-            self.assertEqual(error.exception.status_code,403);opened.assert_not_called()
+        self.assertNotIn('/api/media/{media_id}/native/{action}',{route.path for route in m.app.routes})
         with tempfile.TemporaryDirectory() as directory:
             source=Path(directory)/'file.exe';source.write_bytes(b'not video')
             with m.connection() as db:db.execute('UPDATE media SET path=? WHERE id=1',(str(source),))

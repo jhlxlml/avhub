@@ -41,6 +41,7 @@ def main():
         os.environ['AVHUB_DATA_DIR'] = str(folder / 'avhub-data')
         os.environ.pop('AVHUB_SESSION_TOKEN', None)
         from app import main as avhub
+        avhub.app.state.renderer_test=True
         if args.project_root:
             original_executable=avhub.executable
             def shared_executable(name):

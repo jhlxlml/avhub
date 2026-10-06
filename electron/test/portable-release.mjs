@@ -23,6 +23,7 @@ async function launch(){
   const context=browser.contexts()[0];page=context.pages()[0]||await context.waitForEvent('page',{timeout:60000});
   await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor({timeout:60000});
   const health=await page.evaluate(async()=> (await(await fetch('/api/health')).json()));assert.equal(health.frozen,true);assert.equal(health.ffmpeg,true);assert.equal(health.ffprobe,true);assert.equal(health.version,version);
+  assert.equal(health.build_id,JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')).build_id);
   return health;
 }
 async function close(){
@@ -33,6 +34,9 @@ async function close(){
 try {
   await launch();assert.ok(existsSync(path.join(home,'AVHub-data/library.db')));
   let checks=0;page.on('request',r=>{if(r.url().endsWith('/api/updates/check'))checks++;});
+  // Hosted runners may share an exhausted anonymous GitHub rate limit.
+  // CI checks deterministic UI behavior; unit tests cover the actual API parser.
+  if(process.env.CI==='true')await page.route('**/api/updates/check',route=>route.fulfill({json:{status:'unpublished'}}));
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'关于',exact:true}).click();assert.equal(checks,0);
   await expect(page.getByRole('region',{name:'关于 AVHub'})).toContainText(version);
   await page.getByRole('button',{name:'检查更新',exact:true}).click();await expect(page.getByRole('button',{name:'检查更新',exact:true})).toBeEnabled({timeout:15000});assert.equal(checks,1);
@@ -51,5 +55,5 @@ try {
   assert.ok(existsSync(path.join(home,'AVHub-data/library.db')));assert.ok(existsSync(path.join(custom,'library.db')));
   await close();
   assert.ok(!readdirSync(path.join(root,'dist/electron/win-unpacked/resources')).includes('archive'));
-  console.log(JSON.stringify({passed:true,report:folder,checks:['actual portable EXE','frozen backend/FFmpeg','0 background checks','manual real GitHub check','default sibling data','packaged migration command','preferences retained','old data retained']}));
+  console.log(JSON.stringify({passed:true,report:folder,checks:['actual portable EXE','frozen backend/FFmpeg','0 background checks',process.env.CI==='true'?'manual update UI (mock GitHub response)':'manual real GitHub check','default sibling data','packaged migration command','preferences retained','old data retained']}));
 }finally{if(page)await close();if(browser)await browser.close().catch(()=>{});if(child&&child.exitCode===null)spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}

@@ -1,3 +1,4 @@
+param([switch]$SkipDependencyInstall)
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $projectRoot
@@ -12,10 +13,12 @@ if ($LASTEXITCODE -ne 0) { throw 'bin\ffmpeg.exe cannot run or is not a valid Wi
 if ($LASTEXITCODE -ne 0) { throw 'bin\ffprobe.exe cannot run or is not a valid Windows executable.' }
 if (-not (Test-Path 'package-lock.json')) { throw 'package-lock.json is required for reproducible installation.' }
 
-python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
-if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
-npm ci
-if ($LASTEXITCODE -ne 0) { throw 'Frontend and Electron dependency installation failed.' }
+if (-not $SkipDependencyInstall) {
+    python -m pip install --disable-pip-version-check -r requirements.txt -r requirements-build.txt
+    if ($LASTEXITCODE -ne 0) { throw 'Python dependency installation failed.' }
+    npm ci
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend and Electron dependency installation failed.' }
+}
 npm run build
 if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
 npm run build:electron
