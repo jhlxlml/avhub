@@ -1,18 +1,27 @@
-import { test,expect } from '@playwright/test';
+import { test,expect,type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-test.beforeEach(async({request})=>{await request.post('/test/reset');});
+test.beforeEach(async({request})=>{expect((await request.post('/test/reset')).ok()).toBe(true);});
 
-async function play(page:any) {
+async function play(page:Page) {
   await page.goto('/?q=002');
   await page.getByRole('button',{name:'播放 视频 002',exact:true}).click();
   // A saved position can arrive from a previous context's final progress write.
   // Exercise the real resume prompt rather than assume autoplay has started.
   const resume=page.getByRole('button',{name:'从头开始',exact:true});
-  await expect(resume.or(page.getByRole('button',{name:'暂停',exact:true})).first()).toBeVisible();
+  // Cold CI decoding can outlast the default 5s UI assertion. Readiness is
+  // measured from the actual video, independent of control text/visibility.
+  const deadline=Date.now()+30000;
+  const decoded=()=>page.locator('video').evaluate((v:HTMLVideoElement)=>
+    !v.paused&&!v.seeking&&v.readyState>=2&&v.videoWidth>0&&v.videoHeight>0);
+  await expect.poll(async()=>await resume.isVisible()||await decoded(),{
+    timeout:Math.max(1,deadline-Date.now()),message:'resume prompt or decoded playback must become ready',
+  }).toBe(true);
   if(await resume.isVisible())await resume.click();
-  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.paused&&v.readyState>=2)).toBeTruthy();
+  await expect.poll(decoded,{
+    timeout:Math.max(1,deadline-Date.now()),message:'screenshot requires a decoded frame and active playback',
+  }).toBe(true);
 }
 const screenshotResponse=(page:any)=>page.waitForResponse((response:any)=>response.url().includes('/screenshot?')&&response.request().method()==='POST');
 
@@ -23,6 +32,24 @@ async function expectSavedPng(shot:any,directory:string) {
   expect(dirname(shot.path)).toBe(directory);
   expect((await readFile(shot.path)).subarray(0,8).toString('hex')).toBe('89504e470d0a1a0a');
 }
+
+test('screenshot setup waits for decoded playback after preparation exceeds five seconds',async({page,request})=>{
+  const {directory}=await(await request.get('/test/screenshot-directory')).json();
+  expect((await request.patch('/api/preferences',{data:{values:{screenshots:{directory,shortcut:'C'}}}})).ok()).toBe(true);
+  await page.route('**/api/media/2/playback',async route=>{
+    // Deliberately exceed the old 5s assertion using a synthetic renderer
+    // harness delay; the real fixture must still decode and save a PNG.
+    await new Promise(resolve=>setTimeout(resolve,6000));
+    await route.continue();
+  });
+  await play(page);
+  expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>[v.videoWidth,v.videoHeight])).toEqual([320,180]);
+  await page.locator('.player-info h2').click();
+  const saved=screenshotResponse(page);await page.keyboard.press('c');const response=await saved;
+  expect(response.ok()).toBe(true);
+  const shot=await response.json();await expectSavedPng(shot,directory);
+  expect([shot.width,shot.height]).toEqual([320,180]);
+});
 
 test('C saves directly without downloads or dialogs, including paused and rotated decoded frames',async({page})=>{
   let downloads=0,dialogs=0;page.on('download',()=>downloads++);page.on('dialog',()=>dialogs++);

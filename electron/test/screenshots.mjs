@@ -47,7 +47,13 @@ try {
   await expect.poll(()=>page.evaluate(async()=>(await(await fetch('/api/media?page=1')).json()).total),{timeout:30000}).toBe(1);
   const mediaId=await page.evaluate(async()=>(await(await fetch('/api/media?page=1')).json()).items[0].id);
   await page.goto(new URL(`/?video=${mediaId}`,page.url()).href);
-  await expect.poll(()=>page.locator('video').evaluate(v=>v.readyState>=2&&!v.paused)).toBeTruthy();
+  await expect.poll(()=>page.locator('video').evaluate(v=>v.readyState>=2&&!v.paused&&!v.seeking&&v.videoWidth>0&&v.videoHeight>0),{timeout:30000}).toBeTruthy();
+  // Idle playback hides controls and disables their pointer events. Reveal
+  // them through the real mouse hot zone before clicking, without force.
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage.x+stage.width/2,stage.y+8);
+  await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height-7);
+  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
   await page.getByRole('button',{name:'纯净播放',exact:true}).click();await page.mouse.move(230,210);
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/,{timeout:4000});
   const pending=page.waitForResponse(r=>r.url().includes('/screenshot?')&&r.request().method()==='POST');
