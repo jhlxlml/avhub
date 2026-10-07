@@ -6,6 +6,10 @@ Downloads and version-specific release notes are available on [GitHub Releases](
 
 AVHub is an offline local video library and player for Windows. It brings multiple video directories into one interface, lets you browse by folder or by movie and series, and remembers favorites, playlists, and viewing progress.
 
+![AVHub main interface: video library, navigation and filters](docs/images/main.png)
+
+*Main interface preview; media covers and file details are obscured for privacy.*
+
 Videos stay in their original locations. The app does not offer operations to move, rename, or delete source videos. Indexes, artwork, settings, and viewing records are stored separately. Once dependencies are installed or a portable build is ready, everyday scanning and playback work offline, without online artwork or metadata scraping.
 
 The main project supports **Electron desktop only**, with always-on-top, adaptive borderless Pure Playback and native folder operations. React, FastAPI and localhost delivery are internal architecture, not a standalone browser product.
