@@ -62,7 +62,7 @@ jobs:
       - name: Windows short-path regression
         run: python tests/check_path_alias.py
       - name: Shared renderer regression
-        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts
+        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts
       - name: Windows short-path screenshot regression
         run: python tests/check_path_alias.py --ui
       - name: Real Electron startup/exit
@@ -71,6 +71,8 @@ jobs:
         run: node electron/test/startup-trace.mjs
       - name: Real Electron pure playback pin regression
         run: node electron/test/pure-pin.mjs
+      - name: Real Electron update result UI regression
+        run: node electron/test/update-banner.mjs
       - name: Package only tags or explicit manual runs
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -SkipDependencyInstall

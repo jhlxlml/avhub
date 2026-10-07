@@ -81,8 +81,9 @@ export function AboutPanel({changeBusy}:{changeBusy?:(busy:boolean)=>void}) {
     <h3 className="app-about-brand"><span className="app-about-mark"><Icon name="play" size={22}/></span><span>AVHub<small>本地离线视频库</small></span></h3>
     <p className="app-about-intro">把分散在不同文件夹的视频整理到一处，轻松浏览、搜索和观看。支持电影与剧集归类、收藏、播放列表，以及自动记住观看进度。</p>
     <div className="app-about-principles"><span><Icon name="shield" size={15}/>原文件只读</span><span><Icon name="quality" size={15}/>原画优先</span><span><Icon name="database" size={15}/>数据保存在本地</span></div>
-    <dl className="app-about-info"><div><dt>应用版本</dt><dd className="app-version-check"><span>{CLIENT_BUILD.version}</span><Button icon="refresh" busy={update.checking} onClick={()=>void update.check()}>{update.checking?'检查中…':'检查更新'}</Button></dd></div><div><dt>构建标识</dt><dd><code>{CLIENT_BUILD.build_id}</code></dd></div><div><dt>接口协议</dt><dd>{CLIENT_BUILD.api_protocol}</dd></div></dl>
+    <dl className="app-about-info"><div><dt>应用版本</dt><dd className="app-version-check"><span>{CLIENT_BUILD.version}</span><Button icon="refresh" busy={update.checking} onClick={()=>void update.check()}>{update.checking?'检查中…':'检查更新'}</Button></dd></div></dl>
     <UpdateResult result={update.result} error={update.error}/>
+    <dl className="app-about-info app-build-info"><div><dt>构建标识</dt><dd><code>{CLIENT_BUILD.build_id}</code></dd></div><div><dt>接口协议</dt><dd>{CLIENT_BUILD.api_protocol}</dd></div></dl>
     <div className="app-tool-actions"><Button icon="copy" disabled={busy} onClick={()=>void act('version')}>复制版本信息</Button>
       <Button icon="external" disabled={busy} onClick={()=>void act('open')}>打开项目主页</Button>
       <Button icon="copy" disabled={busy} onClick={()=>void act('address')}>复制项目地址</Button></div>
