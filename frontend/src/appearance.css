@@ -73,7 +73,7 @@
 :root[data-theme="light"] .playlist-remove,
 :root[data-theme="light"] .playlist-rename button,
 :root[data-theme="light"] .media-editor label,
-:root[data-theme="light"] .editor-message {color:var(--ui-secondary)}
+:root[data-theme="light"] .editor-message:not(.error):not(.success) {color:var(--ui-secondary)}
 :root[data-theme="light"] .playlist-rename button {background:var(--ui-raised)}
 :root[data-theme="light"] .playlist-list>button:hover,
 :root[data-theme="light"] .playlist-item-actions>button:hover:not(:disabled) {background:var(--ui-hover);color:var(--ui-text)}

@@ -27,9 +27,9 @@ export function Dialog({ label, labelledBy, closeLabel, busy, close, className =
   </div>;
 }
 
-export function StatusMessage({ children, kind = 'info', className = '' }: { children: ReactNode; kind?: 'info' | 'error' | 'loading'; className?: string }) {
+export function StatusMessage({ children, kind = 'info', className = '' }: { children: ReactNode; kind?: 'info' | 'error' | 'loading' | 'success'; className?: string }) {
   return <p role={kind === 'error' ? 'alert' : 'status'} className={`ui-status ${kind} ${className}`} aria-busy={kind === 'loading' || undefined}>
-    <Icon name={kind === 'error' ? 'warning' : kind === 'loading' ? 'refresh' : 'info'} size={16} className={kind === 'loading' ? 'is-spinning' : undefined}/><span>{children}</span>
+    <Icon name={kind === 'error' ? 'warning' : kind === 'loading' ? 'refresh' : kind==='success'?'check':'info'} size={16} className={kind === 'loading' ? 'is-spinning' : undefined}/><span>{children}</span>
   </p>;
 }
 

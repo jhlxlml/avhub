@@ -28,8 +28,9 @@ try {
   await page.getByRole('button',{name:'舒适',exact:true}).click();
   await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'媒体库设置'}).click();
-  await page.getByRole('tab',{name:'播放偏好'}).click();
+  await page.getByRole('tab',{name:'媒体目录'}).click();
   await page.getByRole('checkbox',{name:'封面悬停预览'}).check();
+  await page.getByRole('tab',{name:'播放偏好'}).click();
   await page.getByRole('checkbox',{name:'视频连播',exact:true}).uncheck();
   await page.getByRole('combobox',{name:'连播模式',exact:true}).selectOption('repeat-one');
   await page.getByRole('combobox',{name:'连播范围',exact:true}).selectOption('directory');
@@ -45,8 +46,9 @@ try {
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
   await expect(page.locator('html')).toHaveAttribute('data-cover-size','comfortable');
   await page.getByRole('button',{name:'媒体库设置'}).click();
-  await page.getByRole('tab',{name:'播放偏好'}).click();
+  await page.getByRole('tab',{name:'媒体目录'}).click();
   assert.equal(await page.getByRole('checkbox',{name:'封面悬停预览'}).isChecked(),true);
+  await page.getByRole('tab',{name:'播放偏好'}).click();
   const preferences=await page.evaluate(async()=>{const r=await fetch('/api/preferences');return(await r.json()).values;});
   assert.deepEqual(preferences.audio,expected.audio);assert.equal(preferences.playbackSpeed,1.5);
   assert.deepEqual(preferences.appearance,{theme:'light',coverSize:'comfortable'});

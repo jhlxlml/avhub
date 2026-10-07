@@ -3,16 +3,19 @@ import { api, CLIENT_BUILD, errorText } from './api';
 import { Button, StatusMessage } from './ui';
 import { Icon } from './Icon';
 import './diagnostics.css';
+import {requireDesktop} from './nativeDesktop';
 
 type Report = { build:{version:string;build_id:string;api_protocol:number;built_at:string|null}; mode:string; data_dir:string; database:string;
   python:string; uptime_seconds:number; tools:Record<string,string>; playback:{tasks:number;throttled_tasks:number;cache_bytes:number;cache_target_bytes_per_task:number;pending_cleanup:number;ahead_seconds:number;back_seconds:number};
   database_timing?:{groups:Record<string,{count:number;stages:Record<string,{p95_ms:number;max_ms:number}>}>};
   runtime_evidence?:{capacity:number;events:{at:number;component:string}[];error:string} };
-export function Diagnostics() {
+export function Diagnostics({changeBusy}:{changeBusy?:(busy:boolean)=>void}={}) {
   const [report, setReport] = useState<Report|null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [saving,setSaving]=useState(false),[saved,setSaved]=useState<{id:string;path:string}|null>(null),[notice,setNotice]=useState('');
   const controller = useRef<AbortController|null>(null);
+  useEffect(()=>{changeBusy?.(saving);return()=>changeBusy?.(false);},[saving,changeBusy]);
   useEffect(() => () => controller.current?.abort(), []);
   async function load() {
     if (busy) return;
@@ -22,16 +25,18 @@ export function Diagnostics() {
     catch (e) { if (!next.signal.aborted) setError(errorText(e)); }
     finally { if (!next.signal.aborted) setBusy(false); }
   }
-  function download() {
+  async function download() {
     if (!report) return;
-    const blob = new Blob([JSON.stringify({ ...report, frontend:CLIENT_BUILD }, null, 2)], { type:'application/json' });
-    const url = URL.createObjectURL(blob); const link = document.createElement('a');
-    link.href = url; link.download = 'avhub-diagnostics.json'; link.click(); globalThis.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSaving(true);setError('');setSaved(null);setNotice('');
+    try{const result=await requireDesktop('saveExport').saveExport({kind:'diagnostics'});if('cancelled' in result)setNotice('已取消保存诊断。');else {setSaved(result);setNotice('诊断已保存。');}}
+    catch(e){setError(errorText(e));}finally{setSaving(false);}
   }
   return <details className="settings-section runtime-diagnostics" onToggle={event => { if (event.currentTarget.open && !report && !busy) void load(); }}>
     <summary><Icon name="info"/>运行诊断</summary>
     <p className="dialog-description">仅检查本机，不联网。数据目录决定当前使用哪个媒体库；诊断文件含本地路径，分享前请检查。</p>
-    <div className="diagnostic-actions"><Button icon="refresh" busy={busy} onClick={() => void load()}>刷新诊断</Button><Button icon="download" disabled={!report || busy} onClick={download}>导出诊断</Button></div>
+    <div className="diagnostic-actions"><Button icon="refresh" busy={busy} disabled={saving} onClick={() => void load()}>刷新诊断</Button><Button icon="download" busy={saving} disabled={!report || busy} onClick={()=>void download()}>导出诊断</Button>{saving&&<Button onClick={()=>void requireDesktop('cancelExport').cancelExport()}>取消保存诊断</Button>}</div>
+    {notice&&<StatusMessage kind={notice==='诊断已保存。'?'success':'info'}>{notice}</StatusMessage>}
+    {saved&&<div className="export-result"><code title={saved.path}>{saved.path}</code><Button icon="reveal" onClick={()=>void requireDesktop('revealExport').revealExport(saved.id).catch(e=>setError(errorText(e)))}>在文件夹中显示诊断</Button></div>}
     {error && <StatusMessage kind="error">{error}</StatusMessage>}
     {report && <dl className="diagnostic-fields">
       <dt>启动模式</dt><dd>{report.mode}</dd>

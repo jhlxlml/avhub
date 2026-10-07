@@ -5,7 +5,7 @@ import { CoverEditor } from './CoverEditor';
 import { StatusMessage } from './ui';
 import './media-editor.css';
 
-export function MediaEditor({ media, update, onDirtyChange }: { media: Media; update: (value: MediaUpdate) => void; onDirtyChange: (dirty: boolean) => void }) {
+export function MediaEditor({ media, update, onDirtyChange,expanded=false,onBusyChange }: { media: Media; update: (value: MediaUpdate) => void; onDirtyChange: (dirty: boolean) => void;expanded?:boolean;onBusyChange?:(busy:boolean)=>void }) {
   const [title, setTitle] = useState(media.title);
   const [kind, setKind] = useState(media.kind);
   const [seriesTitle, setSeriesTitle] = useState(media.series_title || media.title);
@@ -14,6 +14,8 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
   const [rating, setRating] = useState(media.rating == null ? '' : String(media.rating));
   const [tags, setTags] = useState(media.tags.join(', '));
   const [saving, setSaving] = useState(false);
+  const [coverBusy,setCoverBusy]=useState(false);
+  useEffect(()=>{onBusyChange?.(saving||coverBusy);return()=>onBusyChange?.(false);},[saving,coverBusy,onBusyChange]);
   const [message, setMessage] = useState('');
   const [messageError, setMessageError] = useState(false);
   const mediaKey = JSON.stringify([media.title, media.kind, String(media.season ?? ''), String(media.episode ?? ''), media.rating == null ? '' : String(media.rating), media.tags.join(', '), media.series_title || media.title]);
@@ -65,9 +67,10 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
     finally { setSaving(false); }
   }
 
-  return <details className="media-editor">
-    <summary><Icon name="edit" size={16}/>编辑媒体信息</summary>
-    <CoverEditor media={media} update={update}/>
+  const Container=expanded?'section':'details';
+  return <Container className="media-editor">
+    {!expanded&&<summary><Icon name="edit" size={16}/>编辑媒体信息</summary>}
+    <CoverEditor media={media} update={update} onBusyChange={setCoverBusy}/>
     <form onSubmit={event => void save(event)}>
       <fieldset disabled={saving} style={{ display: 'contents', border: 0, margin: 0, padding: 0 }}>
       <label>显示标题<input aria-label="显示标题" value={title} maxLength={300} onChange={event => setTitle(event.target.value)} /></label>
@@ -85,7 +88,7 @@ export function MediaEditor({ media, update, onDirtyChange }: { media: Media; up
       <label>标签<input aria-label="标签" value={tags} placeholder="用逗号分隔，例如：科幻, 收藏" onChange={event => setTags(event.target.value)} /></label>
       <button className="ui-button primary" type="submit" disabled={saving}><Icon name="save" size={16}/>{saving ? '正在保存…' : '保存信息'}</button>
       </fieldset>
-      {message && <StatusMessage className="editor-message" kind={messageError?'error':'info'}>{message}</StatusMessage>}
+      {message && <StatusMessage className="editor-message" kind={messageError?'error':'success'}>{message}</StatusMessage>}
     </form>
-  </details>;
+  </Container>;
 }

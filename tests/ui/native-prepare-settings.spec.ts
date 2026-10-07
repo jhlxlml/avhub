@@ -4,6 +4,7 @@ test.beforeEach(async({request})=>{await request.post('/test/reset');});
 async function settings(page:Page) {
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
+  await page.getByText('高级播放设置',{exact:true}).click();
   return page.getByRole('checkbox',{name:'MKV 无损播放准备',exact:true});
 }
 async function toggle(page:Page,value:boolean) {

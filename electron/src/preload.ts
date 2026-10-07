@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 ipcRenderer.on('avhub:quit-cancelled', () => window.dispatchEvent(new Event('avhub-quit-cancelled')));
 
 contextBridge.exposeInMainWorld('avhubDesktop', {
+  saveExport:(request:{kind:'backup';jobId:string}|{kind:'diagnostics'})=>ipcRenderer.invoke('avhub:save-export',request),
+  cancelExport:()=>ipcRenderer.invoke('avhub:cancel-export'),
+  revealExport:(id:string)=>ipcRenderer.invoke('avhub:reveal-export',id),
   openRelease:(tag:string,format?:'folder'|'single')=>ipcRenderer.invoke('avhub:open-release',tag,format),
   startupReady:()=>ipcRenderer.invoke('avhub:startup-ready'),
   dataLocation:(action:'get'|'choose')=>ipcRenderer.invoke('avhub:data-location',action),

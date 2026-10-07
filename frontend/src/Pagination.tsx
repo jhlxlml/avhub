@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 
-export function Pagination({ page, pages, total, pageSize, busy, changePage, changeSize }: {
+export function Pagination({ page, pages, total, pageSize, busy, changePage, changeSize,itemLabel='个视频' }: {
   page: number; pages: number; total: number; pageSize: number; busy: boolean;
   changePage: (page: number) => void; changeSize: (size: number) => void;
+  itemLabel?:string;
 }) {
   const [target, setTarget] = useState(String(page));
   useEffect(() => setTarget(String(page)), [page]);
-  return <div className="pagination" aria-label="媒体库分页">
-    <span>共 {total} 个视频 · 第 {page} / {pages} 页</span>
+  return <div className="pagination-footer"><div className="pagination" aria-label="媒体库分页">
+    <span>共 {total} {itemLabel} · 第 {page} / {pages} 页</span>
     <div className="page-buttons">
       <button disabled={busy || page <= 1} onClick={() => changePage(1)}><Icon name="first" size={14}/>首页</button>
       <button disabled={busy || page <= 1} onClick={() => changePage(page - 1)}><Icon name="chevronLeft" size={14}/>上一页</button>
@@ -22,5 +23,5 @@ export function Pagination({ page, pages, total, pageSize, busy, changePage, cha
     <select aria-label="每页数量" value={pageSize} disabled={busy} onChange={e => changeSize(Number(e.target.value))}>
       {[24,48,96].map(size => <option key={size} value={size}>每页 {size} 个</option>)}
     </select>
-  </div>;
+  </div></div>;
 }

@@ -71,7 +71,7 @@ export function SeriesLibrary({cache,active,q,root,show,season,page,pageSize,rev
         <button className="series-group-cover cover" aria-label={`打开剧集 ${group.title}`} onClick={()=>change({show:String(group.id),season:'',page:1})}><MediaThumbnail url={group.thumbnail_url} retryKey={revision}/><span className="series-count">{group.count} 集</span></button>
         <div className="meta"><button className="video-title" title={group.title} onClick={()=>change({show:String(group.id),season:'',page:1})}>{group.title}</button><span>{group.seasons} 季 · 已看 {group.watched_count}/{group.available_count}{group.count>group.available_count?` · 离线 ${group.count-group.available_count}`:''}</span></div>
       </article>)}</div>:<EmptyState icon="series" title="暂无匹配剧集" description="可在媒体信息或批量整理中设置剧名、季与集；不会请求联网资料。"/>}
-    {!error&&result&&<Pagination page={page} pages={result.pages} total={result.total} pageSize={pageSize} busy={loading}
+    {!error&&result&&<Pagination page={page} pages={result.pages} total={result.total} pageSize={pageSize} busy={loading} itemLabel={show?'集':'部剧集'}
       changePage={page=>change({page})} changeSize={pageSize=>change({pageSize,page:1})}/>}
   </section>;
 }

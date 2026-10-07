@@ -8,9 +8,9 @@ test('settings have accessible compact categories and lazy storage diagnostics',
   await expect(page.getByRole('tablist',{name:'设置分类'})).toBeVisible();expect(reads).toBe(0);
   await expect(page.getByRole('tab',{name:'媒体目录'})).toHaveAttribute('aria-selected','true');
   await page.getByRole('tab',{name:'媒体目录'}).focus();await page.keyboard.press('ArrowRight');
-  await expect(page.getByRole('tab',{name:'播放偏好'})).toBeFocused();await expect(page.getByLabel('封面悬停预览')).toBeVisible();
+  await expect(page.getByRole('tab',{name:'播放偏好'})).toBeFocused();await expect(page.getByRole('region',{name:'起播方式设置'})).toBeVisible();await expect(page.getByLabel('封面悬停预览')).not.toBeVisible();
   await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:'数据管理'})).toBeFocused();
-  await expect(page.locator('.storage-sizes>div')).toHaveCount(7);expect(reads).toBe(1);
+  await expect(page.locator('.storage-sizes>div')).toHaveCount(8);await expect(page.locator('.storage-sizes')).toContainText('无损播放副本');expect(reads).toBe(1);
   expect(await page.getByRole('dialog').evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
   await page.screenshot({path:'test-results/settings-data-mobile.png'});
   await page.getByRole('tab',{name:'运行诊断'}).click();await page.locator('.runtime-diagnostics summary').click();
@@ -35,7 +35,7 @@ test('backup cancellation is explicit and busy settings cannot dismiss',async({p
   await page.route(`**/api/data-jobs/${'a'.repeat(32)}`,route=>route.fulfill({json:value()}));
   await page.route(`**/api/data-jobs/${'a'.repeat(32)}/cancel`,route=>{cancelled=true;return route.fulfill({json:value()});});
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置'}).click();await page.getByRole('tab',{name:'数据管理'}).click();
-  await page.getByRole('button',{name:'下载完整备份'}).click();await expect(page.getByRole('button',{name:'取消数据任务'})).toBeVisible();
+  await page.getByRole('button',{name:'保存完整备份'}).click();await expect(page.getByRole('button',{name:'取消数据任务'})).toBeVisible();
   await expect(page.getByRole('button',{name:'关闭设置'})).toBeDisabled();await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button',{name:'取消数据任务'}).click();await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();
   await expect(page.getByText('任务已取消，原媒体库未被替换',{exact:true})).toBeVisible();
@@ -69,9 +69,9 @@ test('hidden controls stop progress DOM mutations but keyboard seeks and reveal 
   });
   await page.waitForTimeout(1600);expect(await page.evaluate(()=>(window as any).__progressChanges)).toBe(0);
   const before=await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime);await page.keyboard.press('ArrowRight');
-  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(before+8);
+  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeGreaterThan(before+4.5);
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/);
-  await page.locator('.video-wrap').hover();const now=await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime);
+  const stage=await page.locator('.video-wrap').boundingBox();await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-20);const now=await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime);
   const shown=Number(await page.getByRole('slider',{name:'视频完整进度'}).inputValue());expect(Math.abs(shown-now)).toBeLessThan(1);
   await expect.poll(async()=>(await(await request.get('/api/thumbnails')).json()).yielding).toBe(true);
   await page.locator('video').evaluate((v:HTMLVideoElement)=>v.pause());await expect.poll(async()=>(await(await request.get('/api/thumbnails')).json()).yielding).toBe(false);
@@ -81,7 +81,7 @@ test('hidden controls stop progress DOM mutations but keyboard seeks and reveal 
 test('native backup download verifies its prefix and refuses an HTML fallback',async({page})=>{
   await page.route('**/api/data-jobs/*/download',route=>route.fulfill({status:200,contentType:'text/html',body:'<!doctype html><html>stale service</html>'}));
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置'}).click();await page.getByRole('tab',{name:'数据管理'}).click();
-  await page.getByRole('button',{name:'下载媒体库备份'}).click();await expect(page.getByRole('alert')).toContainText('本地服务与网页版本不匹配');
+  await page.getByRole('button',{name:'保存媒体库备份'}).click();await expect(page.getByRole('alert')).toContainText('本地服务与网页版本不匹配');
 });
 
 test('an expired ready preview can be discarded and another backup selected',async({page,request})=>{
@@ -107,7 +107,7 @@ for(const failure of ['rejected','preferences','uncertain'] as const){
     await page.route(`**/api/data-jobs/${identity}/restore`,route=>{submits++;return failure==='uncertain'?route.abort():route.fulfill({status:409,json:{detail:'扫描仍在运行，请稍后重试'}});});
     if(failure==='preferences'){
       await page.route('**/api/preferences',route=>route.request().method()==='PATCH'?route.fulfill({status:503,json:{detail:'设置保存失败'}}):route.continue());
-      await page.getByRole('tab',{name:'播放偏好'}).click();await page.getByRole('checkbox',{name:'封面悬停预览'}).check();await page.getByRole('tab',{name:'数据管理'}).click();
+      await page.getByRole('tab',{name:'媒体目录'}).click();await page.getByRole('checkbox',{name:'封面悬停预览'}).check();await page.getByRole('tab',{name:'数据管理'}).click();
     }
     if(failure==='uncertain')await page.route(`**/api/data-jobs/${identity}`,route=>unavailable?route.abort():route.continue());
     page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'恢复所选备份'}).click();

@@ -3,6 +3,7 @@ import { api, json, errorText } from './api';
 import { Icon } from './Icon';
 import { Button, Dialog, StatusMessage } from './ui';
 import './thumbnail-tasks.css';
+import {ThumbnailSummary,thumbnailState} from './ThumbnailSummary';
 
 export type ThumbnailStatus={pending:number;failed:number;blocked:number;paused:boolean;yielding?:boolean;current:number|null;published:number;error:string};
 export type ThumbnailItemStatus={state:string;last_error:string;frame_time:number|null;attempted_at:number;thumbnail_url?:string|null};
@@ -56,13 +57,13 @@ export function ThumbnailTasks({status,changed}:{status:ThumbnailStatus|null;cha
       if(id){changed(await api<ThumbnailStatus>('/api/thumbnails'));setRevision(x=>x+1);}
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   }
-  const label=status?.paused?'封面任务已暂停':status?.error?'封面任务异常':status?.pending?`后台封面 · 待处理 ${status.pending} 张`:status?.failed?`${status.failed} 张封面待检查`:'封面任务';
+  const label=status?`封面任务 · ${thumbnailState(status).label}${status.pending?` · 待处理 ${status.pending} 张`:''}`:'封面任务';
   return <><button className={`ui-icon-button thumbnail-task-icon${status?.failed||status?.error?' needs-attention':''}`} title={label} aria-label="封面任务" onClick={()=>setOpen(true)}>
     <Icon name={status?.paused?'pause':status?.current?'refresh':'camera'} className={status?.current?'is-spinning':''}/>{(status?.pending||status?.failed||status?.error)?<i aria-hidden="true"/>:null}
   </button>{open&&<Dialog label="后台封面任务" closeLabel="关闭封面任务" busy={busy} close={()=>setOpen(false)} className="modal thumbnail-task-dialog">
     <h2 className="dialog-title"><Icon name="camera" size={22}/>后台封面任务</h2>
     <p className="dialog-description">不占用扫描状态，关闭此面板后仍会运行。暂停不会丢失任务，优先处理当前页视频。</p>
-    <div className="thumbnail-task-summary"><span>待处理 {status?.pending??0}</span><span>失败 {status?.failed??0}</span><span>{status?.paused?'已暂停':status?.current?'正在生成':'等待任务'}</span></div>
+    <ThumbnailSummary status={status}/>
     {Boolean(status?.blocked)&&<small>{status?.blocked} 张正在等待目录恢复连接</small>}
     <Button icon={status?.paused?'play':'pause'} busy={busy} onClick={()=>void action()}>{status?.paused?'恢复封面任务':'暂停封面任务'}</Button>
     {(error||status?.error)&&<StatusMessage kind="error">{error||status?.error}</StatusMessage>}

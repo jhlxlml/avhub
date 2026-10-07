@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {installExportHarness} from './native-export-harness';
 
 test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
 
@@ -16,6 +17,7 @@ test('startup refuses a stale backend build and explicit retry restores the libr
 });
 
 test('runtime diagnostics are lazy, show actual data/build paths, handle retry and fit narrow windows', async ({ page, request }) => {
+  await installExportHarness(page);
   const health = await (await request.get('/api/health')).json();
   let reads = 0;
   await page.route('**/api/diagnostics', route => { reads++; return reads===1 ? route.fulfill({status:503,json:{detail:'temporary diagnostic failure'}}) : route.continue(); });

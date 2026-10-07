@@ -14,6 +14,9 @@ import {ResumeBehaviorSettings} from './ResumeBehaviorSettings';
 import {AppDataTools} from './AppTools';
 import {HelpPanel} from './HelpPanel';
 import {requireDesktop} from './nativeDesktop';
+import {useDraftGuard} from './useDraftGuard';
+import {ThumbnailSummary} from './ThumbnailSummary';
+import {confirmAction} from './confirmAction';
 
 const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'help',label:'帮助',icon:'help'}];
 
@@ -26,6 +29,9 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
   const [rootQuery, setRootQuery] = useState('');
   const [rootPage, setRootPage] = useState(1);
   const [availability, setAvailability] = useState<Record<number, boolean>>({});
+  const [screenshotDirty,setScreenshotDirty]=useState(false),[addedRoot,setAddedRoot]=useState<Root|null>(null);
+  const mayLeave=useDraftGuard(screenshotDirty,busy,'截图目录尚未保存，放弃修改并关闭设置吗？');
+  const requestClose=()=>{if(mayLeave())close();};
   async function toggleThumbnails(){
     setBusy(true);setNotice('');
     try{changeThumbnailStatus(await api<ThumbnailStatus>(`/api/thumbnails/${thumbnailStatus?.paused?'resume':'pause'}`,{method:'POST'}));}
@@ -50,19 +56,26 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     try {
       if(pick) {
         const chosen=await requireDesktop('chooseFolder').chooseFolder('media');if('cancelled' in chosen)return;
-        await api<Root>('/api/roots',json('POST',{path:chosen.path}));
+        setAddedRoot(await api<Root>('/api/roots',json('POST',{path:chosen.path})));
         setPath('');await reload();setNotice('目录已加入，点击顶栏“刷新媒体库”开始扫描');return;
       }
       const result = await api<Root>('/api/roots',json('POST', { path: path.trim() }));
       if (!('cancelled' in result)) {
+        setAddedRoot(result);
         setPath(''); await reload(); setNotice('目录已加入，点击顶栏“刷新媒体库”开始扫描');
       }
     } catch (e) { setNoticeError(true); setNotice(errorText(e)); }
     finally { setBusy(false); }
   }
   async function remove(id: number) {
+    if(busy||scanning)return;
     setBusy(true); setNotice(''); setNoticeError(false);
-    try { await api(`/api/roots/${id}`, { method: 'DELETE' }); await reload(); }
+    try {
+      const root=roots.find(value=>value.id===id);
+      const summary=await api<{total:number}>(`/api/media?root_id=${id}&page=1&page_size=1`);
+      if(!confirmAction('从媒体库移除目录？',`${root?.path||''}\n当前可浏览视频 ${summary.total} 个将不再出现在媒体库中。`,'已有记录保留为离线，原视频不会被删除。以后可重新添加此目录。'))return;
+      await api(`/api/roots/${id}`, { method: 'DELETE' });if(addedRoot?.id===id)setAddedRoot(null);await reload();setNotice('目录已从媒体库移除，原视频未改变。');
+    }
     catch (e) { setNoticeError(true); setNotice(errorText(e)); }
     finally { setBusy(false); }
   }
@@ -80,8 +93,8 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     const quitting=(event:Event)=>{if(busy)(event as CustomEvent<Promise<unknown>[]>).detail.push(Promise.resolve(false));};
     window.addEventListener('avhub-before-quit',quitting);return()=>window.removeEventListener('avhub-before-quit',quitting);
   },[busy]);
-  return <Dialog labelledBy="settings-title" closeLabel="关闭设置" busy={busy} close={close}>
-      <h2 id="settings-title" className="dialog-title"><Icon name="settings" size={22}/>媒体库设置</h2><p className="dialog-description">管理本地目录、预览与数据备份。原视频始终保持原位。</p>
+  return <Dialog labelledBy="settings-title" closeLabel="关闭设置" busy={busy} close={requestClose}>
+      <h2 id="settings-title" className="dialog-title"><Icon name="settings" size={22}/>媒体库设置</h2><p className="dialog-description">目录与封面、播放偏好、数据和帮助。原视频始终保持原位。</p>
       <div className="settings-tabs" role="tablist" aria-label="设置分类">{tabs.map((item,index)=><button key={item.id} id={'settings-tab-'+item.id} role="tab" aria-selected={tab===item.id} aria-controls={'settings-panel-'+item.id} tabIndex={tab===item.id?0:-1} disabled={busy} onClick={()=>setTab(item.id)} onKeyDown={event=>{
         if(busy||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();
         const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
@@ -95,6 +108,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
         <Button type="submit" variant="primary" icon="plus" disabled={busy || scanning || !path.trim()}>添加目录</Button>
       </form>
       <button className="ui-button" disabled={busy || scanning} onClick={() => void add(true)}><Icon name="folder" size={16}/>{busy ? '正在处理…' : '浏览本地文件夹'}</button>
+      {addedRoot&&<StatusMessage>已添加目录：{addedRoot.path}<Button icon="refresh" disabled={busy||scanning} onClick={()=>void scan(addedRoot.id)}>现在扫描此目录</Button></StatusMessage>}
       {roots.length > 20 && <input className="root-search" type="search" aria-label="搜索已添加目录" placeholder="搜索已添加的目录…" value={rootQuery} onChange={event => { setRootQuery(event.target.value); setRootPage(1); }} />}
       <div className="root-list">{shownRoots.map(root => <div key={root.id}>
         <span className="root-icon"><Icon name="folder" size={18}/></span>
@@ -105,20 +119,20 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       </div>)}</div>
       {roots.length > 20 && <div className="root-pager" aria-label="目录分页"><span>匹配 {matching.length} 个目录 · {page} / {rootPages} 页</span><button disabled={page <= 1} onClick={() => setRootPage(page - 1)}>上一页目录</button><button disabled={page >= rootPages} onClick={() => setRootPage(page + 1)}>下一页目录</button></div>}
       </section>
-      </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
-      <AutoplaySettings busy={busy}/>
-      <ResumeBehaviorSettings busy={busy} changeBusy={setBusy}/>
-      <NativePrepareSettings busy={busy} changeBusy={setBusy}/>
-      <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'}/>
       <section className="settings-section" aria-label="后台封面"><h3><Icon name="camera"/>后台封面</h3>
-        <div className="thumbnail-task-summary"><span>待处理 {thumbnailStatus?.pending??0}</span><span>失败 {thumbnailStatus?.failed??0}</span><span>{thumbnailStatus?.paused?'已暂停':thumbnailStatus?.yielding?'播放优先，暂时让路':'独立后台处理'}</span></div>
+        <ThumbnailSummary status={thumbnailStatus}/>
         <Button icon={thumbnailStatus?.paused?'play':'pause'} busy={busy} onClick={()=>void toggleThumbnails()}>{thumbnailStatus?.paused?'恢复封面任务':'暂停封面任务'}</Button>
         <small>播放时自动让路，不改变手动暂停设置；离开播放器或活动信号超时后恢复。</small></section>
       <section className="preview-preference"><label><input type="checkbox" aria-label="封面悬停预览" disabled={busy} checked={previewEnabled} onChange={event=>changePreview(event.target.checked)} />封面悬停预览</label>
         <small>停留 0.65 秒后静音预览，每次仅播放一个原片片段。不兼容时保留封面，不触发转码；开启会增加读取与解码负载。</small></section>
+      </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
+      <AutoplaySettings busy={busy}/>
+      <ResumeBehaviorSettings busy={busy} changeBusy={setBusy}/>
+      <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'} onDirtyChange={setScreenshotDirty}/>
+      <details className="settings-advanced"><summary>高级播放设置</summary><NativePrepareSettings busy={busy} changeBusy={setBusy}/></details>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
-      {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'info'}>{notice}</StatusMessage>}
-      <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics/></div>
+      {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'success'}>{notice}</StatusMessage>}
+      <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics changeBusy={setBusy}/></div>
       <div className="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" hidden={tab!=='help'}>{tab==='help'&&<HelpPanel changeBusy={setBusy} busy={busy}/>}</div>
       {scanning && <p role="status">后台扫描正在进行，可关闭设置继续观看。扫描结束后可修改目录。</p>}
   </Dialog>;

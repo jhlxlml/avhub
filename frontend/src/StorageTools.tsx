@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {api,json,errorText} from './api';
 import {Button,StatusMessage} from './ui';
 import {Icon} from './Icon';
+import {confirmAction} from './confirmAction';
 type Report={total_bytes:number;categories:Record<string,{bytes:number;files:number}>;cleanup:{files:number;bytes:number;rollback_files:number;rollback_days:number|null;token:string;protected_note:string}};
 const labels:Record<string,string>={database:'媒体库数据库',thumbnails:'视频缩略图',covers:'手动封面',subtitles:'临时字幕',hls:'临时播放缓存','native-cache':'无损播放副本（可在视频菜单清理）',backups:'备份与恢复暂存',other:'日志及其他数据'};
 function size(value:number){return value>=1073741824?`${(value/1073741824).toFixed(2)} GB`:value>=1048576?`${(value/1048576).toFixed(1)} MB`:`${(value/1024).toFixed(1)} KB`;}
@@ -17,8 +18,8 @@ export function StorageTools({busy,changeBusy,scanning,enabled}:{busy:boolean;ch
   async function clean(){
     if(!report||busy)return;
     const plan=report.cleanup;
-    if(!window.confirm(`永久清理 ${plan.files} 个应用文件，约 ${size(plan.bytes)}。原视频及手动封面不变。继续吗？`))return;
-    if(plan.rollback_files>0&&!window.confirm(`其中包含 ${plan.rollback_files} 个旧恢复前数据库，删除后不可恢复。建议先下载完整备份。确认删除这些副本吗？`))return;
+    if(!confirmAction('清理已预览内容？',`永久清理 ${plan.files} 个应用文件，约 ${size(plan.bytes)}。`,'原视频及手动封面不变。继续吗？'))return;
+    if(plan.rollback_files>0&&!confirmAction('删除旧回滚数据库？',`其中包含 ${plan.rollback_files} 个旧恢复前数据库，删除后不可恢复。`,'建议先保存完整备份。确认删除这些副本吗？'))return;
     changeBusy(true);setError('');setNotice('');
     try{
       const result=await api<{removed:number;freed_bytes:number;skipped:number}>('/api/storage/cleanup',json('POST',{token:plan.token,rollback_days:plan.rollback_days}));

@@ -61,7 +61,7 @@ for(const theme of ['dark','light']) {
       const tab=page.getByRole('tab',{name,exact:true});await tab.click();
       await expect(tab).toHaveCSS('background-color',await token(page,'--ui-surface'));
       await expect(tab).toHaveCSS('color',await token(page,'--ui-accent'));
-      if(name==='数据管理')await expect(page.locator('.storage-sizes>div')).toHaveCount(7);
+      if(name==='数据管理')await expect(page.locator('.storage-sizes>div')).toHaveCount(8);
       if(name==='运行诊断') {
         await page.locator('.runtime-diagnostics summary').click();
         await expect(page.locator('.diagnostic-fields')).toBeVisible();
@@ -74,6 +74,7 @@ for(const theme of ['dark','light']) {
       if(route.request().method()==='PUT')await route.fulfill({status:400,json:{detail:'测试：保存目录不可访问'}});
       else await route.continue();
     });
+    await page.getByRole('textbox',{name:'默认保存目录',exact:true}).fill('invalid-test-directory');
     await page.getByRole('button',{name:'保存截图设置',exact:true}).click();
     const error=page.getByRole('alert');await expect(error).toContainText('保存目录不可访问');
     await expect(error).toHaveCSS('color',await token(page,'--ui-danger'));
@@ -170,7 +171,7 @@ for(const width of [320,390,760])test(`light mode controls and every settings ta
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   for(const name of ['媒体目录','播放偏好','数据管理','运行诊断']) {
     await page.getByRole('tab',{name,exact:true}).click();
-    if(name==='数据管理')await expect(page.locator('.storage-sizes>div')).toHaveCount(7);
+    if(name==='数据管理')await expect(page.locator('.storage-sizes>div')).toHaveCount(8);
     await fits(page.getByRole('dialog'));await shot(page,`light-settings-${name}-${width}`);
   }
 });

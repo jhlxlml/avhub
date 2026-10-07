@@ -4,12 +4,14 @@ import { Icon } from './Icon';
 import {NativePrepareDialog} from './NativePrepareDialog';
 import {useNativePreparation} from './nativePreparation';
 import {requireDesktop} from './nativeDesktop';
+import {MediaEditDialog} from './MediaEditDialog';
 
-export function MediaActions({media,update,changed,notify,pauseForPreparation,playPrepared}: {
-  media:Media;update:(value:MediaUpdate)=>void;changed?:()=>void;notify:(message:string)=>void;pauseForPreparation?:()=>void;playPrepared?:()=>void;
+export function MediaActions({media,update,changed,notify,pauseForPreparation,playPrepared,edit}: {
+  media:Media;update:(value:MediaUpdate)=>void;changed?:()=>void;notify:(message:string)=>void;pauseForPreparation?:()=>void;playPrepared?:()=>void;edit?:()=>void;
 }) {
   const [open,setOpen]=useState(false);
   const [prepareOpen,setPrepareOpen]=useState(false);
+  const [editOpen,setEditOpen]=useState(false);
   const prepareEnabled=useNativePreparation();
   const [busy,setBusy]=useState(false);
   const lock=useRef(false);
@@ -52,6 +54,7 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
       const next=event.key==='Home'?0:event.key==='End'?items.length-1:(index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;
       items[next]?.focus();
     }}>
+      <button role="menuitem" disabled={busy} onClick={()=>{setOpen(false);if(edit)edit();else setEditOpen(true);}}><Icon name="edit" size={16}/>编辑信息与封面</button>
       <button role="menuitem" disabled={busy} onClick={()=>void act('watched')}><Icon name={media.watched?'eyeOff':'check'} size={16}/>{media.watched?'标记为未看':'标记为已看'}</button>
       {media.manual_watched!==null && media.manual_watched!==undefined && <button role="menuitem" disabled={busy} onClick={()=>void act('auto')}><Icon name="refresh" size={16}/>恢复自动已看判断</button>}
       <button role="menuitem" disabled={busy} onClick={()=>void act('copy')}><Icon name="copy" size={16}/>复制视频路径</button>
@@ -61,5 +64,6 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
       <small>只修改应用记录，不改动原文件</small>
     </div>}
     {prepareEnabled&&prepareOpen&&<NativePrepareDialog media={media} close={()=>setPrepareOpen(false)} play={playPrepared}/>}
+    {editOpen&&<MediaEditDialog media={media} update={value=>{update(value);changed?.();}} close={()=>setEditOpen(false)}/>}
   </div>;
 }

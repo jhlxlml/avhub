@@ -6,10 +6,15 @@ import { episodeLabel, formatLabel } from './mediaLabels';
 import {ResolutionBadge} from './ResolutionBadge';
 import { MediaThumbnail } from './MediaThumbnail';
 import { changeAutoplay, useAutoplay } from './autoplay';
+import {confirmAction} from './confirmAction';
 
-export function Playlists({ close, play, addMedia, added }: {
-  close: () => void; play: (source: PlaylistSource, media: Media) => void; addMedia?: Media; added: (message: string) => void;
+type Membership={revision:number;count:number;added?:number;existing?:number;removed?:{media_id:number;position:number}[];restored?:number};
+type Undo={id:number;revision:number;removed:{media_id:number;position:number}[]};
+
+export function Playlists({ close, play, addMedia,addMediaIds, added }: {
+  close: () => void; play: (source: PlaylistSource, media: Media) => void; addMedia?: Media;addMediaIds?:number[]; added: (message: string) => void;
 }) {
+  const adding=Boolean(addMedia||addMediaIds?.length);
   const [lists, setLists] = useState<Playlist[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<PlaylistPage | null>(null);
@@ -23,6 +28,7 @@ export function Playlists({ close, play, addMedia, added }: {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [revision, setRevision] = useState(0);
+  const [picked,setPicked]=useState<number[]>([]),[selecting,setSelecting]=useState(false),[undo,setUndo]=useState<Undo|null>(null),[notice,setNotice]=useState('');
   const active = useRef(true);
   const autoplay = useAutoplay();
   async function refreshLists(preferred?: number | null) {
@@ -30,7 +36,7 @@ export function Playlists({ close, play, addMedia, added }: {
     if (!active.current) return;
     setLists(result);
     setSelectedId(current => preferred === null ? result[0]?.id ?? null : preferred ?? (result.some(item => item.id===current) ? current : result[0]?.id ?? null));
-    if (addMedia) setTargetId(current => current || (result[0] ? String(result[0].id) : ''));
+    if (adding) setTargetId(current => current || (result[0] ? String(result[0].id) : ''));
   }
   useEffect(() => {
     active.current = true;
@@ -38,7 +44,7 @@ export function Playlists({ close, play, addMedia, added }: {
     return () => { active.current = false; };
   }, []);
   useEffect(() => {
-    if (!selectedId || addMedia) { setDetail(null); setLoading(false); return; }
+    if (!selectedId || adding) { setDetail(null); setLoading(false); return; }
     const controller = new AbortController();
     setLoading(true); setError('');
     const timer = window.setTimeout(() => {
@@ -49,7 +55,7 @@ export function Playlists({ close, play, addMedia, added }: {
         .finally(() => { if(!controller.signal.aborted) setLoading(false); });
     }, search ? 180 : 0);
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [selectedId,page,search,revision,addMedia]);
+  }, [selectedId,page,search,revision,adding]);
   async function mutate(action: () => Promise<unknown>, preferred?: number | null) {
     if(busy) return;
     setBusy(true); setError('');
@@ -66,30 +72,48 @@ export function Playlists({ close, play, addMedia, added }: {
   async function create() { await mutate(async()=>{ const value=await createList(); await refreshLists(value.id); }); }
   async function addToList() {
     await mutate(async()=>{
+      let message:string;
       if(name.trim() || !targetId) {
         if(!name.trim()) throw new Error('请输入新播放列表名称，或选择已有列表');
-        await api('/api/playlists',json('POST',{name:name.trim(),media_id:addMedia!.id}));
+        const result=await api<Playlist>('/api/playlists',json('POST',{name:name.trim(),...(addMediaIds?{media_ids:addMediaIds}:{media_id:addMedia!.id})}));
+        message=addMediaIds?`已创建“${result.name}”并加入 ${result.count} 个视频`:`已将“${addMedia!.title}”加入播放列表`;
+      } else if(addMediaIds){
+        const current=await api<PlaylistPage>(`/api/playlists/${Number(targetId)}?page=1&page_size=1`);
+        const result=await api<Membership>(`/api/playlists/${Number(targetId)}/items/batch`,json('POST',{action:'add',media_ids:addMediaIds,expected_revision:current.revision}));
+        message=`已加入 ${result.added} 个视频${result.existing?` · ${result.existing} 个已在列表中`:''}`;
       } else {
         await api(`/api/playlists/${Number(targetId)}/items/${addMedia!.id}?compact=true`,{method:'POST'});
+        message=`已将“${addMedia!.title}”加入播放列表`;
       }
-      if(active.current) { added(`已将“${addMedia!.title}”加入播放列表`); close(); }
+      if(active.current) { added(message); close(); }
     });
   }
-  function selectList(id:number) { setSelectedId(id); setPage(1); setSearch(''); setEditingName(false); setDetail(null); setRevision(value=>value+1); }
+  function selectList(id:number) {setPicked([]);setSelecting(false);setUndo(null);setNotice('');setSelectedId(id); setPage(1); setSearch(''); setEditingName(false); setDetail(null); setRevision(value=>value+1); }
+  function pick(ids:number[]){setPicked(current=>{const next=[...new Set([...current,...ids])];if(next.length>500){setError('一次最多选择 500 个视频');return current;}return next;});}
+  async function removeItems(ids:number[]){
+    if(!detail||!ids.length)return;
+    await mutate(async()=>{
+      const result=await api<Membership>(`/api/playlists/${detail.id}/items/batch`,json('POST',{action:'remove',media_ids:ids,expected_revision:detail.revision}));
+      if(active.current){setUndo({id:detail.id,revision:result.revision,removed:result.removed||[]});setPicked(current=>current.filter(id=>!ids.includes(id)));setNotice(`已从片单移除 ${result.removed?.length||0} 个视频，原文件不变。`);}
+    });
+  }
   async function remove(item:Media) {
-    if(!detail) return;
-    await mutate(()=>api(`/api/playlists/${detail.id}/items/${item.id}?compact=true&expected_revision=${detail.revision}`,{method:'DELETE'}));
+    await removeItems([item.id]);
+  }
+  async function undoRemoval(){
+    if(!undo||!detail||undo.id!==detail.id)return;
+    await mutate(async()=>{const result=await api<Membership>(`/api/playlists/${undo.id}/items/restore`,json('POST',{removed:undo.removed,expected_revision:undo.revision}));if(active.current){setUndo(null);setNotice(`已恢复 ${result.restored} 个视频及原来的片单位置。`);}});
   }
   async function move(item:Media,direction:-1|1) {
     if(!detail) return;
-    await mutate(()=>api(`/api/playlists/${detail.id}/items/${item.id}/move`,json('POST',{direction,expected_revision:detail.revision})));
+    await mutate(async()=>{await api(`/api/playlists/${detail.id}/items/${item.id}/move`,json('POST',{direction,expected_revision:detail.revision}));if(active.current){setUndo(null);setNotice('');}});
   }
   async function rename(event:React.FormEvent) {
     event.preventDefault(); if(!detail) return;
     await mutate(async()=>{ await api(`/api/playlists/${detail.id}?compact=true`,json('PATCH',{name:renameValue.trim()})); setEditingName(false); });
   }
   async function deleteList() {
-    if(!detail || !window.confirm(`删除播放列表“${detail.name}”？视频文件不会受影响。`)) return;
+    if(!detail || !confirmAction('删除播放列表？',`“${detail.name}” · ${detail.count} 个视频`,'删除片单名称和顺序记录，视频文件不会受影响。此操作不能撤销。')) return;
     await mutate(()=>api(`/api/playlists/${detail.id}`,{method:'DELETE'}),null);
     setPage(1); setSearch('');
   }
@@ -106,9 +130,9 @@ export function Playlists({ close, play, addMedia, added }: {
     finally { if(active.current) setBusy(false); }
   }
   const locked=busy || loading;
-  return <Dialog backdropClassName="playlist-backdrop" className={`playlist-panel${addMedia?' add-to-playlist':' playlist-workspace'}`} label={addMedia?'加入播放列表':'播放列表'} closeLabel="关闭" busy={busy} close={close}>
-      {addMedia ? <>
-        <h2 className="dialog-title"><Icon name="playlist" size={22}/>加入播放列表</h2><p className="playlist-subtitle">{addMedia.title}</p>
+  return <Dialog backdropClassName="playlist-backdrop" className={`playlist-panel${adding?' add-to-playlist':' playlist-workspace'}`} label={adding?'加入播放列表':'播放列表'} closeLabel="关闭" busy={busy} close={close}>
+      {adding ? <>
+        <h2 className="dialog-title"><Icon name="playlist" size={22}/>加入播放列表</h2><p className="playlist-subtitle">{addMediaIds?`已选择 ${addMediaIds.length} 个视频 · 按选择顺序加入，已有条目不会重复添加`:addMedia!.title}</p>
         {lists.length>0 && <label className="playlist-field">选择列表<select aria-label="选择播放列表" disabled={busy} value={targetId} onChange={event=>{setTargetId(event.target.value);setName('');}}>
           <option value="">新建播放列表</option>
           {lists.map(list=><option key={list.id} value={list.id}>{list.name}（{list.count}）</option>)}
@@ -140,7 +164,9 @@ export function Playlists({ close, play, addMedia, added }: {
             </aside>
             <section className="playlist-videos" aria-label="片单视频">
             <div className="playlist-video-toolbar"><span><Icon name="list" size={16}/>{search?`${detail.total} 个搜索结果`:'片单顺序'}</span><label className="playlist-search-wrap"><Icon name="search" size={16}/><input className="playlist-search" type="search" aria-label="搜索播放列表视频" placeholder="搜索此片单" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} /></label></div>
+            <div className="playlist-bulk-controls"><Button icon="check" disabled={locked} aria-pressed={selecting} onClick={()=>{setSelecting(value=>!value);setPicked([]);}}>{selecting?'结束多选':'多选视频'}</Button>{selecting&&<><span>已选 {picked.length} / 500 · 支持跨页</span><Button disabled={locked} onClick={()=>pick(detail.items.map(item=>item.id))}>选择本页片单视频</Button><Button disabled={locked||!picked.length} onClick={()=>setPicked([])}>清空片单选择</Button><Button icon="close" disabled={locked||!picked.length} onClick={()=>void removeItems(picked)}>移除所选片单视频</Button></>}</div>
             {loading?<StatusMessage kind="loading">正在加载列表…</StatusMessage>:detail.items.length?<ol className="playlist-video-items">{detail.items.map(item=><li key={item.id} className={item.missing?'is-offline':''}>
+              {selecting&&<input type="checkbox" className="playlist-pick" aria-label={`选择片单视频 ${item.title}`} checked={picked.includes(item.id)} disabled={locked} onChange={event=>event.target.checked?pick([item.id]):setPicked(current=>current.filter(id=>id!==item.id))}/>}
               <button className="playlist-item-play" aria-label={item.missing?`不可播放 ${item.title}（文件离线）`:`播放 ${item.title}`} disabled={Boolean(item.missing)||busy} onClick={()=>play({id:detail.id,name:detail.name},item)}>
                 <span className="playlist-index">{(item.playlist_index??0)+1}</span><span className="playlist-video-cover"><MediaThumbnail url={item.thumbnail_url}/><span className="playlist-video-duration">{duration(item.duration)}</span>{item.progress>0&&!item.watched&&<span className="playlist-video-progress" style={{width:`${Math.min(100,item.progress/Math.max(1,item.duration)*100)}%`}}/>}</span>
                 <span className="playlist-item-copy"><span className="playlist-item-title">{item.title}</span><span className="playlist-video-meta">{item.missing?<span className="playlist-offline-label"><Icon name="warning" size={12}/>文件离线</span>:<><ResolutionBadge width={item.width} height={item.height}/>{item.kind==='episode'?episodeLabel(item):formatLabel(item.ext)}{item.watched?' · 已看完':item.progress>0?` · 看到 ${duration(item.progress)}`:''}</>}</span><span className="playlist-video-filename" title={item.name}>{item.name}</span></span></button>
@@ -151,6 +177,7 @@ export function Playlists({ close, play, addMedia, added }: {
           </>:<p className="playlist-empty">{loading?'正在加载列表…':'创建或选择一个列表'}</p>}</div>
         </div>
         {error && <><StatusMessage className="playlist-error" kind="error">{error}</StatusMessage><Button icon="refresh" onClick={()=>{setError('');void refreshLists().then(()=>setRevision(value=>value+1)).catch(e=>setError(errorText(e)));}}>刷新列表</Button></>}
+        {notice&&<div className="playlist-operation-result" role="status"><Icon name="check" size={16}/><span>{notice}</span>{undo&&detail?.id===undo.id&&<Button icon="refresh" disabled={locked||detail.revision!==undo.revision} onClick={()=>void undoRemoval()}>撤销上次移除</Button>}{undo&&detail?.id===undo.id&&!locked&&detail.revision!==undo.revision&&<small>列表已变化，无法撤销；新的顺序已保留。</small>}</div>}
         <div className="playlist-footer"><span><Icon name="shield" size={14}/> 视频文件保持原位，不会被移动或修改</span><button className="ui-button" onClick={close} disabled={busy}><Icon name="check" size={16}/>完成</button></div>
       </>}
   </Dialog>;

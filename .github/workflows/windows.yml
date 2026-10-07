@@ -73,6 +73,10 @@ jobs:
         run: node electron/test/pure-pin.mjs
       - name: Real Electron update result UI regression
         run: node electron/test/update-banner.mjs
+      - name: Real Electron library workflows and native exports
+        run: node electron/test/library-workflows.mjs
+      - name: Real Electron library refinement and playlist batches
+        run: node electron/test/library-refinement.mjs
       - name: Package only tags or explicit manual runs
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -SkipDependencyInstall

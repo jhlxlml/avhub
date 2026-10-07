@@ -32,6 +32,7 @@ from .scanning import ScanManager
 from .path_index import RootPathIndex
 from .folders import relative_folder, directory_prefix, like_literal, directory_clause
 from .playlist_pages import summary as playlist_summary, page_query as playlist_page_query
+from .playlist_mutations import PlaylistBatchInput,PlaylistRestoreInput,PlaylistCreateInput,batch as playlist_batch,restore as playlist_restore,create as playlist_create
 from .subtitle_conversion import convert_ass, decode_text, MAX_SUBTITLE_BYTES
 from .video_color import color_metadata
 from .preferences import GLOBAL_KEYS, validate as validate_preference
@@ -1509,20 +1510,8 @@ def playlists():
     with connection() as db: return [dict(x) for x in db.execute("SELECT p.*,COUNT(i.media_id) AS count FROM playlists p LEFT JOIN playlist_items i ON p.id=i.playlist_id GROUP BY p.id ORDER BY p.created_at DESC")]
 
 @app.post("/api/playlists", status_code=201)
-def create_playlist(body: PlaylistInput):
-    name = body.name.strip()
-    if not name: raise HTTPException(422, "播放列表名称不能为空")
-    with connection() as db:
-        if body.media_id is not None and not db.execute("SELECT 1 FROM media WHERE id=? AND missing=0", (body.media_id,)).fetchone():
-            raise HTTPException(404, "视频不存在或已离线")
-        try:
-            cur = db.execute("INSERT INTO playlists(name,created_at) VALUES(?,?)", (name,time.time()))
-        except sqlite3.IntegrityError as exc:
-            raise HTTPException(409, "已有同名播放列表") from exc
-        if body.media_id is not None:
-            db.execute("INSERT INTO playlist_items VALUES(?,?,1)", (cur.lastrowid,body.media_id))
-            db.execute("UPDATE playlists SET revision=1 WHERE id=?", (cur.lastrowid,))
-    return {"id": cur.lastrowid, "name": name, "count": int(body.media_id is not None)}
+def create_playlist(body: PlaylistCreateInput):
+    with connection() as db: return playlist_create(db,body)
 
 @app.get("/api/playlists/{playlist_id}")
 def playlist_detail(playlist_id: int, page: int | None = Query(None, ge=1), page_size: int = Query(40, ge=1, le=100), q: str = ''):
@@ -1555,6 +1544,16 @@ def delete_playlist(playlist_id: int):
         db.execute("DELETE FROM playlist_items WHERE playlist_id=?", (playlist_id,))
         db.execute("DELETE FROM playlists WHERE id=?", (playlist_id,))
     return {"ok": True}
+
+@app.post('/api/playlists/{playlist_id}/items/batch')
+def batch_playlist_items(playlist_id: int, body: PlaylistBatchInput):
+    with connection() as db: return playlist_batch(db,playlist_id,body)
+
+
+@app.post('/api/playlists/{playlist_id}/items/restore')
+def restore_playlist_items(playlist_id: int, body: PlaylistRestoreInput):
+    with connection() as db: return playlist_restore(db,playlist_id,body)
+
 
 @app.post("/api/playlists/{playlist_id}/items/{media_id}")
 def add_playlist_item(playlist_id: int, media_id: int, compact: bool = False):

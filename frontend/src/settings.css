@@ -3,6 +3,7 @@
 .settings-tabs>button[aria-selected=true]{background:var(--ui-accent-soft);color:var(--ui-accent)}
 .settings-panel[hidden]{display:none}.settings-panel>.settings-section:first-child,.settings-panel>.backup-tools:first-child{margin-top:0;border-top:0;padding-top:0}
 .settings-panel{min-height:200px}.settings-panel .settings-section h3,.settings-panel .backup-tools h3{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ui-secondary);margin:0 0 12px}
+.export-result {display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-basis:100%;min-width:0;margin:8px 0;font-size:12px}.export-result code {overflow-wrap:anywhere;min-width:0;flex:1}
 .storage-sizes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}.storage-sizes>div{background:var(--ui-field);border:1px solid var(--ui-divider);border-radius:9px;padding:10px 12px;min-width:0}
 .storage-sizes dt{color:var(--ui-muted);font-size:11px}.storage-sizes dd{margin:4px 0 0;color:var(--ui-text);font-size:13px;font-variant-numeric:tabular-nums}.storage-sizes dd small{display:block;font-size:10px;color:var(--ui-muted);margin-top:3px}
 .storage-total,.storage-preview{font-size:12px;color:var(--ui-secondary);line-height:1.8}.storage-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.storage-tools>.backup-options input{width:auto;flex:none}.storage-preview small{display:block;color:var(--ui-muted);font-size:11px}

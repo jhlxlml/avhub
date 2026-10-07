@@ -1,6 +1,9 @@
 type WindowPlaybackState = {purePlayback:boolean;alwaysOnTop:boolean;maximized:boolean;fullScreen:boolean};
 interface Window {
   avhubDesktop?: {
+    saveExport:(request:{kind:'backup';jobId:string}|{kind:'diagnostics'})=>Promise<{cancelled:true}|{id:string;path:string;bytes:number}>;
+    cancelExport:()=>Promise<{ok:boolean}>;
+    revealExport:(id:string)=>Promise<{ok:boolean}>;
     openRelease:(tag:string,format?:'folder'|'single')=>Promise<{ok:boolean}>;
     startupReady?:()=>Promise<{ok:boolean}>;
     dataLocation:(action:'get'|'choose')=>Promise<{current:string;default:string;next:string;locked:boolean}|{cancelled:true}>;

@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
-test.beforeEach(async({request})=>{await request.post('/test/reset');});
+import {installExportHarness} from './native-export-harness';
+test.beforeEach(async({request,page})=>{await request.post('/test/reset');await installExportHarness(page);});
 
 test('complete backup restores custom cover and records after replacing the current library',async({page,request})=>{
   await request.post('/test/thumbnail-fixture');
@@ -14,7 +15,7 @@ test('complete backup restores custom cover and records after replacing the curr
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   await page.getByRole('tab',{name:'数据管理',exact:true}).click();
   await page.getByLabel('备份包含缩略图',{exact:true}).check();
-  const waiting=page.waitForEvent('download');await page.getByRole('button',{name:'下载完整备份',exact:true}).click();
+  const waiting=page.waitForEvent('download');await page.getByRole('button',{name:'保存完整备份',exact:true}).click();
   const downloaded=await waiting;expect(downloaded.suggestedFilename()).toBe('avhub-library.zip');
   const payload=readFileSync((await downloaded.path())!);expect(payload.subarray(0,2).toString()).toBe('PK');
   await request.post('/test/reset');

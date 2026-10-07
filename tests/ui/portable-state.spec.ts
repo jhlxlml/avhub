@@ -24,7 +24,7 @@ test('SQLite restores preferences with empty browser storage and loads only the 
   await expect(page.getByRole('combobox',{name:'播放模式'})).toHaveValue('repeat-one');
   await page.locator('.player-top').getByRole('button',{name:/返回媒体库/}).click();
   await page.getByRole('button',{name:'媒体库设置'}).click();
-  await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
+  await page.getByRole('tab',{name:'媒体目录',exact:true}).click();
   await expect(page.getByRole('checkbox',{name:'封面悬停预览'})).toBeChecked();
   expect((await(await request.get('/api/preferences')).json()).values['subtitle.1']).toBeUndefined();
 });
@@ -121,13 +121,14 @@ test('manual watched status survives autosave, can return to automatic and never
 });
 
 test('path actions use the indexed ID, external playback asks permission, and menus ignore player keys',async({page})=>{
-  const calls:string[]=[];
   await page.addInitScript(()=>Object.defineProperty(navigator,'clipboard',{value:{writeText:async(value:string)=>{(window as any).__copied=value;}}}));
-  await page.route('**/api/media/2/native/*',route=>{calls.push(route.request().url().split('/').pop()!);return route.fulfill({json:{ok:true}});});
   await page.goto('/?video=2');await ready(page);
+  // Component harness for the restricted preload API; OS acceptance uses Electron.
+  await page.evaluate(()=>{(window as any).__nativeActions=[];(window as any).avhubDesktop={mediaAction:async(id:number,action:string)=>{(window as any).__nativeActions.push([id,action]);return {ok:true};}};});
   const more=page.getByRole('button',{name:'更多操作 视频 002'});
-  await more.click();await page.keyboard.press('r');
+  await more.click();await expect(page.getByRole('menuitem',{name:'编辑信息与封面',exact:true})).toBeFocused();await page.keyboard.press('r');
   await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('menuitem',{name:'标记为已看',exact:true})).toBeFocused();await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem',{name:'复制视频路径'})).toBeFocused();
   await page.screenshot({path:'test-results/player-more-menu.png'});
   await expect(page.getByRole('button',{name:'旋转视频，当前 0 度'})).toBeVisible();
@@ -135,9 +136,9 @@ test('path actions use the indexed ID, external playback asks permission, and me
   expect(await page.evaluate(()=>(window as any).__copied)).toMatch(/second\.mp4$/);
   await more.click();await page.getByRole('menuitem',{name:'在资源管理器中显示'}).click();
   await more.click();page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('menuitem',{name:'用系统播放器打开'}).click();
-  expect(calls).toEqual(['reveal']);
+  expect(await page.evaluate(()=>(window as any).__nativeActions)).toEqual([[2,'reveal']]);
   page.once('dialog',dialog=>dialog.accept());await page.getByRole('menuitem',{name:'用系统播放器打开'}).click();
-  expect(calls).toEqual(['reveal','open']);
+  expect(await page.evaluate(()=>(window as any).__nativeActions)).toEqual([[2,'reveal'],[2,'open']]);
 });
 
 test('return refreshes watched filters after a manual mark in the player',async({page})=>{

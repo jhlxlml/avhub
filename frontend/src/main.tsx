@@ -17,6 +17,9 @@ import { ThumbnailTasks, useThumbnails } from './ThumbnailTasks';
 import { initializePreferences, savePreference, flushPreferences,preference } from './preferences';
 import { useWatchRouter } from './watchRouter';
 import { MediaActions } from './MediaActions';
+import {MediaEditDialog} from './MediaEditDialog';
+import {LibraryEmptyState} from './LibraryEmptyState';
+import {LibraryFilters} from './LibraryFilters';
 import { Icon, type IconName } from './Icon';
 import { WindowChrome } from './WindowChrome';
 import { resetPlaybackWindow } from './windowMode';
@@ -106,6 +109,8 @@ function App() {
   const [settings, setSettings] = useState(false);
   const [playlistsOpen, setPlaylistsOpen] = useState(false);
   const [playlistTarget, setPlaylistTarget] = useState<Media | null>(null);
+  const [editingMedia,setEditingMedia]=useState<Media|null>(null);
+  const [playlistBatch,setPlaylistBatch]=useState<number[]|null>(null);
   const [queue, setQueue] = useState<PlaylistSource | null>(null);
   const [searchOpen, setSearchOpen] = useState(() => Boolean(readFilters().q));
   const [notification, setNotification] = useState({message:'', autoDismissMs:0, id:0});
@@ -211,6 +216,7 @@ function App() {
   },[library.data,filters.page]);
 
   const updateMedia = useCallback((value: MediaUpdate) => {
+    setEditingMedia(current=>current?.id===value.id?{...current,...value}:current);
     libraryCache.clear();
     setItems(current => current.map(m => m.id === value.id ? { ...m, ...value } : m));
     setSelected(current => current?.id === value.id ? { ...current, ...value } : current);
@@ -341,17 +347,21 @@ function App() {
               aria-pressed={filters.resolution===tier} title={tier?'按源视频短边分级':'显示所有分辨率，包括未知'}
               onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'全部'}</button>)}
           </div>}
+          {!grouped&&<label className="resolution-compact">分辨率<select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
+            <option value="">全部分辨率</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
+          </select></label>}
           <div className="library-view-controls"><CoverSizeControl disabled={!grouped&&filters.layout==='list'}/>
           {!grouped&&<div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
             aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div>}</div>
           </div>
         </div>
+        <LibraryFilters value={filters} roots={roots} grouped={grouped} change={change=>{setFilters(f=>({...f,...change,page:1}));if('q' in change&&'format' in change&&'root' in change)setAdvancedOpen(false);}}/>
         {grouped ? <SeriesLibrary cache={libraryCache} active={rootsReady&&!selected} q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
           change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
         {bulkMode && <div className="bulk-selection-bar" aria-label="批量选择"><span>已选 {picked.length} / 500 · 支持跨页选择</span>
           <Button disabled={loading} onClick={() => pick(visible.map(m => m.id))}>选中本页</Button>
           <Button disabled={!picked.length} onClick={() => setPicked([])}>清空选择</Button>
-          <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button></div>}
+          <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button><Button icon="playlist" disabled={!picked.length} onClick={()=>setPlaylistBatch([...picked])}>所选加入播放列表</Button></div>}
         {roots.find(root => String(root.id) === filters.root) && <FolderBrowser key={filters.root} root={roots.find(root => String(root.id) === filters.root)!}
           folder={filters.folder} recursive={filters.recursive} revision={revision} treeMode={treeOpen} change={folder => setFilters(f => ({ ...f, folder, page: 1 }))}
           changeRecursive={recursive => setFilters(f => ({ ...f, recursive, page: 1 }))} />}
@@ -390,19 +400,21 @@ function App() {
               <div className="video-specs"><ResolutionBadge width={m.width} height={m.height}/><span className="video-spec-text">{formatLabel(m.ext)}{fileSizeLabel(m.size)&&` · ${fileSizeLabel(m.size)}`}</span></div>
               {(m.watched||m.kind==='episode'||filters.view==='history')&&<span className="video-context">{m.watched && filters.view!=='history'?<><Icon name="check" size={12}/> 已看{m.kind==='episode'?' · ':''}</>:null}{filters.view === 'history' ? `${historyTime(m.last_played)} · ${m.watched ? '已看完' : `看到 ${duration(m.progress)}`}` :
                 m.kind === 'episode' ? episodeLabel(m) : null}</span>}</div>
-              <MediaActions media={m} update={updateMedia} changed={()=>setRevision(value=>value+1)} notify={setNotice}/></div>
-            </article>)}</div> : <EmptyState icon={viewIcons[filters.view]} title={filters.view === 'continue' ? '暂无可继续观看的视频' : filters.view === 'favorites' ? '暂无收藏视频' : filters.view === 'history' ? '暂无观看历史' : '暂无匹配的视频'}
-            description={roots.length ? '可以切换分类、目录或清除搜索条件。' : '添加视频文件夹后，点击刷新媒体库开始扫描。'}>
-            {roots.length ? <Button onClick={() => setFilters(f => ({ ...f, root: '', folder: '', recursive: true, q: '', view: 'all', format: '', resolution: '', watch: 'all', duration: '', page: 1 }))}>查看全部视频</Button> :
-              <Button icon="folder" onClick={() => setSettings(true)}>添加视频文件夹</Button>}</EmptyState>}
+              <MediaActions media={m} update={updateMedia} changed={()=>setRevision(value=>value+1)} notify={setNotice} edit={()=>setEditingMedia(m)}/></div>
+            </article>)}</div> : <LibraryEmptyState roots={roots} root={filters.root} view={filters.view} icon={viewIcons[filters.view]}
+              filtered={Boolean(filters.q||filters.folder||filters.format||filters.resolution||filters.watch!=='all'||filters.duration)} scanning={scan.scanning} scanState={scan.job?.state}
+              add={()=>setSettings(true)} scan={()=>void scan.start(filters.root?Number(filters.root):undefined)}
+              clear={()=>setFilters(f=>({...f,root:'',folder:'',recursive:true,q:'',view:'all',format:'',resolution:'',watch:'all',duration:'',page:1}))}/>}
         {!requestError&&library.data && <Pagination page={filters.page} pages={pages} total={displayTotal} pageSize={filters.pageSize} busy={loading}
           changePage={changePage} changeSize={pageSize => { setFilters(f => ({ ...f, pageSize, page: 1 })); scrollPageTo(0); }} />}
         </>}
       </section></div>
       {bulkOpen && <BulkEditor ids={picked} close={() => setBulkOpen(false)} done={count => { setBulkOpen(false); setPicked([]); setRevision(value => value + 1); setNotice(`已整理 ${count} 个视频，源文件未修改`); }}/ >}
+      {editingMedia&&<MediaEditDialog media={editingMedia} update={updateMedia} close={()=>setEditingMedia(null)}/>}
       {settings && <Settings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
       {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={playlistAdded} />}
       {playlistTarget && <Playlists addMedia={playlistTarget} close={() => setPlaylistTarget(null)} play={playQueue} added={playlistAdded} />}
+      {playlistBatch&&<Playlists addMediaIds={playlistBatch} close={()=>setPlaylistBatch(null)} play={playQueue} added={message=>{setPicked([]);playlistAdded(message);}}/>}
     </main>
   </>;
 }

@@ -1,7 +1,7 @@
 {
   "name": "avhub",
   "private": true,
-  "version": "0.2.8",
+  "version": "0.2.9",
   "main": "electron/dist/main.js",
   "scripts": {
     "prebuild": "node scripts/write-build-info.mjs",
@@ -22,6 +22,8 @@
     "test:electron:window": "npm run build && npm run build:electron && node electron/test/window-mode.mjs",
     "test:electron:pure-pin": "npm run build && npm run build:electron && node electron/test/pure-pin.mjs",
     "test:electron:library-controls": "npm run build && npm run build:electron && node electron/test/directory-history.mjs && node electron/test/library-controls.mjs",
+    "test:electron:library-workflows": "npm run build && npm run build:electron && node electron/test/library-workflows.mjs",
+    "test:electron:library-refinement": "npm run build && npm run build:electron && node electron/test/library-refinement.mjs",
     "test:electron:permissions": "npm run build:electron && node electron/test/permission-policy.mjs",
     "test:electron:logs": "npm run build:electron && node electron/test/logs.mjs",
     "test:electron:data-commit": "npm run build && npm run build:electron && node electron/test/data-commit.mjs",

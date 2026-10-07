@@ -5,9 +5,10 @@ import { MediaThumbnail } from './MediaThumbnail';
 import './library-tools.css';
 import { type ThumbnailItemStatus } from './ThumbnailTasks';
 
-export function CoverEditor({media,update}:{media:Media;update:(value:MediaUpdate)=>void}) {
+export function CoverEditor({media,update,onBusyChange}:{media:Media;update:(value:MediaUpdate)=>void;onBusyChange?:(busy:boolean)=>void}) {
   const input=useRef<HTMLInputElement>(null);
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{onBusyChange?.(busy);return()=>onBusyChange?.(false);},[busy,onBusyChange]);
   const [capture,setCapture]=useState(''),[status,setStatus]=useState<ThumbnailItemStatus|null>(null);
   const latestUpdate=useRef(update);latestUpdate.current=update;
   useEffect(()=>{
@@ -45,7 +46,7 @@ export function CoverEditor({media,update}:{media:Media;update:(value:MediaUpdat
       {media.custom_cover&&<Button disabled={busy} icon="refresh" onClick={()=>void change()}>恢复视频截图</Button>}</div>
       <small>JPEG / PNG · 最大 8 MB · 仅保存到应用缓存</small>
       <div className="cover-capture"><div className="cover-capture-tools"><label>截图时间（秒） <input type="number" aria-label="封面截图时间" min="0" step="0.1" value={capture} placeholder="自动选择" disabled={busy} onChange={event=>setCapture(event.target.value)}/></label>
-        <Button icon="camera" busy={busy} onClick={()=>void retry()}>重新生成截图</Button></div>
+        <Button icon="camera" busy={busy} disabled={Boolean(media.missing)} title={media.missing?'源文件离线，恢复连接后可生成截图':undefined} onClick={()=>void retry()}>重新生成截图</Button></div>
         {status?.state==='pending'&&<small role="status">已排队生成，暂停的任务可在顶栏“封面任务”中恢复。</small>}
         {status?.state==='failed'&&<details><summary>查看截图失败原因（不影响尝试播放）</summary><pre>{status.last_error||'旧任务没有保存详细原因，请重新生成截图采集诊断。'}</pre></details>}
         {media.custom_cover&&<small>重新截图不会覆盖手动封面；点击“恢复视频截图”可切换。</small>}</div>

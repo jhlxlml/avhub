@@ -74,7 +74,7 @@ export function ScanProgress({ job, cancel, connectionError }: { job: ScanJob | 
   if (!job || job.state === 'interrupted' || dismissed === job.id) return null;
   const labels = { discovering:'正在查找视频', running:'正在扫描', cancelling:'正在取消（等待当前文件处理结束）', interrupted:'上次扫描未完成', completed:'扫描完成', cancelled:'扫描已取消', failed:'扫描失败' };
   return <section className="scan-status" aria-label="扫描任务">
-    <div className="scan-heading"><strong><Icon name={active(job)?'refresh':job.state==='completed'?'check':'warning'} size={16} className={active(job)?'is-spinning':''}/>{job.state === 'running' && job.discovery_done && job.thumbnails_pending ? '正在生成封面' : labels[job.state]}</strong><span>{job.state === 'running' && job.discovery_done === false ? `已发现 ${job.total} 个 · 已索引 ${job.processed} 个` : `${job.processed} / ${job.total} 个视频 · 更新 ${job.updated} 个`}</span>
+    <div className="scan-heading"><strong><Icon name={active(job)?'refresh':job.state==='completed'?'check':'warning'} size={16} className={active(job)?'is-spinning':''}/>{labels[job.state]}</strong><span>{job.state === 'running' && job.discovery_done === false ? `已发现 ${job.total} 个 · 已索引 ${job.processed} 个` : `${job.processed} / ${job.total} 个视频 · 更新 ${job.updated} 个`}</span>
       {active(job) ? <button disabled={job.state === 'cancelling'} onClick={() => void cancel()}>取消扫描</button> :
         <button className="ui-icon-button" aria-label="收起扫描结果" onClick={() => setDismissed(job.id)}><Icon name="close" size={16}/></button>}</div>
     {active(job) && <progress aria-label="扫描进度" max={Math.max(1, job.total)} value={job.state === 'discovering' || job.discovery_done === false ? undefined : job.processed} />}

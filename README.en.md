@@ -32,6 +32,10 @@ Recent library conveniences are implemented natively for AVHub: Electron-owned f
 - Generate artwork from video frames, import custom artwork, capture a cover at a chosen video position, and batch-edit metadata.
 - Server-side pagination and on-demand directory / series data. An independent thumbnail queue supports pause and resume and yields to playback.
 - Relocate unavailable directories while retaining associated user metadata. Removing a library directory does not delete its videos.
+- Active filter chips can be removed individually or cleared together while preserving the current category. Narrow windows use a compact resolution selector.
+- Bulk-select library videos to add them to a playlist without duplicates. Playlists support selection across pages, batch removal, and undo of the last removal when no later membership/order change has occurred.
+- Background artwork and hover previews are under Media directories. Advanced playback settings contain the default-off MKV lossless preparation option.
+- Edit a video's metadata and artwork directly from More actions without starting playback. Offline files still support metadata changes and local artwork imports.
 
 ### Player
 
@@ -47,6 +51,7 @@ Recent library conveniences are implemented natively for AVHub: Electron-owned f
 
 - SQLite persistence for indexes, favorites, tags, playlists, progress, and preferences.
 - Database backup and full-library backup / restore, including custom artwork and optionally thumbnails.
+- Backups and diagnostics use a native save dialog, report the actual saved path, and offer a reveal action after completion. Cancellation or failure leaves an existing export unchanged.
 - Storage previews and cache cleanup, scan and artwork task status, playback diagnostics, and desktop logs.
 - Loopback-only service and request validation; the desktop app adds session validation and restricted native operations.
 
@@ -132,7 +137,7 @@ After installing dependencies, [启动AVHub.bat](启动AVHub.bat) builds and ope
 5. Open a video, organize favorites and playlists, and return through “继续观看” (Continue watching). Playback progress is saved automatically.
 6. If a directory moves, a drive letter changes, or a disk goes offline, check its status under Media directories. Use “重新定位” (Relocate) when needed, then refresh the index.
 
-Check the active data directory under Settings → **运行诊断** (Runtime diagnostics). If desktop shutdown reports unsaved data, retry or cancel as prompted. Forced termination or power loss may discard uncommitted changes.
+Check the active data directory under Settings → **数据管理** (Data management), or in Runtime diagnostics. About is available from the desktop title bar or Settings → Help → About. If desktop shutdown reports unsaved data, retry or cancel as prompted. Forced termination or power loss may discard uncommitted changes.
 
 ## Appearance and cover size
 

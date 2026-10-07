@@ -4,6 +4,13 @@
 .desktop-shell:not(.pure-playback) .modal-backdrop {top:32px}
 .desktop-shell main>header,.desktop-shell .player-top {top:0}
 .desktop-shell #app-scroll-area>main,.desktop-shell #app-scroll-area .player-shell {min-height:100%}
+/* Fill short libraries without stretching cards; long libraries scroll naturally. */
+.desktop-shell #app-scroll-area>main:not([hidden]) {display:grid;grid-template-rows:auto 1fr}
+.desktop-shell .app-layout:not(.with-directory-tree) {display:flex}
+.desktop-shell .app-layout>.library {align-self:stretch;flex:1;display:flex;flex-direction:column}
+.desktop-shell .library>.series-library {flex:1;display:flex;flex-direction:column}
+.desktop-shell .library>*,.desktop-shell .series-library>* {flex-shrink:0}
+.desktop-shell .pagination-footer {flex:1;display:flex;flex-direction:column;justify-content:flex-end}
 .desktop-shell.pure-playback #app-scroll-area {inset:0;overflow:hidden}
 .desktop-titlebar {position:fixed;inset:0 0 auto;z-index:75;height:32px;display:flex;align-items:center;background:var(--ui-bg);border-bottom:1px solid var(--ui-divider);color:var(--ui-muted);user-select:none}
 .window-drag-area {flex:1;height:100%;min-width:0;display:flex;align-items:center;gap:8px;padding:0 12px;-webkit-app-region:drag;app-region:drag;font-size:11px}

@@ -106,7 +106,7 @@ test('hover previews are opt-in, delayed, one at a time and never create playbac
   await first.hover(); await page.waitForTimeout(750);
   await expect(page.locator('.hover-preview')).toHaveCount(0);
   await page.getByRole('button',{name:'媒体库设置'}).click();
-  await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
+  await page.getByRole('tab',{name:'媒体目录',exact:true}).click();
   await page.getByRole('checkbox',{name:'封面悬停预览'}).check();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await page.getByRole('button',{name:'全部视频',exact:true}).hover();

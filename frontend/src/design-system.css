@@ -54,6 +54,7 @@ select {cursor:pointer}
 .ui-status>.ui-icon {margin-top:2px}
 .ui-status>span {min-width:0}
 .ui-status.error {color:var(--ui-danger)}
+.ui-status.success {color:var(--ui-success);background:color-mix(in srgb,var(--ui-success) 8%,var(--ui-surface));border:1px solid color-mix(in srgb,var(--ui-success) 20%,var(--ui-border));border-radius:var(--ui-radius);padding:10px 12px}
 .toast-message {min-width:0;overflow-wrap:anywhere}
 .empty>.ui-status {justify-content:center}
 .primary,.ui-button.primary {background:var(--ui-accent);color:var(--ui-on-accent);font-weight:600}
@@ -415,7 +416,7 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 .player-shell .player-info .media-editor button:not([type="submit"]):hover:not(:disabled) {background:var(--ui-hover);color:var(--ui-text)}
 .player-shell .player-info .editor-message {grid-column:1/-1;font-size:12px;color:var(--ui-secondary)}
 .player-shell .player-info .editor-message.error {color:var(--ui-danger)}
-.player-shell .player-info .editor-message.info {color:var(--ui-success)}
+.player-shell .player-info .editor-message.success {color:var(--ui-success)}
 .player-shell .player-info .ui-status.error {color:var(--ui-danger)}
 .player-shell .player-info .playback-diagnostics dt {color:var(--ui-muted)}
 .folder-content>.folder-error .ui-status.error {margin:8px 0}

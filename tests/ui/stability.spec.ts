@@ -372,7 +372,7 @@ test('backup does not download the SPA page as a database file', async ({ page }
   await page.goto('/');
   await page.getByRole('button', { name: '媒体库设置', exact: true }).click();
   await page.getByRole('tab', { name:'数据管理', exact:true }).click();
-  await page.getByRole('button', { name: '下载媒体库备份', exact: true }).click();
+  await page.getByRole('button', { name: '保存媒体库备份', exact: true }).click();
   await expect(page.getByText('本地服务与网页版本不匹配，请完全退出并重新启动 AVHub', { exact: true })).toBeVisible();
 });
 

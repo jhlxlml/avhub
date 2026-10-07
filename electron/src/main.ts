@@ -3,6 +3,7 @@ import { fitPlaybackBounds, playbackMinimum } from './playbackGeometry';
 import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
 import {StartupTrace} from './startupTrace';
+import {LocalExports} from './localExports';
 import { stopOwnedBackend } from './backendShutdown';
 import { appendBoundedLog } from './desktopLogs';
 import { previousDirectory,rememberDirectory,type DirectoryPurpose } from './directoryHistory';
@@ -88,6 +89,24 @@ function trustedWindow(event: IpcMainInvokeEvent): BrowserWindow {
       new URL(event.senderFrame.url).origin !== `http://127.0.0.1:${backendPort}`) throw new Error('窗口操作来源无效');
   return window;
 }
+const localExports=new LocalExports(()=>dataDir,async(request,signal)=>{
+  const origin=`http://127.0.0.1:${backendPort}`;
+  const options={headers:{'X-AVHub-Token':sessionToken},signal,redirect:'error' as const};
+  if(request.kind==='diagnostics'){
+    const result=await fetch(`${origin}/api/diagnostics`,options);
+    if(!result.ok)throw new Error('读取诊断失败，请刷新后重试');
+    const body=JSON.stringify(await result.json(),null,2);
+    return {filename:'avhub-diagnostics.json',response:new Response(body),maximum:16*1024*1024};
+  }
+  const status=await fetch(`${origin}/api/data-jobs/${request.jobId}`,options);
+  if(!status.ok)throw new Error('备份任务已过期，请重新生成');
+  const job=await status.json() as {kind:string;state:string;result?:{filename?:string}};
+  if(job.kind!=='backup'||job.state!=='ready'||!job.result?.filename)throw new Error('备份尚未完成');
+  return {filename:job.result.filename,response:await fetch(`${origin}/api/data-jobs/${request.jobId}/download`,options),maximum:2*1024**3};
+});
+ipcMain.handle('avhub:save-export',(event,value:unknown)=>localExports.save(trustedWindow(event),value));
+ipcMain.handle('avhub:cancel-export',event=>{trustedWindow(event);return localExports.cancel();});
+ipcMain.handle('avhub:reveal-export',(event,id:unknown)=>{trustedWindow(event);return localExports.reveal(id);});
 function windowState(window: BrowserWindow) {
   return { purePlayback, alwaysOnTop: window.isAlwaysOnTop(), maximized: window.isMaximized() || expandedPlaybackBounds!==null, fullScreen: window.isFullScreen() };
 }
