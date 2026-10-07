@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {LibraryPageCache} from '../../frontend/src/libraryCache';
 
-test.beforeEach(async({request})=>{await request.post('/test/reset');});
+test.beforeEach(async({request})=>{expect((await request.post('/test/reset')).ok()).toBe(true);});
 
 test('library cache is revision-aware, expires old data and evicts least-recently-used pages',()=>{
   const cache=new LibraryPageCache(3);
@@ -67,9 +67,13 @@ test('favorite writes invalidate other cached views and preserve accurate counts
 });
 
 test('grouped series cache survives tab unmount and restores group pages without another fetch',async({page,request})=>{
-  await request.post('/test/series-fixture');let groups=0;
+  const fixture=await request.post('/test/series-fixture');expect(fixture.ok()).toBe(true);expect((await fixture.json()).unassigned).toBe(0);
+  const ready=await request.get('/api/series?q=测试剧集&page=1&page_size=48');expect(ready.ok()).toBe(true);expect((await ready.json()).items.map((item:any)=>item.title)).toEqual(['测试剧集']);
+  let groups=0;
   page.on('request',r=>{if(new URL(r.url()).pathname==='/api/series'&&r.method()==='GET')groups++;});
+  const firstResponse=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/series');
   await page.goto('/?view=series&grouped=true&q=测试剧集');
+  const response=await firstResponse;expect(response.ok()).toBe(true);expect((await response.json()).items.map((item:any)=>item.title)).toEqual(['测试剧集']);
   await expect(page.locator('.series-groups .card')).toHaveCount(1);
   await page.getByRole('button',{name:'全部视频',exact:true}).click();await expect(page.locator('.card')).toHaveCount(48);
   await page.getByRole('button',{name:'剧集',exact:true}).click();await expect(page.locator('.series-groups .card')).toHaveCount(1);

@@ -270,7 +270,12 @@ def series_fixture():
             VALUES(?,?,1,?,?,'episode',?,?,?,'.mp4',120,320,180,'h264','[]',0,0)''',
             [(1000+i,str(path if i==1 else fixture_root/f'episode-{i}.mp4'),f'S{(i-1)//60:02}E{(i-1)%60+1:02}.mp4',
               '测试剧集' if i<=180 else f'剧集 {(i-181)//10:03}',(i-1)//60 if i<=180 else 1,(i-1)%60+1,int(i==2)) for i in range(1,1001)])
-    return {'ok':True}
+        # Complete fixture construction in this transaction. UI/cache tests
+        # should start with assigned series, as the production scanner does,
+        # instead of mixing a cold 1000-row migration into their first GET.
+        m.series_library.backfill(db)
+        unassigned=db.execute("SELECT COUNT(*) FROM media WHERE kind='episode' AND series_id IS NULL").fetchone()[0]
+    return {'ok':True,'unassigned':unassigned}
 
 @m.app.post('/test/thumbnail-fixture')
 def thumbnail_fixture():
