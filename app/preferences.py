@@ -3,7 +3,7 @@ import math
 import re
 from fastapi import HTTPException
 
-GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','nativePrepare','resumeBehavior','librarySort'}
+GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds'}
 
 
 def validate(key, value):
@@ -16,6 +16,8 @@ def validate(key, value):
         valid = value in ('series','directory')
     elif key == 'resumeBehavior':
         valid = isinstance(value,str) and value in ('ask','resume','restart')
+    elif key == 'mouseSeekSeconds':
+        valid = type(value) is int and 1<=value<=120
     elif key == 'librarySort':
         from .media_order import ORDERS
         valid = isinstance(value,str) and value in ORDERS

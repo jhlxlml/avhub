@@ -66,10 +66,12 @@ export function usePlaybackChrome({phase,openSetting,purePlayback,videoFullscree
     document.addEventListener('mouseleave',left);
     window.addEventListener('pointerup',released);
     window.addEventListener('pointercancel',released);
+    window.addEventListener('blur',released);
     return()=>{
       document.removeEventListener('mousemove',move);document.removeEventListener('pointerdown',down);
       document.removeEventListener('mouseleave',left);
       window.removeEventListener('pointerup',released);window.removeEventListener('pointercancel',released);
+      window.removeEventListener('blur',released);
     };
   },[purePlayback,phase,openSetting,controlsVisible]);
   useEffect(()=>()=>{

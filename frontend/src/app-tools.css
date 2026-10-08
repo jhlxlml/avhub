@@ -32,3 +32,4 @@
 .update-result-copy>p {margin:7px 0 0;font-size:12px;line-height:1.65;color:var(--ui-secondary);overflow-wrap:anywhere}
 .app-build-info>div {padding:9px 12px;font-size:11px}
 @media(max-width:420px) {.update-result-banner{padding:12px;gap:10px}.update-result-mark{width:36px;height:36px;border-radius:10px}.update-result-copy>strong{font-size:15px}}
+.app-select-field input[type="number"] {width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--ui-border);border-radius:var(--ui-radius);color:var(--ui-text);background:var(--ui-field);font-size:12px}

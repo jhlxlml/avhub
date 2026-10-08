@@ -15,8 +15,9 @@ import { HoverPreview, loadPreviewPreference } from './HoverPreview';
 import { ScanProgress, ScanRecovery, useScan } from './ScanProgress';
 import { ThumbnailTasks, useThumbnails } from './ThumbnailTasks';
 import { initializePreferences, savePreference, flushPreferences,preference } from './preferences';
-import { useWatchRouter } from './watchRouter';
+import { readPlaylistPlayback,useWatchRouter } from './watchRouter';
 import { MediaActions } from './MediaActions';
+import {ExternalPlayerButton} from './ExternalPlayerButton';
 import {MediaEditDialog} from './MediaEditDialog';
 import {LibraryEmptyState} from './LibraryEmptyState';
 import {LibraryFilters} from './LibraryFilters';
@@ -203,7 +204,7 @@ function App() {
       const media=await api<Media>(`/api/media/${mediaId}`,{signal:controller.signal});
       let source:PlaylistSource|null=null;
       if(playlistId) {
-        try {const list=await api<{id:number;name:string}>(`/api/playlists/${playlistId}/queue?media_id=${mediaId}&page_size=40`,{signal:controller.signal});source={id:list.id,name:list.name};}
+        try {const list=await api<{id:number;name:string}>(`/api/playlists/${playlistId}/queue?media_id=${mediaId}&page_size=40`,{signal:controller.signal});source={id:list.id,name:list.name,...readPlaylistPlayback()};}
         catch(e){if(controller.signal.aborted)return;setNotice(`片单上下文无法恢复：${errorText(e)}。已改为普通播放。`);router.navigate(mediaId,null,true);}
       }
       if(!controller.signal.aborted){scroll.current=router.route.scroll;setQueue(source);setSelected(media);scrollPageTo(0);}
@@ -266,10 +267,15 @@ function App() {
   function open(m: Media) {scroll.current=pageScrollTop();setAutomaticMedia(null);setQueue(null);setSelected(m);router.navigate(m.id);scrollPageTo(0);}
   function playQueue(source: PlaylistSource, media: Media) {
     scroll.current = pageScrollTop();
-    setAutomaticMedia(null);setQueue(source);setSelected(media);router.navigate(media.id,source.id);setPlaylistsOpen(false);setPlaylistTarget(null);scrollPageTo(0);
+    setAutomaticMedia(null);setQueue(source);setSelected(media);router.navigate(media.id,source.id,false,{mode:source.mode,autoNext:source.autoNext});setPlaylistsOpen(false);setPlaylistTarget(null);scrollPageTo(0);
   }
   function playQueueItem(m: Media, automatic=false) {
-    setAutomaticMedia(automatic?m.id:null);setSelected(m);router.navigate(m.id,queue?.id||null,true);
+    setAutomaticMedia(automatic?m.id:null);setSelected(m);router.navigate(m.id,queue?.id||null,true,queue?{mode:queue.mode,autoNext:queue.autoNext}:undefined);
+  }
+  function changePlaylistPlayback(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>) {
+    if(!queue)return;
+    const next={...queue,...change};setQueue(next);
+    router.replaceHref(new URL(location.href),{avhubPlaylistPlayback:{mode:next.mode,autoNext:next.autoNext}});
   }
   function toggleSearch() {
     setSearchOpen(open => !open);
@@ -295,7 +301,7 @@ function App() {
     {notice && <Toast key={notification.id} message={notice} autoDismissMs={notification.autoDismissMs} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
     {router.route.mediaId && (!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage></div>}
     {selected && selected.id===router.route.mediaId && <Suspense fallback={<div className="player-loading"><StatusMessage kind="loading">正在打开播放器…</StatusMessage></div>}>
-      <Player key={selected.id} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} update={updateMedia}
+      <Player key={selected.id} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} changePlaylistPlayback={changePlaylistPlayback} update={updateMedia}
         favoriteBusy={favoritePending.includes(selected.id)} changeFavorite={changeFavorite} registerNavigationGuard={router.registerGuard} notify={setNotice} />
     </Suspense>}
     <main hidden={Boolean(router.route.mediaId)||routeLoading}>
@@ -351,10 +357,10 @@ function App() {
             <span className="resolution-filter-label" title="分辨率"><Icon name="resolution" size={18}/></span>
             {['',...resolutionTiers].map(tier=><button key={tier} type="button" aria-label={tier?`筛选 ${resolutionDisplayLabel(tier)}`:'全部分辨率'}
               aria-pressed={filters.resolution===tier} title={tier?'按源视频短边分级':'显示所有分辨率，包括未知'}
-              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'ALL'}</button>)}
+              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'全部'}</button>)}
           </div>}
           {!grouped&&<label className="resolution-compact" title="分辨率"><Icon name="resolution" size={18}/><select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
-            <option value="">ALL</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
+            <option value="">全部</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
           </select></label>}
           <div className="library-view-controls"><CoverSizeControl disabled={!grouped&&filters.layout==='list'}/>
           {!grouped&&<div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
@@ -402,10 +408,10 @@ function App() {
               {m.progress > 0 && <div className="progress"><i style={{ width: `${Math.min(100, m.progress / (m.duration || 1) * 100)}%` }} /></div>}
             </div>
             <div className="card-footer"><div className="meta"><button className="video-title" title={m.title} onClick={() => open(m)}>{m.title}</button>
-              <div className="video-specs"><ResolutionBadge width={m.width} height={m.height}/><span className="video-spec-text">{formatLabel(m.ext)}{fileSizeLabel(m.size)&&` · ${fileSizeLabel(m.size)}`}</span></div>
+              <div className="video-specs"><ResolutionBadge width={m.width} height={m.height}/><span className="video-spec-text">{formatLabel(m.ext)}{fileSizeLabel(m.size)&&` · ${fileSizeLabel(m.size)}`}</span>{filters.layout==='grid'&&<ExternalPlayerButton media={m} notify={setNotice}/>}</div>
               {(m.watched||m.kind==='episode'||filters.view==='history')&&<span className="video-context">{m.watched && filters.view!=='history'?<><Icon name="check" size={12}/> 已看{m.kind==='episode'?' · ':''}</>:null}{filters.view === 'history' ? `${historyTime(m.last_played)} · ${m.watched ? '已看完' : `看到 ${duration(m.progress)}`}` :
                 m.kind === 'episode' ? episodeLabel(m) : null}</span>}</div>
-              <MediaActions media={m} update={updateMedia} changed={()=>setRevision(value=>value+1)} notify={setNotice} edit={()=>setEditingMedia(m)}/></div>
+              <MediaActions media={m} update={updateMedia} changed={()=>setRevision(value=>value+1)} notify={setNotice} edit={()=>setEditingMedia(m)} externalInMenu={filters.layout!=='grid'}/></div>
             </article>)}</div> : <LibraryEmptyState roots={roots} root={filters.root} view={filters.view} icon={viewIcons[filters.view]}
               filtered={Boolean(filters.q||filters.folder||filters.format||filters.resolution||filters.watch!=='all'||filters.duration)} scanning={scan.scanning} scanState={scan.job?.state}
               add={()=>setSettings(true)} scan={()=>void scan.start(filters.root?Number(filters.root):undefined)}

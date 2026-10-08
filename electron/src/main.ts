@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell, type IpcMainInvokeEvent, type Rectangle } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type IpcMainInvokeEvent, type Rectangle } from 'electron';
+import {textEditTemplate} from './textEditMenu';
 import { fitPlaybackBounds, playbackMinimum } from './playbackGeometry';
 import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
@@ -435,6 +436,25 @@ function createWindow(): BrowserWindow {
   window.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) =>
     callback(contents === window.webContents && permissionAllowed(permission, details.requestingUrl, allowedOrigin, details.isMainFrame)));
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('context-menu',(event,params)=>{
+    if(shuttingDown||allowQuit||window.isDestroyed()||params.frame!==window.webContents.mainFrame)return;
+    try {if(new URL(params.frame.url).origin!==allowedOrigin)return;}catch{return;}
+    const template=textEditTemplate(params);
+    if(!template.length)return;
+    event.preventDefault();
+    Menu.buildFromTemplate(template).popup({window,frame:params.frame,sourceType:params.menuSourceType});
+  });
+  window.on('app-command',(event,command)=>{
+    if(command!=='browser-backward'&&command!=='browser-forward')return;
+    if(shuttingDown||allowQuit||window.isDestroyed())return;
+    try {
+      const current=new URL(window.webContents.getURL());
+      const mediaId=Number(current.searchParams.get('video'));
+      if(current.origin!==allowedOrigin||!Number.isSafeInteger(mediaId)||mediaId<=0)return;
+    } catch {return;}
+    event.preventDefault();
+    window.webContents.send('avhub:mouse-seek',command==='browser-forward'?'forward':'back');
+  });
   window.webContents.once('did-finish-load',()=>{
     appendDesktopLog('renderer-loaded');startupTrace.mark('renderer-loaded');
   });

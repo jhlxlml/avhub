@@ -62,15 +62,27 @@ jobs:
       - name: Windows short-path regression
         run: python tests/check_path_alias.py
       - name: Shared renderer regression
-        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts
+        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts tests/ui/mouse-seek.spec.ts
       - name: Windows short-path screenshot regression
+        # Shared renderer tests are harnesses, not browser product acceptance.
         run: python tests/check_path_alias.py --ui
+      - name: Renderer interaction and theme regression harness
+        run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts
       - name: Real Electron startup/exit
         run: node electron/test/smoke.mjs
       - name: Startup trace unit regression
         run: node electron/test/startup-trace.mjs
       - name: Real Electron pure playback pin regression
         run: node electron/test/pure-pin.mjs
+      - name: Real Electron mouse side-button seeking
+        run: node electron/test/mouse-seek.mjs
+      - name: Real Electron cover external player dispatch
+        run: node electron/test/external-player-button.mjs
+      - name: Native text editing menu regression
+        run: |
+          node electron/test/text-edit-menu-policy.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/text-edit-menu.mjs
       - name: Real Electron update result UI regression
         run: node electron/test/update-banner.mjs
       - name: Real Electron library workflows and native exports

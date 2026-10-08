@@ -6,8 +6,8 @@ import {useNativePreparation} from './nativePreparation';
 import {requireDesktop} from './nativeDesktop';
 import {MediaEditDialog} from './MediaEditDialog';
 
-export function MediaActions({media,update,changed,notify,pauseForPreparation,playPrepared,edit}: {
-  media:Media;update:(value:MediaUpdate)=>void;changed?:()=>void;notify:(message:string)=>void;pauseForPreparation?:()=>void;playPrepared?:()=>void;edit?:()=>void;
+export function MediaActions({media,update,changed,notify,pauseForPreparation,playPrepared,edit,externalInMenu=true}: {
+  media:Media;update:(value:MediaUpdate)=>void;changed?:()=>void;notify:(message:string)=>void;pauseForPreparation?:()=>void;playPrepared?:()=>void;edit?:()=>void;externalInMenu?:boolean;
 }) {
   const [open,setOpen]=useState(false);
   const [prepareOpen,setPrepareOpen]=useState(false);
@@ -27,7 +27,6 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
   },[open]);
   async function act(action:'watched'|'auto'|'copy'|'reveal'|'open') {
     if(lock.current)return;
-    if(action==='open' && !window.confirm('将用系统默认播放器打开原视频。AVHub 无法同步外部播放器的进度、音轨和字幕。继续？'))return;
     lock.current=true;setBusy(true);
     try {
       if(action==='watched'||action==='auto') {
@@ -36,7 +35,7 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
       } else if(action==='copy') {await navigator.clipboard.writeText(media.path);notify('视频路径已复制');}
       else {
         await requireDesktop('mediaAction').mediaAction(media.id,action);
-        notify(action==='reveal'?'已在资源管理器中定位视频':'已请求系统播放器打开原片；外部播放进度不会同步');
+        if(action==='reveal')notify('已在资源管理器中定位视频');
       }
       setOpen(false);
     } catch(e){notify(errorText(e));}
@@ -59,7 +58,7 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
       {media.manual_watched!==null && media.manual_watched!==undefined && <button role="menuitem" disabled={busy} onClick={()=>void act('auto')}><Icon name="refresh" size={16}/>恢复自动已看判断</button>}
       <button role="menuitem" disabled={busy} onClick={()=>void act('copy')}><Icon name="copy" size={16}/>复制视频路径</button>
       <button role="menuitem" disabled={busy||Boolean(media.missing)} onClick={()=>void act('reveal')}><Icon name="reveal" size={16}/>在资源管理器中显示</button>
-      <button role="menuitem" disabled={busy||Boolean(media.missing)} onClick={()=>void act('open')}><Icon name="external" size={16}/>用系统播放器打开</button>
+      {externalInMenu&&<button role="menuitem" disabled={busy||Boolean(media.missing)} onClick={()=>void act('open')}><Icon name="external" size={16}/>用系统播放器打开</button>}
       {prepareEnabled&&media.ext.toLowerCase()==='.mkv'&&<button role="menuitem" disabled={busy||Boolean(media.missing)} onClick={()=>{pauseForPreparation?.();setOpen(false);setPrepareOpen(true);}}><Icon name="quality" size={16}/>无损播放准备</button>}
       <small>只修改应用记录，不改动原文件</small>
     </div>}

@@ -4,7 +4,7 @@ test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
 
 test('quit suspends episode countdown and cancellation restores episode navigation', async ({ page, request }) => {
   const next = await (await request.get('/api/media/2')).json();
-  await page.route('**/api/media/3/next', route => route.fulfill({ json: { next } }));
+  await page.route('**/api/media/3/next?**', route => route.fulfill({ json: { next } }));
   await page.goto('/?video=3');
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState >= 2)).toBeTruthy();
   await page.locator('video').evaluate((v: HTMLVideoElement) => { v.pause(); v.currentTime = 30; });
@@ -51,6 +51,7 @@ test('a late next-item save cannot navigate after quit has started', async ({ pa
   for (const id of [2, 3]) await request.post(`/api/playlists/${list.id}/items/${id}`);
   await page.goto(`/?video=2&playlist=${list.id}`);
   await expect(page.getByRole('button', { name: '播放下一条', exact: true })).toBeEnabled();
+  const stage=await page.locator('.video-wrap').boundingBox();await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let saves = 0;

@@ -5,7 +5,7 @@ import { Button, Dialog, StatusMessage } from './ui';
 import { episodeLabel, formatLabel } from './mediaLabels';
 import {ResolutionBadge} from './ResolutionBadge';
 import { MediaThumbnail } from './MediaThumbnail';
-import { changeAutoplay, useAutoplay } from './autoplay';
+import { useAutoplay } from './autoplay';
 import {confirmAction} from './confirmAction';
 
 type Membership={revision:number;count:number;added?:number;existing?:number;removed?:{media_id:number;position:number}[];restored?:number};
@@ -123,8 +123,7 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
     try {
       const value=await api<QueuePage>(`/api/playlists/${detail.id}/queue?page_size=40${shuffle?'&shuffle=true':''}`);
       if(active.current && value.current) {
-        changeAutoplay({mode:shuffle?'random':'sequential'});
-        play({id:detail.id,name:detail.name},value.current);
+        play({id:detail.id,name:detail.name,mode:shuffle?'random':'sequential',autoNext:autoplay.enabled},value.current);
       }
     } catch(e) { if(active.current) setError(errorText(e)); }
     finally { if(active.current) setBusy(false); }
@@ -167,7 +166,7 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
             <div className="playlist-bulk-controls"><Button icon="check" disabled={locked} aria-pressed={selecting} onClick={()=>{setSelecting(value=>!value);setPicked([]);}}>{selecting?'结束多选':'多选视频'}</Button>{selecting&&<><span>已选 {picked.length} / 500 · 支持跨页</span><Button disabled={locked} onClick={()=>pick(detail.items.map(item=>item.id))}>选择本页片单视频</Button><Button disabled={locked||!picked.length} onClick={()=>setPicked([])}>清空片单选择</Button><Button icon="close" disabled={locked||!picked.length} onClick={()=>void removeItems(picked)}>移除所选片单视频</Button></>}</div>
             {loading?<StatusMessage kind="loading">正在加载列表…</StatusMessage>:detail.items.length?<ol className="playlist-video-items">{detail.items.map(item=><li key={item.id} className={item.missing?'is-offline':''}>
               {selecting&&<input type="checkbox" className="playlist-pick" aria-label={`选择片单视频 ${item.title}`} checked={picked.includes(item.id)} disabled={locked} onChange={event=>event.target.checked?pick([item.id]):setPicked(current=>current.filter(id=>id!==item.id))}/>}
-              <button className="playlist-item-play" aria-label={item.missing?`不可播放 ${item.title}（文件离线）`:`播放 ${item.title}`} disabled={Boolean(item.missing)||busy} onClick={()=>play({id:detail.id,name:detail.name},item)}>
+              <button className="playlist-item-play" aria-label={item.missing?`不可播放 ${item.title}（文件离线）`:`播放 ${item.title}`} disabled={Boolean(item.missing)||busy} onClick={()=>play({id:detail.id,name:detail.name,mode:autoplay.mode,autoNext:autoplay.enabled},item)}>
                 <span className="playlist-index">{(item.playlist_index??0)+1}</span><span className="playlist-video-cover"><MediaThumbnail url={item.thumbnail_url}/><span className="playlist-video-duration">{duration(item.duration)}</span>{item.progress>0&&!item.watched&&<span className="playlist-video-progress" style={{width:`${Math.min(100,item.progress/Math.max(1,item.duration)*100)}%`}}/>}</span>
                 <span className="playlist-item-copy"><span className="playlist-item-title">{item.title}</span><span className="playlist-video-meta">{item.missing?<span className="playlist-offline-label"><Icon name="warning" size={12}/>文件离线</span>:<><ResolutionBadge width={item.width} height={item.height}/>{item.kind==='episode'?episodeLabel(item):formatLabel(item.ext)}{item.watched?' · 已看完':item.progress>0?` · 看到 ${duration(item.progress)}`:''}</>}</span><span className="playlist-video-filename" title={item.name}>{item.name}</span></span></button>
               <div className="playlist-item-actions"><button aria-label={`上移 ${item.title}`} title="上移" disabled={locked||!item.previous_item_id} onClick={()=>void move(item,-1)}><Icon name="chevronUp" size={16}/></button><button aria-label={`下移 ${item.title}`} title="下移" disabled={locked||!item.next_item_id} onClick={()=>void move(item,1)}><Icon name="chevronDown" size={16}/></button><button className="playlist-remove" aria-label={`从播放列表移除 ${item.title}`} title="从列表移除" disabled={locked} onClick={()=>void remove(item)}><Icon name="close" size={16}/></button></div>

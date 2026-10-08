@@ -11,6 +11,7 @@ import { ScreenshotSettings } from './ScreenshotSettings';
 import { AutoplaySettings } from './AutoplaySettings';
 import { NativePrepareSettings } from './NativePrepareSettings';
 import {ResumeBehaviorSettings} from './ResumeBehaviorSettings';
+import {MouseSeekSettings} from './MouseSeekSettings';
 import {AppDataTools} from './AppTools';
 import {HelpPanel} from './HelpPanel';
 import {requireDesktop} from './nativeDesktop';
@@ -30,7 +31,9 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
   const [rootPage, setRootPage] = useState(1);
   const [availability, setAvailability] = useState<Record<number, boolean>>({});
   const [screenshotDirty,setScreenshotDirty]=useState(false),[addedRoot,setAddedRoot]=useState<Root|null>(null);
-  const mayLeave=useDraftGuard(screenshotDirty,busy,'截图目录尚未保存，放弃修改并关闭设置吗？');
+  const [mouseDirty,setMouseDirty]=useState(false);
+  const drafts=[screenshotDirty?'截图目录':'',mouseDirty?'鼠标侧键时长':'',path.trim()?'待添加目录':''].filter(Boolean);
+  const mayLeave=useDraftGuard(drafts.length>0,busy,`${drafts.join('、')}尚未保存，放弃修改并关闭设置吗？`);
   const requestClose=()=>{if(mayLeave())close();};
   async function toggleThumbnails(){
     setBusy(true);setNotice('');
@@ -128,6 +131,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
       <AutoplaySettings busy={busy}/>
       <ResumeBehaviorSettings busy={busy} changeBusy={setBusy}/>
+      <MouseSeekSettings busy={busy} changeBusy={setBusy} onDirtyChange={setMouseDirty}/>
       <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'} onDirtyChange={setScreenshotDirty}/>
       <details className="settings-advanced"><summary>高级播放设置</summary><NativePrepareSettings busy={busy} changeBusy={setBusy}/></details>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>

@@ -1,5 +1,5 @@
 export type IconName = 'play'|'pause'|'back'|'forward'|'volume'|'muted'|'rotate'|'zoomReset'|'pip'|'exitPip'|'fullscreen'|'fullscreenExit'|'expand'|'favorite'|'quality'|'speed'|'audio'|'camera'|'close'|'search'|'settings'|'refresh'|'library'|'film'|'series'|'continue'|'history'|'playlist'|'filter'|'grid'|'list'|'folder'|'chevronDown'|'chevronRight'|'chevronLeft'|'chevronUp'|'plus'|'check'|'eye'|'eyeOff'|'copy'|'reveal'|'external'|'trash'|'edit'|'download'|'upload'|'save'|'shield'|'database'|'previous'|'next'|'first'|'last'|'info'|'warning'|'arrowLeft'|'subtitles'|'more'
-  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize'|'shuffle'|'sortAsc'|'sortDesc'|'help'|'keyboard'|'resolution';
+  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize'|'shuffle'|'sortAsc'|'sortDesc'|'help'|'keyboard'|'resolution'|'mouse';
 
 // One 24px grid, one optical stroke and rounded joins across every surface.
 // Code-native SVGs remain fully offline and inherit the control's state color.
@@ -71,5 +71,6 @@ export function Icon({name,size=18,filled=false,className=''}:{name:IconName;siz
     {name==='moon' && <path d="M20.5 14A9 9 0 0 1 10 3.5 9 9 0 1 0 20.5 14z"/>}
     {name==='coverSize' && <><rect x="3" y="3" width="12" height="9" rx="1.5"/><path d="M5 7h8m-2 8h10m-3-3 3 3-3 3M3 16v5h8"/></>}
     {name==='shuffle' && <><path d="M3 6h3c5 0 7 12 12 12h3M3 18h3c2 0 4-3 5-6m2-3c2-2 3-3 5-3h3M18 3l3 3-3 3m0 6 3 3-3 3"/></>}
+    {name==='mouse' && <><rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 3v6M7 10h10M4 8v3m0 3v3"/></>}
   </svg>;
 }

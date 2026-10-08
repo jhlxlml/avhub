@@ -6,6 +6,7 @@ interface Window {
     revealExport:(id:string)=>Promise<{ok:boolean}>;
     openRelease:(tag:string,format?:'folder'|'single')=>Promise<{ok:boolean}>;
     startupReady?:()=>Promise<{ok:boolean}>;
+    onMouseSeek?:(callback:(direction:'back'|'forward')=>void)=>()=>void;
     dataLocation:(action:'get'|'choose')=>Promise<{current:string;default:string;next:string;locked:boolean}|{cancelled:true}>;
     chooseFolder:(purpose:'media'|'screenshots')=>Promise<{path:string}|{cancelled:true}>;
     appCommand:(command:'data-folder'|'project-page')=>Promise<{ok:boolean}>;

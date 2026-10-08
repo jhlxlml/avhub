@@ -71,6 +71,11 @@ export function useScan(onComplete: () => void, report: (message: string) => voi
 
 export function ScanProgress({ job, cancel, connectionError }: { job: ScanJob | null; cancel: () => Promise<void>; connectionError: string }) {
   const [dismissed, setDismissed] = useState('');
+  useEffect(()=>{
+    if(job?.state!=='completed'||job.error_count>0)return;
+    const id=job.id,timer=window.setTimeout(()=>setDismissed(id),5000);
+    return()=>window.clearTimeout(timer);
+  },[job?.id,job?.state,job?.error_count]);
   if (!job || job.state === 'interrupted' || dismissed === job.id) return null;
   const labels = { discovering:'正在查找视频', running:'正在扫描', cancelling:'正在取消（等待当前文件处理结束）', interrupted:'上次扫描未完成', completed:'扫描完成', cancelled:'扫描已取消', failed:'扫描失败' };
   return <section className="scan-status" aria-label="扫描任务">

@@ -53,7 +53,7 @@ export function PlaybackQueue({ media, queue, busy, play, siblings, setSiblings,
       {!queue&&<label>连播范围<select aria-label="队列连播范围" value={scope} onChange={event=>{setPage(null);setScope(event.target.value as QueueScope);}}>
         <option value="series">同一剧集（默认）</option><option value="directory">同一目录</option>
       </select></label>}
-      <small>随机从完整待播队列选择，不限当前页；关闭连播后结束即停。</small></div>
+      <small>{queue?'仅影响本次片单播放，不改变全局播放偏好；':'设置保存为全局播放偏好；'}随机从完整待播队列选择，不限当前页；关闭连播后结束即停。</small></div>
       {queue && <input type="search" aria-label="搜索待播队列" placeholder="搜索列表中的视频…" value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} />}
       {!queue && <small className="queue-hint">{siblings?.scope==='series'?'按季、集排列 · 仅同一剧集，最后一集结束即停':'按文件名排列 · 仅当前实际目录，不含子目录'}</small>}
       {error ? <StatusMessage kind="error">{error} <Button icon="refresh" onClick={() => setRetry(value => value+1)}>重试待播队列</Button></StatusMessage> : loading ? <StatusMessage kind="loading">正在加载待播队列…</StatusMessage> :

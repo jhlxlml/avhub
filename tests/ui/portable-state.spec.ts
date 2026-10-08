@@ -120,7 +120,7 @@ test('manual watched status survives autosave, can return to automatic and never
   expect((await(await request.get('/api/media/2')).json()).watched).toBe(0);
 });
 
-test('path actions use the indexed ID, external playback asks permission, and menus ignore player keys',async({page})=>{
+test('path actions use the indexed ID, external playback opens directly, and menus ignore player keys',async({page})=>{
   await page.addInitScript(()=>Object.defineProperty(navigator,'clipboard',{value:{writeText:async(value:string)=>{(window as any).__copied=value;}}}));
   await page.goto('/?video=2');await ready(page);
   // Component harness for the restricted preload API; OS acceptance uses Electron.
@@ -135,10 +135,10 @@ test('path actions use the indexed ID, external playback asks permission, and me
   await page.getByRole('menuitem',{name:'复制视频路径'}).click();
   expect(await page.evaluate(()=>(window as any).__copied)).toMatch(/second\.mp4$/);
   await more.click();await page.getByRole('menuitem',{name:'在资源管理器中显示'}).click();
-  await more.click();page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('menuitem',{name:'用系统播放器打开'}).click();
-  expect(await page.evaluate(()=>(window as any).__nativeActions)).toEqual([[2,'reveal']]);
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('menuitem',{name:'用系统播放器打开'}).click();
+  let dialogs=0;page.on('dialog',async dialog=>{dialogs++;await dialog.dismiss();});
+  await more.click();await page.getByRole('menuitem',{name:'用系统播放器打开'}).click();
   expect(await page.evaluate(()=>(window as any).__nativeActions)).toEqual([[2,'reveal'],[2,'open']]);
+  expect(dialogs).toBe(0);
 });
 
 test('return refreshes watched filters after a manual mark in the player',async({page})=>{

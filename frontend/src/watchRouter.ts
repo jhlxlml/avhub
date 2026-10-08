@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { pageScrollTop } from './pageScroll';
+import type {PlaylistPlayback} from './api';
 type Guard=()=>Promise<boolean>;
-type Route={mediaId:number|null;playlistId:number|null;scroll:number};
+type Route={mediaId:number|null;playlistId:number|null;scroll:number;playlistPlayback?:PlaylistPlayback};
 function positive(value:string|null) {return value && /^[1-9]\d{0,14}$/.test(value)?Number(value):null;}
+export function readPlaylistPlayback():PlaylistPlayback|undefined {
+  const value=history.state?.avhubPlaylistPlayback;
+  return value&&['sequential','random','repeat-one'].includes(value.mode)&&typeof value.autoNext==='boolean'?{mode:value.mode,autoNext:value.autoNext}:undefined;
+}
 function readRoute():Route {
   const p=new URL(location.href).searchParams;
-  return {mediaId:positive(p.get('video')),playlistId:positive(p.get('playlist')),scroll:Number(history.state?.avhubScroll)||0};
+  const playlistPlayback=readPlaylistPlayback();
+  return {mediaId:positive(p.get('video')),playlistId:positive(p.get('playlist')),scroll:Number(history.state?.avhubScroll)||0,playlistPlayback};
 }
 // History navigation waits for the player's save guard. A failed save rolls
 // history back without destroying the player or silently losing its progress.
@@ -43,11 +49,11 @@ export function useWatchRouter(onLibrary:()=>void) {
     window.addEventListener('popstate',pop);
     return ()=>window.removeEventListener('popstate',pop);
   },[]);
-  const replaceHref=useCallback((url:URL)=>{
+  const replaceHref=useCallback((url:URL,state?:{avhubPlaylistPlayback:Partial<PlaylistPlayback>})=>{
     if(busy.current || restoring.current!==null)return;
-    history.replaceState(history.state,'',url);committed.current.href=url.href;
+    history.replaceState({...history.state,...state},'',url);committed.current.href=url.href;
   },[]);
-  const navigate=useCallback((mediaId:number|null,playlistId:number|null=null,replace=false)=>{
+  const navigate=useCallback((mediaId:number|null,playlistId:number|null=null,replace=false,playlistPlayback?:Partial<PlaylistPlayback>)=>{
     if(busy.current || restoring.current!==null)return;
     const wasWatch=readRoute().mediaId!==null;
     const libraryScroll=wasWatch?Number(history.state?.avhubScroll)||0:pageScrollTop();
@@ -58,6 +64,7 @@ export function useWatchRouter(onLibrary:()=>void) {
     if(mediaId && playlistId)url.searchParams.set('playlist',String(playlistId));else url.searchParams.delete('playlist');
     const index=committed.current.index+(replace?0:1);
     const state={...history.state,avhubIndex:index,avhubScroll:libraryScroll,
+      avhubPlaylistPlayback:mediaId&&playlistId?(playlistPlayback??(readRoute().playlistId===playlistId?history.state?.avhubPlaylistPlayback:undefined)):undefined,
       avhubLibraryIndex:wasWatch?history.state?.avhubLibraryIndex:committed.current.index};
     history[replace?'replaceState':'pushState'](state,'',url);
     committed.current={href:url.href,index};setRoute(readRoute());

@@ -12,15 +12,24 @@ async function player(page:any) {
   // This test verifies shortcut routing, not persisted mute defaults. A late
   // previous-page preference write can arrive after the test-only DB reset.
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.muted=false;v.volume=.75;});
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
 }
 const paused=(page:any)=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.paused);
+test('Tab-focused buttons retain native Space activation instead of toggling playback',async({page})=>{
+  await player(page);await page.keyboard.press('Tab');const mute=page.getByRole('button',{name:'静音',exact:true});await mute.focus();await page.keyboard.press('Space');
+  expect(await paused(page)).toBe(false);expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>v.muted)).toBe(true);
+  await page.keyboard.press('Space');expect(await paused(page)).toBe(false);expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>v.muted)).toBe(false);
+});
 async function clickControl(page:any,name:string|RegExp) {
   // Keyboard actions intentionally keep auto-hidden controls hidden. Move the
   // mouse as a user would before hit-testing a transparent, pointer-disabled bar.
   const stage=await page.locator('.video-wrap').boundingBox();
-  await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height/2);
+  await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height-8);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
   await page.getByRole('button',{name,exact:typeof name==='string'}).click();
+  if(name==='纯净播放')await expect(page.locator('.player-shell')).toHaveClass(/is-pure-playback/);
+  if(name==='全屏')await expect.poll(()=>page.evaluate(()=>Boolean(document.fullscreenElement))).toBe(true);
 }
 
 for(const mode of ['normal','pure','fullscreen']) {
@@ -83,8 +92,8 @@ test('Space works on sliders but respects text input, menus, summaries and compo
 });
 
 test('Space after a mouse-focused control preserves hidden controls in pure playback',async({page})=>{
-  await player(page);await page.getByRole('button',{name:'纯净播放',exact:true}).click();
-  await page.getByRole('button',{name:'静音',exact:true}).click();await page.mouse.move(230,210);
+  await player(page);await clickControl(page,'纯净播放');
+  await clickControl(page,'静音');await page.mouse.move(230,210);
   const stage=page.locator('.video-wrap');await expect(stage).toHaveClass(/controls-hidden/,{timeout:4000});
   await page.keyboard.press('Space');await expect.poll(()=>paused(page)).toBe(true);
   await expect(stage).toHaveClass(/controls-hidden/);await expect(page.locator('.player-controls')).toHaveCSS('opacity','0');
@@ -97,6 +106,7 @@ for(const mode of ['normal','pure','fullscreen']) {
     if(mode==='pure')await clickControl(page,'纯净播放');
     if(mode==='fullscreen')await clickControl(page,'全屏');
     await page.keyboard.press('k');await expect.poll(()=>paused(page)).toBe(true);
+    const stage=await page.locator('.video-wrap').boundingBox();await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
     const slider=page.getByRole('slider',{name:'视频完整进度'});
     await slider.click({position:{x:Math.round((await slider.boundingBox())!.width*.3),y:5}});
     await expect(slider).toBeFocused();
@@ -147,6 +157,7 @@ for(const mode of ['normal','pure','fullscreen']) {
     if(mode==='pure')await clickControl(page,'纯净播放');
     if(mode==='fullscreen')await clickControl(page,'全屏');
     const progress=page.getByRole('slider',{name:'视频完整进度'});
+    const stage=await page.locator('.video-wrap').boundingBox();await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
     await progress.click({position:{x:100,y:5}});
     await page.keyboard.press('m');await expect(progress).toBeFocused();
     await expect(progress).toHaveCSS('outline-style','none');

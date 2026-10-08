@@ -8,6 +8,10 @@ contextBridge.exposeInMainWorld('avhubDesktop', {
   revealExport:(id:string)=>ipcRenderer.invoke('avhub:reveal-export',id),
   openRelease:(tag:string,format?:'folder'|'single')=>ipcRenderer.invoke('avhub:open-release',tag,format),
   startupReady:()=>ipcRenderer.invoke('avhub:startup-ready'),
+  onMouseSeek:(callback:(direction:'back'|'forward')=>void)=>{
+    const listener=(_event:Electron.IpcRendererEvent,direction:unknown)=>{if(direction==='back'||direction==='forward')callback(direction);};
+    ipcRenderer.on('avhub:mouse-seek',listener);return()=>{ipcRenderer.removeListener('avhub:mouse-seek',listener);};
+  },
   dataLocation:(action:'get'|'choose')=>ipcRenderer.invoke('avhub:data-location',action),
   chooseFolder:(purpose:'media'|'screenshots')=>ipcRenderer.invoke('avhub:choose-folder',purpose) as Promise<{path:string}|{cancelled:true}>,
   appCommand:(command:'data-folder'|'project-page')=>ipcRenderer.invoke('avhub:app-command',command) as Promise<{ok:boolean}>,

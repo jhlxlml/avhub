@@ -16,6 +16,6 @@ export function AutoplaySettings({busy}:{busy:boolean}) {
       </select></label>
     </div>
     <small>同一剧集按季、集排序，播完即停；未归类视频使用同目录，不含子目录。从播放列表打开时以该列表为准。</small>
-    <small>结束后提供 8 秒可取消倒计时；关闭连播则结束即停。设置自动保存，也可在播放器待播队列中调整。</small>
+    <small>结束后提供 8 秒可取消倒计时；关闭连播则结束即停。设置自动保存；普通播放队列会更新全局偏好，片单队列的调整仅本次播放有效。</small>
   </section>;
 }

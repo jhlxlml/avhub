@@ -68,7 +68,8 @@ test('random play starts outside the first row and respects disabled autoplay',a
   });
   await page.getByRole('button',{name:'随机播放列表',exact:true}).click();
   await expect(page).toHaveURL(new RegExp(`video=2.*playlist=${list.id}`));expect(fullScope).toBeTruthy();
-  await expect.poll(async()=>(await(await request.get('/api/preferences')).json()).values).toMatchObject({queueMode:'random',autoNext:false});
+  await expect.poll(async()=>(await(await request.get('/api/preferences')).json()).values).toMatchObject({queueMode:'sequential',autoNext:false});
+  await page.getByRole('button',{name:'展开待播队列'}).click();await expect(page.getByLabel('播放模式',{exact:true})).toHaveValue('random');
   await page.unrouteAll({behavior:'wait'});
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
 });

@@ -20,6 +20,7 @@ import { saveScreenshot,screenshotKey,screenshotShortcutLabel,revealScreenshot,t
 import './screenshots.css';
 import './playback.css';
 import {usePlaybackChrome} from './usePlaybackChrome';
+import {readMouseSeekSeconds,mouseSeekDeduper} from './mouseSeek';
 import {readResumeBehavior,startingPoint} from './resumeBehavior';
 
 type RemuxStats={processes:number;cache_hits:number;cache_misses:number;published:number;cancelled:number;batch_failures:number;workers:number};
@@ -67,9 +68,10 @@ function decodeSubtitle(buffer: ArrayBuffer): string {
   catch { return new TextDecoder('gb18030').decode(bytes); }
 }
 
-export function Player({ media, automatic=false, close, playNext, queue, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify }: {
+export function Player({ media, automatic=false, close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify }: {
   media: Media; automatic?:boolean; close: () => void; playNext: (media: Media, automatic?:boolean) => void; update: (value: MediaUpdate) => void;
   queue?: PlaylistSource;
+  changePlaylistPlayback:(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>)=>void;
   favoriteBusy: boolean; changeFavorite: (media: Media) => Promise<void>;
   registerNavigationGuard:(guard:()=>Promise<boolean>)=>()=>void;
   notify:(message:string)=>void;
@@ -142,6 +144,12 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   useEffect(()=>{nextPlayerControlsHidden=false;},[]);
   const [seekHover, setSeekHover] = useState<{ time: number; x: number } | null>(null);
   const pointerFocusedRange=useRef<HTMLInputElement|null>(null);
+  const keyboardNavigation=useRef(false);
+  useEffect(()=>{
+    const pointer=()=>{keyboardNavigation.current=false;};
+    document.addEventListener('pointerdown',pointer,true);
+    return()=>document.removeEventListener('pointerdown',pointer,true);
+  },[]);
   const [quality, setQuality] = useState<Quality>('auto');
   const [playbackMode, setPlaybackMode] = useState<'direct' | 'remux' | 'hls' | null>(null);
   const [playbackReason, setPlaybackReason] = useState('');
@@ -176,7 +184,8 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
   const [subtitleLoading,setSubtitleLoading] = useState(false);
   const [subtitleAppearance, setSubtitleAppearance] = useState<SubtitleAppearance>(loadSubtitleAppearance);
   const [nextEpisode, setNextEpisode] = useState<Media | null>(null);
-  const {mode:queueMode,enabled:autoNext,scope:queueScope}=useAutoplay();
+  const globalAutoplay=useAutoplay();
+  const queueMode=queue?.mode??globalAutoplay.mode,autoNext=queue?.autoNext??globalAutoplay.enabled,queueScope=globalAutoplay.scope;
   const autoplayPreferences = useRef({enabled:autoNext,mode:queueMode,scope:queueScope});
   autoplayPreferences.current={enabled:autoNext,mode:queueMode,scope:queueScope};
   function autoplayStillValid(intent:typeof autoplayPreferences.current) {
@@ -884,6 +893,34 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
     const target = (queuedSeek.current ?? (sourceChanging.current ? positionRef.current : Number.isFinite(current) ? (current || 0) + offset.current : positionRef.current)) + seconds;
     seekTo(Math.max(0, Math.min(media.duration || Number.MAX_SAFE_INTEGER, target)));
   }
+  const acceptMouseSeek=useRef(mouseSeekDeduper());
+  const pressedMouseSeek=useRef(new Set<number>());
+  const mouseSkip=useRef(skip);mouseSkip.current=skip;
+  useEffect(()=>{
+    function seek(direction:number,source:'dom'|'native') {
+      if(desktopQuitting.current||closing||nextStarting||controlsPressed.current||dragSession.current||!['ready','preparing'].includes(phase)||openSetting||document.querySelector('[role="dialog"], [role="menu"], .setting-popover'))return;
+      const focused=document.activeElement;
+      if(focused instanceof HTMLElement&&focused.closest('input:not([type="range"]),textarea,select,[contenteditable="true"]'))return;
+      if(acceptMouseSeek.current(source,direction))mouseSkip.current(direction*readMouseSeekSeconds());
+    }
+    const side=(event:Event)=>{
+      if(!(event instanceof MouseEvent))return;
+      if(event.button!==3&&event.button!==4)return;
+      event.preventDefault();event.stopPropagation();
+      if(event.type==='pointerdown'||event.type==='mousedown') {
+        // Cancelling pointerdown can suppress the compatibility mousedown.
+        // Handle either, but consume only once per physical press.
+        if(!pressedMouseSeek.current.has(event.button)) {
+          pressedMouseSeek.current.add(event.button);seek(event.button===4?1:-1,'dom');
+        }
+      } else if(event.type==='pointerup'||event.type==='mouseup')pressedMouseSeek.current.delete(event.button);
+    };
+    const reset=()=>pressedMouseSeek.current.clear();
+    for(const type of ['pointerdown','mousedown','pointerup','mouseup','auxclick'])document.addEventListener(type,side,true);
+    document.addEventListener('pointercancel',reset,true);window.addEventListener('blur',reset);document.addEventListener('mouseleave',reset);
+    const stop=window.avhubDesktop?.onMouseSeek?.(direction=>seek(direction==='forward'?1:-1,'native'));
+    return()=>{for(const type of ['pointerdown','mousedown','pointerup','mouseup','auxclick'])document.removeEventListener(type,side,true);document.removeEventListener('pointercancel',reset,true);window.removeEventListener('blur',reset);document.removeEventListener('mouseleave',reset);stop?.();};
+  },[phase,closing,nextStarting,openSetting,media.id,media.duration]);
   function changeQuality(value: Quality) {
     if(value!=='auto'&&!window.confirm('这是有损兼容播放，不是原画：会重新编码视频，HDR/高位深可能变为 SDR/8-bit，低分辨率选项还会缩小画面。仅在你明确接受时使用。继续吗？')) {setOpenSetting(null);return;}
     if(value==='auto'){originalFailed.current=false;indexedTsFailed.current=false;indexedRemuxFailed.current=false;}
@@ -1105,16 +1142,18 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       function shortcuts(event: KeyboardEvent) {
         const target = event.target;
         if(target instanceof HTMLElement&&(target.closest('[aria-modal="true"]')||
-          target.closest('.window-about')&&['Space','Enter'].includes(event.code)))return;
+          target.closest('.desktop-titlebar')&&['Space','Enter'].includes(event.code)))return;
       // Mouse focus on a player slider must not disable playback shortcuts.
       // Preserve native slider navigation for explicit keyboard/Tab focus.
-      if(event.code==='Tab'){pointerFocusedRange.current=null;controlsKeyboardFocus.current=true;}
+      if(event.code==='Tab'){keyboardNavigation.current=true;pointerFocusedRange.current=null;controlsKeyboardFocus.current=true;}
       const playerRange=target instanceof HTMLInputElement&&target.type==='range'&&!!target.closest('.player-controls');
       const rangePlaybackKey=playerRange&&(['Space','KeyK','KeyJ','KeyL','KeyR','KeyM','KeyF','KeyW','KeyC','KeyP','KeyN'].includes(event.code)||
         pointerFocusedRange.current===target&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.code));
       if (desktopQuitting.current) return;
       if(event.defaultPrevented || event.isComposing || event.keyCode===229 || document.querySelector('[role="dialog"]')) return;
       if(openSetting) return;
+      if(document.querySelector('[role="menu"]'))return;
+      if(event.code==='Space' && keyboardNavigation.current && target instanceof HTMLElement && target.closest('button'))return;
       // Keep menu/dialog Escape handling first. Explicitly exit our video
       // fullscreen rather than depending on the host's native Escape handling.
       // Return immediately so this key cannot also leave pure playback.
@@ -1407,7 +1446,7 @@ export function Player({ media, automatic=false, close, playNext, queue, update,
       </div>
     </div>
     <PlaybackQueue media={media} queue={queue} busy={nextStarting || closing || phase === 'preparing'}
-      siblings={siblings} setSiblings={setSiblings} play={item => void switchMedia(item)} mode={queueMode} setMode={mode=>changeAutoplay({mode})} autoNext={autoNext} setAutoNext={enabled=>changeAutoplay({enabled})} scope={queueScope} setScope={scope=>changeAutoplay({scope})}/>
+      siblings={siblings} setSiblings={setSiblings} play={item => void switchMedia(item)} mode={queueMode} setMode={mode=>queue?changePlaylistPlayback({mode,autoNext}):changeAutoplay({mode})} autoNext={autoNext} setAutoNext={enabled=>queue?changePlaylistPlayback({mode:queueMode,autoNext:enabled}):changeAutoplay({enabled})} scope={queueScope} setScope={scope=>changeAutoplay({scope})}/>
     <aside className="player-info"><h2>{media.title}</h2><p>{formatLabel(media.ext)} · {duration(media.duration)} · {resolutionLabel(media.width, media.height)}</p>
       <details className="shortcut-help"><summary><Icon name="info" size={16}/>快捷键帮助</summary><p>空格 / K：播放暂停 · J / L：±10 秒 · ← / →：±5 秒 · ↑ / ↓：音量 · M：静音 · F：视频全屏 · W：纯净播放 · Esc：退出纯净播放（视频全屏时先退出全屏） · P：画中画 · {screenshotShortcutLabel()}：截图 · N：下一条 · R：旋转 · 滚轮：按指针缩放（Shift+滚轮调音量）</p><small>输入文字或选择菜单时不触发播放快捷键；桌面端纯净播放时，顶部区域可拖动窗口，窗口置顶可独立开关。</small></details>
       <details className="playback-diagnostics">

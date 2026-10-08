@@ -9,11 +9,17 @@ async function play(page:Page) {
   await expect.poll(async()=>await fromStart.isVisible() || await fullscreen.isEnabled()).toBeTruthy();
   if(await fromStart.isVisible())await fromStart.click();
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused)).toBeTruthy();
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
 }
 
 async function leaveControls(page:Page) {
   const stage=await page.locator('.video-wrap').boundingBox();
   await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height/2);
+}
+async function revealControls(page:Page) {
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
 }
 
 for(const mode of ['normal','pure','fullscreen'])
@@ -67,9 +73,8 @@ test('paused popovers and stationary hover retain controls; leaving the player r
   await leaveControls(page);
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/,{timeout:2500});
   await page.keyboard.press('w');
-  // Keyboard mode changes deliberately leave the controls hidden. Move on
-  // the picture first, then hover the revealed slider as a user would.
-  await leaveControls(page);
+  // Keyboard mode changes leave controls hidden; only the bottom hot zone reveals them.
+  await revealControls(page);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
   await page.getByRole('slider',{name:'视频完整进度',exact:true}).hover();
   await page.mouse.move(0,0);
@@ -81,6 +86,7 @@ test(`paused controls and cursor hide away from the bar but retain hover in ${mo
   await play(page);
   if(mode==='pure')await page.getByRole('button',{name:'纯净播放',exact:true}).click();
   if(mode==='fullscreen')await page.getByRole('button',{name:'全屏',exact:true}).click();
+  await revealControls(page);
   await page.getByRole('button',{name:'暂停',exact:true}).click();
   const video=page.locator('video'),stage=page.locator('.video-wrap'),controls=page.locator('.player-controls');
   await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.paused)).toBeTruthy();
@@ -106,7 +112,9 @@ test(`paused controls and cursor hide away from the bar but retain hover in ${mo
   // Move the mouse normally to reveal, rather than hit-test a hidden button.
   const box=await stage.boundingBox();
   await page.mouse.move(box!.x+box!.width/2+10,box!.y+box!.height/2+10);
-  await expect(stage).not.toHaveClass(/controls-hidden/);
+  await expect(stage).toHaveClass(/controls-hidden/);
+  await expect(stage).not.toHaveClass(/cursor-hidden/);
+  await revealControls(page);
   await page.getByRole('slider',{name:'视频完整进度',exact:true}).hover();
   await page.waitForTimeout(mode==='normal'?3000:1200);
   await expect(stage).not.toHaveClass(/controls-hidden/);

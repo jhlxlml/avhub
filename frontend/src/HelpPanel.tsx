@@ -30,8 +30,8 @@ export function HelpPanel({changeBusy,busy}:{changeBusy:(busy:boolean)=>void;bus
         <details className="help-faq"><summary>常见问题</summary><dl><dt>为什么找不到视频？</dt><dd>检查目录是否在线、筛选条件是否清空，并刷新媒体库。盘符或位置改变时使用“重新定位”。</dd><dt>为什么快捷键没有响应？</dt><dd>关闭设置或菜单，退出输入框后再试。明确用 Tab 聚焦滑块时，方向键优先调整该滑块。</dd><dt>是否自动检查更新？</dt><dd>不会。切到“关于”，点击版本号旁的“检查更新”才联网，不自动下载或安装。</dd></dl></details>
       </div>}
       {section==='shortcuts'&&<><p className="help-hint">以下操作仅在播放页生效；输入文字、设置对话框、菜单中不会抢占快捷键。</p><div className="help-shortcut-grid">{shortcuts.map(group=><section className="help-card" key={group.title}><h4>{group.title}</h4><dl className="help-shortcuts">{group.items.map(([label,keys])=><div key={label}><dt>{label}</dt><dd>{keys.map((key,index)=><span key={key}>{index>0&&<i>/</i>}<kbd>{key}</kbd></span>)}</dd></div>)}</dl></section>)}</div>
-        <section className="help-card help-mouse"><h4><Icon name="coverSize" size={16}/>鼠标操作</h4><dl className="help-shortcuts"><div><dt>以鼠标位置为中心缩放画面</dt><dd>播放器内滚轮</dd></div><div><dt>调整音量</dt><dd><kbd>Shift</kbd> + 滚轮</dd></div><div><dt>移动放大的画面</dt><dd>按住左键拖动</dd></div><div><dt>视频全屏 / 退出全屏</dt><dd>双击画面</dd></div><div><dt>恢复默认缩放与画面位置</dt><dd>点击画面还原图标</dd></div></dl></section>
-        <p className="help-hint">Esc 在视频全屏时先退出视频全屏，再按一次可退出纯净播放。截图只保留 C 键；方向键是按秒跳转，不是逐帧选图。</p></>}
+        <section className="help-card help-mouse"><h4><Icon name="mouse" size={16}/>鼠标操作</h4><dl className="help-shortcuts"><div><dt>快进 / 快退（默认 5 秒）</dt><dd>鼠标前进 / 后退侧键</dd></div><div><dt>以鼠标位置为中心缩放画面</dt><dd>播放器内滚轮</dd></div><div><dt>调整音量</dt><dd><kbd>Shift</kbd> + 滚轮</dd></div><div><dt>移动放大的画面</dt><dd>按住左键拖动</dd></div><div><dt>视频全屏 / 退出全屏</dt><dd>双击画面</dd></div><div><dt>恢复默认缩放与画面位置</dt><dd>点击画面还原图标</dd></div></dl><p>侧键步长可在“播放偏好 → 鼠标侧键跳播”中设置为 1–120 秒，只影响鼠标侧键。驱动需将侧键设为标准前进 / 后退功能。</p></section>
+        <p className="help-hint">Esc 在视频全屏时先退出视频全屏，再按一次可退出纯净播放。截图只保留 C 键；方向键是按秒跳转，不是逐帧选图。Tab 聚焦按钮后，空格执行该按钮；鼠标点击播放控件后，空格仍控制播放与暂停。片单中的模式和连播开关只影响本次片单，不改全局偏好。</p></>}
       {section==='about'&&<AboutPanel changeBusy={changeBusy}/>}
     </div>
   </section>;

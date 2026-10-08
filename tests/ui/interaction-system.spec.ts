@@ -1,6 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
 test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
+async function revealControls(page:Page) {
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
+}
 async function player(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: '播放 视频 002', exact: true }).click();
@@ -13,6 +17,8 @@ async function player(page: Page) {
   await expect(page.getByRole('button', { name: '全屏', exact: true })).toBeEnabled();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState >= 2)).toBeTruthy();
   await page.locator('video').evaluate((v: HTMLVideoElement) => v.pause());
+  const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
 }
 
 test('subtitle popover has one set of controls, restores focus and keeps playback intact', async ({ page }) => {
@@ -38,6 +44,7 @@ test('subtitle popover has one set of controls, restores focus and keeps playbac
 test('subtitle settings work in pure playback and Escape closes only the popover first', async ({ page }) => {
   await player(page);
   await page.getByRole('button', { name: '纯净播放', exact: true }).click();
+  await expect(page.locator('.player-shell')).toHaveClass(/is-pure-playback/);await revealControls(page);
   await page.getByRole('button', { name: '字幕', exact: true }).click();
   await page.getByLabel('加载外挂字幕').setInputFiles({ name: 'popup.srt', mimeType: 'text/plain', buffer: Buffer.from('1\n00:00:01,000 --> 00:00:02,000\nPopup\n') });
   await expect(page.getByRole('combobox', { name: '字幕轨道' })).toHaveValue('uploaded');
@@ -73,6 +80,7 @@ test('subtitle popover stays within video fullscreen and Escape preserves fullsc
   await player(page);
   await page.getByRole('button', { name: '全屏', exact: true }).click();
   await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBeTruthy();
+  await revealControls(page);
   await page.getByRole('button', { name: '字幕', exact: true }).click();
   await expect(page.getByRole('combobox', { name: '字幕轨道' })).toBeVisible();
   await page.keyboard.press('Escape');
@@ -132,6 +140,7 @@ test('compact zoom exposes a single one-click reset outside the tools menu', asy
   const reset = page.getByRole('button', { name: '还原画面缩放', exact: true });
   await expect(reset).toHaveCount(1);
   await expect(reset).toBeEnabled();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
   await reset.click();
   await expect(page.locator('.video-canvas')).not.toHaveClass(/is-zoomed/);
   await expect(reset).toHaveCount(0);
@@ -149,6 +158,7 @@ test('shared dialog does not dismiss a drag starting inside and reports write er
   await page.getByRole('button', { name: '添加目录', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('测试目录添加失败');
   await expect(page.getByRole('alert')).toHaveClass(/ui-status.*error/);
+  page.once('dialog',dialog=>dialog.accept());
   await page.mouse.click(2, 2);
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });

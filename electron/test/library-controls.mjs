@@ -16,7 +16,10 @@ let desktop,savedClipboard,ownedClipboard;
 async function launch(){desktop=await _electron.launch({args:[root,'--autoplay-policy=no-user-gesture-required'],cwd:folder,
   env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});const page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();return page;}
 async function close(){
-  if(savedClipboard!==undefined)await desktop.evaluate(({clipboard},{saved,owned})=>{if(clipboard.readText()===owned)clipboard.writeText(saved);},{saved:savedClipboard,owned:ownedClipboard});
+  if(savedClipboard)await desktop.evaluate(async({clipboard},owned)=>{
+    if(await clipboard.readText()===owned){if(globalThis.libraryClipboardSaved.length)await clipboard.write(globalThis.libraryClipboardSaved);else await clipboard.clear();}
+  },ownedClipboard);
+  savedClipboard=false;
   const stopped=desktop.waitForEvent('close',{timeout:20000});await desktop.evaluate(({app})=>{setTimeout(()=>app.quit(),0);});await stopped;desktop=null;
 }
 async function stub(choices){await desktop.evaluate(({dialog,shell},choices)=>{
@@ -27,7 +30,12 @@ async function stub(choices){await desktop.evaluate(({dialog,shell},choices)=>{
 },choices);}
 try {
   let page=await launch();await stub([null,media,shots,replacement]);
-  savedClipboard=await desktop.evaluate(({clipboard})=>clipboard.readText());
+  savedClipboard=await desktop.evaluate(async({clipboard,ClipboardItem})=>{
+    try{globalThis.libraryClipboardSaved=await Promise.all((await clipboard.read()).map(async item=>{
+      const values={};for(const type of item.types)values[type]=await item.getType(type);return new ClipboardItem(values);
+    }));return true;}catch{return false;}
+  });
+  assert.equal(savedClipboard,true,'Cannot safely back up clipboard; abort before clipboard actions');
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   await page.getByRole('button',{name:'浏览本地文件夹',exact:true}).click();
   await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();

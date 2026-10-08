@@ -209,6 +209,10 @@ On the playback page:
 
 The mouse wheel zooms around the pointer. Drag the image while zoomed, and use the reset icon to restore the default view. Shift + wheel adjusts volume.
 
+Editable search, directory, title and tag fields provide a native right-click menu with undo, redo, cut, copy, paste and select all, enabled according to the editing state. Ctrl+V remains available; pasting uses the existing search/edit logic without background clipboard reads.
+
+During playback, mouse forward/back side buttons seek forward/back by 5 seconds by default. Set a persistent 1–120 second step under Playback preferences → Mouse side-button seeking. This replaces page navigation only on the playback page and does not change keyboard or control-bar steps. Menus, dialogs and text editing suppress it; mouse drivers must use standard forward/back mappings.
+
 Controls hide immediately outside the control area. Move into the bottom control area to reveal them; they remain visible while the pointer stays there, even without movement. The pointer stays visible during movement and hides after about 400 ms of inactivity over the picture. Slider dragging, open menus and Tab navigation remain operable; the same behavior applies while paused.
 
 After clicking a playback control, Space still plays or pauses instead of activating that button again. Text fields, open menus, and settings keep their own keyboard behavior.
