@@ -19,14 +19,50 @@ async function leaveControls(page:Page) {
 }
 async function revealControls(page:Page) {
   const stage=await page.locator('.video-wrap').boundingBox();
+  await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height/2);
   await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);
+  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
 }
+async function enterMode(page:Page,mode:string) {
+  if(mode==='pure'){
+    await page.getByRole('button',{name:'纯净播放',exact:true}).click();
+    await expect(page.locator('.player-shell')).toHaveClass(/is-pure-playback/);
+  }else if(mode==='fullscreen'){
+    await page.getByRole('button',{name:'全屏',exact:true}).click();
+    await expect.poll(()=>page.evaluate(()=>document.fullscreenElement===document.querySelector('.video-wrap'))).toBe(true);
+  }
+  if(mode!=='normal')await expect.poll(()=>page.locator('.video-wrap').evaluate(element=>{
+    const box=element.getBoundingClientRect();
+    return Math.abs(box.width-innerWidth)<2&&Math.abs(box.height-innerHeight)<2;
+  })).toBe(true);
+}
+
+test('delayed pure-mode transition rejects old coordinates and retains real control hover',async({page})=>{
+  // Renderer-only window bridge harness: make the coordinate race deterministic,
+  // without slowing the actual application or changing its hide timers.
+  await page.addInitScript(()=>{
+    let state={purePlayback:false,alwaysOnTop:false,maximized:false,fullScreen:false};
+    const listeners=new Set<(state:any)=>void>();
+    window.avhubDesktop={getWindowState:async()=>state,onWindowStateChanged:callback=>{listeners.add(callback);return()=>listeners.delete(callback);},windowAction:async()=>null,
+      setWindowMode:async value=>{if(value.purePlayback===true)await new Promise(resolve=>setTimeout(resolve,450));state={...state,...value};listeners.forEach(callback=>callback(state));return state;}} as any;
+  });
+  await play(page);await page.getByRole('button',{name:'暂停',exact:true}).click();
+  const source=await page.locator('video').evaluate((video:HTMLVideoElement)=>video.currentSrc);
+  const oldBar=await page.locator('.player-controls').boundingBox();
+  await enterMode(page,'pure');
+  await page.mouse.move(oldBar!.x+oldBar!.width/2,oldBar!.y+5);
+  await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/);
+  await revealControls(page);await page.getByRole('slider',{name:'视频完整进度',exact:true}).hover();
+  await expect.poll(()=>page.locator('.player-controls').evaluate(element=>element.matches(':hover'))).toBe(true);
+  await page.waitForTimeout(1200);await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
+  expect(await page.locator('video').evaluate((video:HTMLVideoElement)=>video.currentSrc)).toBe(source);
+  expect(await page.locator('video').evaluate((video:HTMLVideoElement)=>video.paused)).toBe(true);
+});
 
 for(const mode of ['normal','pure','fullscreen'])
 test(`stationary mouse keeps controls visible across pause, resume and seek in ${mode}`,async({page})=>{
   await play(page);
-  if(mode==='pure')await page.getByRole('button',{name:'纯净播放',exact:true}).click();
-  if(mode==='fullscreen')await page.getByRole('button',{name:'全屏',exact:true}).click();
+  await enterMode(page,mode);
   const stage=page.locator('.video-wrap'),controls=page.locator('.player-controls');
   const hold=mode==='normal'?3000:1200;
   await leaveControls(page);
@@ -59,9 +95,10 @@ test(`stationary mouse keeps controls visible across pause, resume and seek in $
 test('paused popovers and stationary hover retain controls; leaving the player releases the hold',async({page})=>{
   await play(page);
   await page.getByRole('button',{name:'暂停',exact:true}).click();
-  await page.getByRole('button',{name:'纯净播放',exact:true}).click();
-  const bar=await page.locator('.player-controls').boundingBox();
-  await page.mouse.move(bar!.x+bar!.width/2,bar!.y+5);
+  await enterMode(page,'pure');
+  await revealControls(page);
+  await page.getByRole('slider',{name:'视频完整进度',exact:true}).hover();
+  await expect.poll(()=>page.locator('.player-controls').evaluate(element=>element.matches(':hover'))).toBe(true);
   await page.waitForTimeout(1200);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
   await page.getByRole('button',{name:'倍速',exact:true}).click();
@@ -73,6 +110,7 @@ test('paused popovers and stationary hover retain controls; leaving the player r
   await leaveControls(page);
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/,{timeout:2500});
   await page.keyboard.press('w');
+  await expect(page.locator('.player-shell')).not.toHaveClass(/is-pure-playback/);
   // Keyboard mode changes leave controls hidden; only the bottom hot zone reveals them.
   await revealControls(page);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
@@ -84,8 +122,7 @@ test('paused popovers and stationary hover retain controls; leaving the player r
 for(const mode of ['normal','pure','fullscreen'])
 test(`paused controls and cursor hide away from the bar but retain hover in ${mode}`,async({page})=>{
   await play(page);
-  if(mode==='pure')await page.getByRole('button',{name:'纯净播放',exact:true}).click();
-  if(mode==='fullscreen')await page.getByRole('button',{name:'全屏',exact:true}).click();
+  await enterMode(page,mode);
   await revealControls(page);
   await page.getByRole('button',{name:'暂停',exact:true}).click();
   const video=page.locator('video'),stage=page.locator('.video-wrap'),controls=page.locator('.player-controls');

@@ -24,6 +24,7 @@
 - 真实 Electron 使用隔离合成视频验证侧键事件、无源重载、暂停状态、设置重启保存、片单偏好隔离、取消退出保留草稿及外部播放器路径分发。
 - 物理鼠标及驱动映射未进行硬件验收；外部播放器启动在测试中拦截，验证系统调用但不启动用户应用。新增界面与交互不改变编码、转码策略或原视频文件。
 - 更新原生验收脚本的异步剪贴板恢复与隐藏控件操作步骤，并加入 GitHub Actions 回归。
+- 修正云端纯净播放悬停测试的布局时序：等待模式和实际尺寸切换后再定位鼠标，保留静止悬停不隐藏的断言，并增加延迟窗口状态的回归用例。未修改播放器隐藏策略。
 - 升级前关闭旧版并备份数据，保留 `AVHub-data` 与 `avhub-data-location.json`。文件夹便携版请完整解压后运行 `AVHub.exe`，不要只替换单个 EXE；可使用 `SHA256SUMS.txt` 校验下载文件。
 
 ## English
@@ -36,4 +37,5 @@
 - Library headings, filters, compact-window actions, resolution labels and settings fields are visually consistent. Successful scan results collapse automatically; results containing errors remain visible.
 - Unsaved settings drafts are protected. Application shutdown uses a single native confirmation instead of duplicate renderer/native prompts.
 - Local renderer and backend regressions and real Electron synthetic-media acceptance were performed. Physical mouse hardware was not tested, and external-player dispatch was intercepted rather than launching a user application. Source media and playback encoding policies are unchanged.
+- Cloud hover tests now wait for actual pure-mode geometry before positioning the mouse, with a delayed-window-state regression and unchanged stationary-hover assertions. Application hide behavior is unchanged.
 - Before upgrading, close AVHub and preserve library data and data-location configuration. Fully extract the folder ZIP and retain its runtime dependencies; verify downloads with `SHA256SUMS.txt`.
