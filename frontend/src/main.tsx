@@ -20,6 +20,7 @@ import { MediaActions } from './MediaActions';
 import {MediaEditDialog} from './MediaEditDialog';
 import {LibraryEmptyState} from './LibraryEmptyState';
 import {LibraryFilters} from './LibraryFilters';
+import {LibraryHeading} from './LibraryHeading';
 import { Icon, type IconName } from './Icon';
 import { WindowChrome } from './WindowChrome';
 import { resetPlaybackWindow } from './windowMode';
@@ -286,6 +287,10 @@ function App() {
   const pages = Math.max(1, Math.ceil(displayTotal / filters.pageSize));
   function changePage(page: number) { setFilters(f => ({ ...f, page })); scrollPageTo(0); }
   const title = views.find(v => v.id === filters.view)!.label;
+  const filterSummary=<LibraryFilters value={filters} roots={roots} grouped={grouped} change={change=>{
+    setFilters(f=>({...f,...change,page:1}));
+    if('q' in change&&'format' in change&&'root' in change)setAdvancedOpen(false);
+  }}/>;
   return <>
     {notice && <Toast key={notification.id} message={notice} autoDismissMs={notification.autoDismissMs} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
     {router.route.mediaId && (!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage></div>}
@@ -336,28 +341,28 @@ function App() {
             onClick={()=>setFilters(f=>({...f,sort:isAscending(f.sort)?sortField(f.sort).desc:sortField(f.sort).asc,page:1}))}>
             <Icon name={isAscending(filters.sort)?'sortAsc':'sortDesc'} size={18}/>
           </button></div>
-          <button className={`advanced-toggle${filters.format || filters.watch !== 'all' || filters.duration ? ' active' : ''}`} aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/>更多筛选{filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}</button>
-          <Button icon="edit" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}>批量整理</Button>
+          <button className={`advanced-toggle toolbar-icon-action${filters.format || filters.watch !== 'all' || filters.duration ? ' active' : ''}`} aria-expanded={advancedOpen}
+            aria-label={`更多筛选${filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}`} title={`更多筛选${filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}`}
+            onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/><span className="toolbar-action-label">更多筛选{filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}</span></button>
+          <Button icon="edit" className="toolbar-icon-action" aria-label="批量整理" title="批量整理" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}><span className="toolbar-action-label">批量整理</span></Button>
           </>}
           <div className="library-toolbar-right">
           {!grouped&&<div className="resolution-filter" role="group" aria-label="分辨率筛选">
-            <span className="resolution-filter-label">分辨率</span>
+            <span className="resolution-filter-label" title="分辨率"><Icon name="resolution" size={18}/></span>
             {['',...resolutionTiers].map(tier=><button key={tier} type="button" aria-label={tier?`筛选 ${resolutionDisplayLabel(tier)}`:'全部分辨率'}
               aria-pressed={filters.resolution===tier} title={tier?'按源视频短边分级':'显示所有分辨率，包括未知'}
-              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'全部'}</button>)}
+              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'ALL'}</button>)}
           </div>}
-          {!grouped&&<label className="resolution-compact">分辨率<select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
-            <option value="">全部分辨率</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
+          {!grouped&&<label className="resolution-compact" title="分辨率"><Icon name="resolution" size={18}/><select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
+            <option value="">ALL</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
           </select></label>}
           <div className="library-view-controls"><CoverSizeControl disabled={!grouped&&filters.layout==='list'}/>
           {!grouped&&<div className="switch">{(['grid','list'] as const).map(layout => <button key={layout} aria-label={layout === 'grid' ? '封面墙' : '列表'}
             aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div>}</div>
           </div>
         </div>
-        <LibraryFilters value={filters} roots={roots} grouped={grouped} change={change=>{setFilters(f=>({...f,...change,page:1}));if('q' in change&&'format' in change&&'root' in change)setAdvancedOpen(false);}}/>
         {grouped ? <SeriesLibrary cache={libraryCache} active={rootsReady&&!selected} q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
-          change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
+          filterSummary={filterSummary} change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
         {bulkMode && <div className="bulk-selection-bar" aria-label="批量选择"><span>已选 {picked.length} / 500 · 支持跨页选择</span>
           <Button disabled={loading} onClick={() => pick(visible.map(m => m.id))}>选中本页</Button>
           <Button disabled={!picked.length} onClick={() => setPicked([])}>清空选择</Button>
@@ -377,8 +382,8 @@ function App() {
           </select></label>
           {(filters.format || filters.watch !== 'all' || filters.duration || filters.resolution) && <button className="filter-reset" onClick={() => setFilters(f => ({ ...f, format: '', resolution: '', watch: 'all', duration: '', page: 1 }))}>清除筛选</button>}
         </div>}
-        <div className="section-title"><h2>{title}</h2><span>{library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}</span>
-          {library.data&&library.showLoading&&<span className="library-query-feedback" role="status"><Icon name="refresh" size={14} className="is-spinning"/>更新中</span>}</div>
+        <LibraryHeading title={title} filters={filterSummary} count={library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}
+          updating={Boolean(library.data&&library.showLoading)}/>
         {requestError&&library.data&&<StatusMessage kind="error">{requestError}<Button icon="refresh" onClick={()=>setRevision(x=>x+1)}>重试</Button></StatusMessage>}
         {requestError&&!library.data ? <div className="empty"><StatusMessage kind="error">{requestError}</StatusMessage><Button icon="refresh" onClick={() => setRevision(x => x + 1)}>重试</Button></div> :
           loading&&!library.data ? <div className="library-query-placeholder" aria-busy="true" aria-label="视频列表载入中">{library.showLoading&&<StatusMessage kind="loading">正在加载视频…</StatusMessage>}</div> :

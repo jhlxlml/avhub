@@ -1,5 +1,5 @@
 export type IconName = 'play'|'pause'|'back'|'forward'|'volume'|'muted'|'rotate'|'zoomReset'|'pip'|'exitPip'|'fullscreen'|'fullscreenExit'|'expand'|'favorite'|'quality'|'speed'|'audio'|'camera'|'close'|'search'|'settings'|'refresh'|'library'|'film'|'series'|'continue'|'history'|'playlist'|'filter'|'grid'|'list'|'folder'|'chevronDown'|'chevronRight'|'chevronLeft'|'chevronUp'|'plus'|'check'|'eye'|'eyeOff'|'copy'|'reveal'|'external'|'trash'|'edit'|'download'|'upload'|'save'|'shield'|'database'|'previous'|'next'|'first'|'last'|'info'|'warning'|'arrowLeft'|'subtitles'|'more'
-  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize'|'shuffle'|'sortAsc'|'sortDesc'|'help'|'keyboard';
+  |'purePlayback'|'exitPurePlayback'|'pin'|'minimize'|'windowMaximize'|'windowRestore'|'sun'|'moon'|'coverSize'|'shuffle'|'sortAsc'|'sortDesc'|'help'|'keyboard'|'resolution';
 
 // One 24px grid, one optical stroke and rounded joins across every surface.
 // Code-native SVGs remain fully offline and inherit the control's state color.
@@ -19,6 +19,7 @@ export function Icon({name,size=18,filled=false,className=''}:{name:IconName;siz
     {name==='fullscreenExit' && <><path d="M4 9h5V4"/><path d="M15 4v5h5"/><path d="M4 15h5v5"/><path d="M15 20v-5h5"/></>}
     {name==='favorite' && <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z" fill={filled?'currentColor':'none'}/>}
     {name==='quality' && <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9v6m4-6v6M7 12h4m4-3v6h2a3 3 0 0 0 0-6z" strokeWidth="1.4"/></>}
+    {name==='resolution' && <><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8m-4-3v3"/><g fill="currentColor" stroke="none"><rect x="7" y="7" width="3" height="3" rx=".4"/><rect x="14" y="7" width="3" height="3" rx=".4"/><rect x="7" y="12" width="3" height="3" rx=".4"/><rect x="14" y="12" width="3" height="3" rx=".4"/></g></>}
     {name==='speed' && <><path d="M4 18a9 9 0 1 1 16 0M12 13l4-4"/><circle cx="12" cy="13" r="1" fill="currentColor"/></>}
     {name==='audio' && <path d="M4 10v4m4-7v10m4-13v16m4-13v10m4-7v4"/>}
     {name==='camera' && <><path d="m8 6 1.5-2h5L16 6h4a1 1 0 0 1 1 1v12H3V7a1 1 0 0 1 1-1z"/><circle cx="12" cy="12" r="3.5"/></>}

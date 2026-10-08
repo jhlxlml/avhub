@@ -40,7 +40,9 @@ try{
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();await shot('compact-toolbar-light');
   const titles=await page.locator('.card .video-title').allTextContents(),expected=titles.map(title=>items.find(item=>item.title===title).id);
   const list=await api('/api/playlists','POST',{name:'第二轮验收片单',media_id:expected[0]});
-  await page.getByRole('button',{name:'批量整理',exact:true}).click();await page.getByRole('button',{name:'选中本页',exact:true}).click();await page.getByRole('button',{name:'所选加入播放列表',exact:true}).click();await page.getByRole('button',{name:'添加到列表',exact:true}).click();
+  await page.getByRole('button',{name:'批量整理',exact:true}).click();await page.getByRole('button',{name:'选中本页',exact:true}).click();await page.getByRole('button',{name:'所选加入播放列表',exact:true}).click();
+  // Wait for the async list options and explicitly choose the intended target.
+  await page.getByRole('combobox',{name:'选择播放列表',exact:true}).selectOption(String(list.id));await page.getByRole('button',{name:'添加到列表',exact:true}).click();
   await expect(page.getByText('已加入 5 个视频 · 1 个已在列表中',{exact:true})).toBeVisible();let detail=await api(`/api/playlists/${list.id}?page=1`);assert.deepEqual(detail.items.map(item=>item.id),expected);
   await page.getByRole('button',{name:'播放列表',exact:true}).click();await expect(page.locator('.playlist-item-title')).toHaveCount(6);await page.getByRole('button',{name:'多选视频',exact:true}).click();
   for(const index of [1,4])await page.getByRole('checkbox',{name:`选择片单视频 ${titles[index]}`,exact:true}).check();await page.getByRole('button',{name:'移除所选片单视频',exact:true}).click();await expect(page.locator('.playlist-item-title')).toHaveCount(4);await page.getByRole('button',{name:'撤销上次移除',exact:true}).click();await expect(page.locator('.playlist-item-title')).toHaveCount(6);

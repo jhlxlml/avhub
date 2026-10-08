@@ -1,4 +1,4 @@
-import { useEffect,useState } from 'react';
+import { useEffect,useState,type ReactNode } from 'react';
 import { api,errorText,json,type Media,type MediaPage } from './api';
 import { Button,EmptyState,StatusMessage } from './ui';
 import { Pagination } from './Pagination';
@@ -9,12 +9,13 @@ import { episodeLabel } from './mediaLabels';
 import {ResolutionBadge} from './ResolutionBadge';
 import './library-tools.css';
 import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
+import {LibraryHeading} from './LibraryHeading';
 
 type Group={id:number;title:string;count:number;available_count:number;watched_count:number;seasons:number;thumbnail_url?:string|null;thumbnail_media_id?:number|null};
 type GroupPage={items:Group[];total:number;page:number;pages:number;page_size:number};
 type Episodes=MediaPage&{id:number;title:string;seasons:{season:number|null;count:number;available_count:number}[]};
 
-export function SeriesLibrary({cache,active,q,root,show,season,page,pageSize,revision,change,play}:{cache:LibraryPageCache;active:boolean;q:string;root:string;show:string;season:string;page:number;pageSize:number;revision:number;
+export function SeriesLibrary({cache,active,q,root,show,season,page,pageSize,revision,filterSummary,change,play}:{cache:LibraryPageCache;active:boolean;q:string;root:string;show:string;season:string;page:number;pageSize:number;revision:number;filterSummary:ReactNode;
   change:(value:{show?:string;season?:string;page?:number;pageSize?:number})=>void;play:(media:Media)=>void}) {
   const [writeError,setError]=useState('');const [retry,setRetry]=useState(0);
   const params=new URLSearchParams({page:String(page),page_size:String(pageSize)});
@@ -60,8 +61,9 @@ export function SeriesLibrary({cache,active,q,root,show,season,page,pageSize,rev
       <label>季<select aria-label="选择季" value={season} onChange={e=>change({season:e.target.value,page:1})}><option value="">全部季</option>{episodes?.seasons.map(s=><option key={s.season??'unknown'} value={s.season??'unknown'}>{s.season===null?'季未设置':s.season===0?'特别篇':`第 ${s.season} 季`} · {s.count} 集</option>)}</select></label>
     </div>}
     {show&&renaming&&<form className="series-heading" onSubmit={event=>{event.preventDefault();void rename();}}><input aria-label="分组剧名" value={name} maxLength={300} disabled={saving} onChange={event=>setName(event.target.value)}/><Button type="submit" icon="save" busy={saving} disabled={!name.trim()}>保存剧名</Button><small>仅修改分组显示名，不改动文件或单集标题</small></form>}
-    {!show&&<div className="section-title"><h2>按剧集归类</h2><span>{groups?`共 ${groups.total} 个剧集`:query.showLoading?'正在加载…':''}</span></div>}
-    {result&&query.showLoading&&<span className="library-query-feedback" role="status"><Icon name="refresh" size={14} className="is-spinning"/>更新中</span>}
+    <LibraryHeading title={show?'单集列表':'按剧集归类'} filters={filterSummary}
+      count={result?`共 ${result.total} ${show?'集':'个剧集'} · 本页 ${result.items.length} ${show?'集':'个'}`:query.showLoading?'正在加载…':''}
+      updating={Boolean(result&&query.showLoading)}/>
     {error&&result&&<StatusMessage kind="error">{error}<Button icon="refresh" onClick={()=>{setError('');cache.clear();setRetry(n=>n+1);}}>重试剧集库</Button></StatusMessage>}
     {error&&!result?<><StatusMessage kind="error">{error}</StatusMessage><Button icon="refresh" onClick={()=>{setError('');cache.clear();setRetry(n=>n+1);}}>重试剧集库</Button></>:loading&&!result?<div className="library-query-placeholder" aria-label="剧集列表载入中" aria-busy="true">{query.showLoading&&<StatusMessage kind="loading">正在加载剧集…</StatusMessage>}</div>:
       show?episodes?.items.length?<div className="series-episodes">{episodes.items.map(m=><button key={m.id} className="series-episode" disabled={Boolean(m.missing)} aria-label={m.missing?`离线 ${m.title}`:`播放 ${m.title}`} onClick={()=>play({...m,series_title:episodes.title})}>
