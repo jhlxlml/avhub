@@ -8,8 +8,24 @@ test('unsaved mouse and directory drafts survive cancellation and tab changes',a
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();const confirm=page.getByRole('dialog',{name:'放弃未保存的修改？',exact:true});await expect(confirm).toContainText('鼠标侧键时长');await confirm.getByRole('button',{name:'取消',exact:true}).click();await expect(input).toHaveValue('17');
   await page.getByRole('button',{name:'保存鼠标快捷键',exact:true}).click();await expect(page.getByText('鼠标侧键时长已保存',{exact:true})).toBeVisible();
   await page.getByRole('tab',{name:'媒体目录',exact:true}).click();await page.getByLabel('目录路径',{exact:true}).fill('D:\\NotYetAdded');
-  await page.keyboard.press('Escape');await expect(confirm).toContainText('待添加目录');await page.keyboard.press('Escape');await expect(page.getByLabel('目录路径',{exact:true})).toHaveValue('D:\\NotYetAdded');
+  await page.keyboard.press('Escape');await expect(confirm).toContainText('待添加目录');await page.keyboard.press('Escape');await expect(confirm).toHaveCount(0);await expect(page.getByLabel('目录路径',{exact:true})).toHaveValue('D:\\NotYetAdded');
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();await confirm.getByRole('button',{name:'放弃修改',exact:true}).click();await settings(page);await expect(input).toHaveValue('17');
+});
+
+test('a newly visible confirmation handles Escape before passive effects and preserves its parent draft',async({page})=>{
+  await page.goto('/');await settings(page);const input=page.getByLabel('鼠标侧键跳播时长');await input.fill('17');
+  await page.evaluate(()=>{
+    (window as any).immediateEscapeHandled=null;
+    const observer=new MutationObserver(()=>{
+      if(!document.querySelector('.app-confirm-dialog'))return;
+      observer.disconnect();const event=new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true});document.dispatchEvent(event);(window as any).immediateEscapeHandled=event.defaultPrevented;
+    });
+    observer.observe(document.getElementById('root')!,{childList:true,subtree:true});
+    // Explicit renderer harness: non-discrete host notification, no filesystem
+    // action. Mutation delivery can precede a useEffect keyboard subscription.
+    window.dispatchEvent(new CustomEvent('avhub-confirm',{detail:{title:'即时键盘确认测试',details:'新弹窗首帧 Escape',consequence:'不修改文件',accept:'确认',danger:false,resolve:()=>{}}}));
+  });
+  await expect.poll(()=>page.evaluate(()=>(window as any).immediateEscapeHandled)).toBe(true);await expect(page.locator('.app-confirm-dialog')).toHaveCount(0);await expect(input).toHaveValue('17');await expect(input).toBeEnabled();
 });
 test('playlist mode and autoplay remain session-local across next video and reload',async({page,request})=>{
   await request.patch('/api/preferences',{data:{values:{queueMode:'repeat-one',autoNext:false,queueScope:'directory'}}});

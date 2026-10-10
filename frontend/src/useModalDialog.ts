@@ -1,9 +1,11 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useLayoutEffect, useRef, type RefObject } from 'react';
 
 export function useModalDialog(ref: RefObject<HTMLElement | null>, busy: boolean, close: () => void) {
   const latest = useRef({ busy, close });
   latest.current = { busy, close };
-  useEffect(() => {
+  // Bind keyboard/focus guards in the same commit that makes a dialog visible.
+  // A fast Escape must not land between DOM insertion and a passive effect.
+  useLayoutEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
     const previousFocus = document.activeElement as HTMLElement | null;
