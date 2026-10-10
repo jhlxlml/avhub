@@ -73,10 +73,12 @@ export function Popover({ label, close, children, className = '' }: { label: str
     const controls = () => Array.from(panel.querySelectorAll<HTMLElement>('button,input,select,[tabindex]')).filter(e => e.tabIndex >= 0 && !e.matches(':disabled') && e.getClientRects().length > 0);
     (controls().find(e => e.matches('select,input')) || controls()[0] || panel).focus({ preventScroll: true });
     const dismiss = (event: PointerEvent) => {
+      if(panel.closest('[inert]')||event.target instanceof Element&&event.target.closest('.modal-backdrop'))return;
       if (event.target instanceof HTMLElement && event.target.closest('.player-setting > button')) return;
       if (!panel.contains(event.target as Node)) latestClose.current();
     };
     const keys = (event: KeyboardEvent) => {
+      if(panel.closest('[inert]'))return;
       if (event.key === 'Escape') {
         event.preventDefault(); event.stopImmediatePropagation(); latestClose.current();
       } else if (event.key === 'Tab') {

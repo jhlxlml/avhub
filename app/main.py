@@ -55,6 +55,7 @@ from . import library_backup
 from . import storage_management
 from .data_jobs import DataJobs, summary as backup_summary
 from . import screenshots
+from . import file_operations
 from starlette.concurrency import run_in_threadpool
 
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -214,6 +215,7 @@ def bootstrap() -> None:
             db.execute('ALTER TABLE media ADD COLUMN manual_watched INTEGER')
         media_order.install(db)
         series_library.install(db)
+        file_operations.install(db)
         install_scan_jobs(db)
         playlist_columns = {row[1] for row in db.execute('PRAGMA table_info(playlists)')}
         if 'revision' not in playlist_columns:
@@ -328,6 +330,7 @@ def sidecar_subtitles(path: Path) -> list[dict[str, str]]:
 def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_path: str | None = None, thumbnails=None) -> bool:
     """Probe outside write transactions; refreshing technical metadata preserves user edits."""
     resolved = resolved_path or str(path.resolve())
+    if not file_service.allow_scan(Path(resolved)):return False
     stat = path.stat()
     if existing is not None:
         old = existing.get(resolved)
@@ -364,9 +367,10 @@ def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_
                  metadata["width"],metadata["height"],metadata["video_codec"],json.dumps(metadata["audio_tracks"]),
                  json.dumps(metadata["subtitles"]),json.dumps(color),now,media_id))
         else:
-            cur = db.execute("""INSERT INTO media(path,root_id,name,title,kind,season,episode,ext,size,modified,
-                duration,width,height,video_codec,audio_tracks,subtitles,video_color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (resolved,root_id,path.name,title,kind,season,episode,path.suffix.lower(),stat.st_size,stat.st_mtime,
+            fresh_id=db.execute('SELECT MAX(COALESCE((SELECT MAX(id) FROM media),0),COALESCE((SELECT MAX(media_id) FROM file_operations),0))+1').fetchone()[0]
+            cur = db.execute("""INSERT INTO media(id,path,root_id,name,title,kind,season,episode,ext,size,modified,
+                duration,width,height,video_codec,audio_tracks,subtitles,video_color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (fresh_id,resolved,root_id,path.name,title,kind,season,episode,path.suffix.lower(),stat.st_size,stat.st_mtime,
                  metadata["duration"],metadata["width"],metadata["height"],metadata["video_codec"],
                  json.dumps(metadata["audio_tracks"]),json.dumps(metadata["subtitles"]),json.dumps(color),now,now))
             media_id = cur.lastrowid
@@ -483,7 +487,7 @@ def run_scan(entries: list[dict], manager: ScanManager):
             if not walk_failed and root.is_dir():
                 with connection() as db:
                     changes = [(int(row['path'] not in found), row['id']) for row in db.execute(
-                        'SELECT id,path,missing FROM media WHERE root_id=?', (entry['id'],))
+                        "SELECT id,path,missing FROM media WHERE root_id=? AND file_state='normal'", (entry['id'],))
                         if row['missing'] != int(row['path'] not in found)]
                     if changes: db.executemany('UPDATE media SET missing=? WHERE id=?', changes)
         manager.update(discovery_done=True)
@@ -560,11 +564,14 @@ async def lifespan(app):
 
 
 bootstrap()
+file_service=file_operations.FileOperations(connection,read_connection,(ROOT,APP_HOME,DATA,Path(os.environ.get('WINDIR','C:/Windows'))))
+file_service.recover()
 with connection() as db:
     checkpoint = db.execute("SELECT root_id FROM scan_checkpoint WHERE id=1").fetchone()
 if checkpoint:
     scanner.restore_interrupted(checkpoint['root_id'])
 app = FastAPI(title="AVHub", docs_url=None, redoc_url=None, lifespan=lifespan)
+app.add_middleware(file_operations.FileReadFence,service=file_service)
 
 
 @app.middleware("http")
@@ -610,6 +617,7 @@ class PreferencesInput(BaseModel):
 
 @app.post('/api/playback/activity')
 def playback_activity(value:PlaybackActivityInput):
+    if not file_service.activity(value.owner,value.media_id,value.present):return {'ok':True}
     thumbnail_service.playback_activity(value.owner,value.playing)
     source=None
     if value.media_id and value.present:
@@ -775,6 +783,102 @@ def shutdown_desktop(request: Request):
     threading.Thread(target=lambda: setattr(server, "should_exit", True), name="avhub-shutdown", daemon=True).start()
     return {"ok": True}
 
+
+def file_bridge(request:Request):
+    if not SESSION_TOKEN or not hmac.compare_digest(request.headers.get('x-avhub-token',''),SESSION_TOKEN):
+        raise HTTPException(403,'文件写操作仅允许受信任的桌面接口')
+
+class FilePermissionInput(BaseModel):
+    rename:bool=False
+    recycle:bool=False
+class FileActionInput(BaseModel):
+    media_id:int=Field(ge=1)
+    action:Literal['rename','recycle']
+    stem:str|None=Field(default=None,max_length=255)
+    preview_token:str|None=Field(default=None,pattern=r'^[a-f0-9]{32}$')
+class FilePreviewInput(BaseModel):
+    media_ids:list[int]=Field(min_length=1,max_length=500)
+class FileResultInput(BaseModel):
+    success:bool
+    error:str=Field(default='',max_length=1000)
+
+@contextmanager
+def file_mutation(media_id=None):
+    with scanner.lock,playback.lock,native_prepare.lock,thumbnail_service.mutation(),file_service.lock:
+        scanner.require_idle()
+        if data_jobs.active:raise HTTPException(409,'请先完成数据备份或恢复任务')
+        if media_id is not None:file_source_busy(media_id)
+        yield
+
+def file_source_busy(media_id):
+    # Caller holds the scan/playback/preparation/thumbnail/file-operation locks.
+    with read_connection() as db:row=db.execute('SELECT path FROM media WHERE id=?',(media_id,)).fetchone()
+    source=Path(row['path']) if row else None
+    if thumbnail_service.current==media_id:raise HTTPException(409,'该文件正在生成封面，请稍后再试')
+    if any(job.get('source')==str(source) and job.get('state') in ('running','waiting','validating') for job in native_prepare.jobs.values()):raise HTTPException(409,'该文件正在无损准备，请先取消任务')
+    for session in playback.sessions.values():
+        if getattr(getattr(session,'indexed',None),'source',None)==source or (session.process and str(source) in session.process.args):raise HTTPException(409,'播放任务仍持有该文件，请先关闭播放器')
+
+@app.post('/api/file-operations/preview')
+def preview_file_operations(body:FilePreviewInput,request:Request):
+    file_bridge(request)
+    if any(media_id<=0 or media_id>=2**53 for media_id in body.media_ids):raise HTTPException(422,'媒体标识无效')
+    with file_mutation():return file_service.preview_recycle(body.media_ids,file_source_busy)
+
+@app.delete('/api/file-operations/preview/{preview_token}')
+def release_file_preview(preview_token:str,request:Request):
+    file_bridge(request)
+    with file_service.lock:file_service.previews.pop(preview_token,None)
+    return {'ok':True}
+
+@app.get('/api/file-permissions')
+def file_permissions(ids:str):
+    values=ids.split(',')
+    if len(values)>100 or not all(value.isdecimal() and 0<int(value)<2**53 for value in values):raise HTTPException(422,'目录列表无效')
+    return file_service.permissions([int(value) for value in values])
+
+@app.put('/api/roots/{root_id}/file-permissions')
+def set_file_permissions(root_id:int,body:FilePermissionInput,request:Request):
+    file_bridge(request)
+    with file_mutation():return file_service.authorize(root_id,body.rename,body.recycle)
+
+@app.get('/api/media/{media_id}/file-actions')
+def file_action_info(media_id:int):return file_service.info(media_id)
+
+@app.get('/api/file-operations')
+def file_history(page:int=Query(1,ge=1)):return file_service.history(page)
+
+@app.get('/api/file-states')
+def file_states(page:int=Query(1,ge=1),state:Literal['all','missing','recycled','review','pending']='all'):
+    return file_service.states(page,state)
+
+@app.post('/api/media/{media_id}/recheck-file')
+def recheck_file(media_id:int,request:Request):
+    file_bridge(request)
+    with file_mutation(media_id):return file_service.recheck(media_id)
+
+@app.post('/api/media/{media_id}/forget-missing')
+def forget_missing(media_id:int,request:Request):
+    file_bridge(request)
+    with file_mutation(media_id):return file_service.forget_missing(media_id)
+
+@app.post('/api/file-operations')
+def execute_file_action(body:FileActionInput,request:Request):
+    file_bridge(request)
+    with file_mutation(body.media_id):
+        if body.action=='rename':
+            try:return file_service.rename(body.media_id,body.stem)
+            except OSError:raise HTTPException(409,'文件被占用或权限不足，重命名未完成；请查看操作记录')
+        return file_service.prepare(body.media_id,'recycle',preview_token=body.preview_token)
+
+@app.post('/api/file-operations/{op_id}/verify')
+def verify_file_action(op_id:str,request:Request):
+    file_bridge(request);return file_service.verify(op_id)
+
+@app.post('/api/file-operations/{op_id}/result')
+def finish_file_action(op_id:str,body:FileResultInput,request:Request):
+    file_bridge(request);return file_service.finish(op_id,body.success,body.error)
+
 @app.get("/api/roots")
 def roots(check_available: bool = True):
     with read_connection() as db: entries = [dict(x) for x in db.execute("SELECT * FROM roots ORDER BY path")]
@@ -798,6 +902,7 @@ def add_root(body: RootInput):
     path = path.resolve()
     with scanner.lock, connection() as db:
         scanner.require_idle()
+        file_service.require_idle()
         db.execute("INSERT OR IGNORE INTO roots(path,added_at) VALUES(?,?)", (str(path), time.time()))
         row = db.execute("SELECT * FROM roots WHERE path=?", (str(path),)).fetchone()
     return dict(row)
@@ -806,6 +911,8 @@ def add_root(body: RootInput):
 def remove_root(root_id: int):
     with scanner.lock, thumbnail_service.mutation(), connection() as db:
         scanner.require_idle()
+        file_service.require_idle()
+        db.execute('DELETE FROM root_file_permissions WHERE root_id=?',(root_id,))
         db.execute("DELETE FROM roots WHERE id=?", (root_id,)); db.execute("UPDATE media SET missing=1 WHERE root_id=?", (root_id,))
         db.execute('DELETE FROM thumbnail_jobs WHERE root_id=?',(root_id,))
     return {"ok": True}
@@ -818,6 +925,8 @@ def relocate_root(root_id: int, body: RelocateInput):
     target = target.resolve()
     with scanner.lock, thumbnail_service.mutation(), DB_LOCK, connection() as db:
         scanner.require_idle()
+        file_service.require_idle()
+        db.execute('DELETE FROM root_file_permissions WHERE root_id=?',(root_id,))
         root = db.execute("SELECT * FROM roots WHERE id=?", (root_id,)).fetchone()
         if not root: raise HTTPException(404, "原媒体目录不存在")
         old = Path(root["path"]).resolve()
@@ -925,8 +1034,10 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
     backup_dir=DATA/'backups'
     rollback = backup_dir / f"before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}.db"
     new_covers=[];old_thumbnails=[]
-    with scanner.lock, playback.lock, thumbnail_service.mutation(), DB_READ_GATE.write(), DB_LOCK:
+    with scanner.lock, playback.lock, thumbnail_service.mutation(), file_service.lock, DB_READ_GATE.write(), DB_LOCK:
         scanner.require_idle()
+        file_service.require_idle()
+        if file_service.readers or any(value[1]>time.monotonic() for value in file_service.activities.values()):raise HTTPException(409,'请先关闭正在打开的视频再恢复媒体库')
         old_scan_job=scanner.snapshot()
         if playback.sessions: raise HTTPException(409, "请先关闭正在播放的视频再恢复备份")
         live = sqlite3.connect(DB)
@@ -959,6 +1070,9 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
             finally: live.close(); source.close()
             bootstrap()
             with connection() as db:
+                db.execute('DELETE FROM root_file_permissions')
+                db.execute("UPDATE file_operations SET state='review',error='从备份恢复的未完成操作需要人工核对' WHERE state='prepared'")
+                db.execute("UPDATE media SET file_state='review',missing=1 WHERE file_state='pending'")
                 if images is not None:
                     for relative in sorted(name for name in images if name.startswith('thumbnails/')):
                         target=DATA/relative
@@ -994,6 +1108,7 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
                 for row in db.execute("SELECT id,thumbnail FROM media WHERE thumbnail IS NOT NULL").fetchall():
                     if not valid_thumbnail(THUMBS / f"{row['id']}.jpg"):
                         db.execute("UPDATE media SET thumbnail=NULL WHERE id=?", (row["id"],))
+            file_service.reload_blocked()
             thumbnail_service.reload_control()
             with connection() as db:checkpoint=db.execute('SELECT root_id FROM scan_checkpoint WHERE id=1').fetchone()
             if checkpoint:scanner.restore_interrupted(checkpoint['root_id'])
@@ -1003,6 +1118,7 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
             live = sqlite3.connect(DB)
             try: source.backup(live)
             finally: live.close(); source.close()
+            file_service.reload_blocked()
             for target,previous in old_thumbnails:
                 if previous:shutil.copyfile(previous,target)
                 else:target.unlink(missing_ok=True)
@@ -1074,6 +1190,7 @@ def cancel_data_job(identity:str):return data_jobs.cancel(identity)
 @app.post('/api/data-jobs/{identity}/restore',status_code=202)
 def commit_data_job(identity:str):
     scanner.require_idle()
+    file_service.require_idle()
     def commit(job):
         job.progress('committing')
         try:return install_library_backup(job.database,job.images,job.folder)
@@ -1097,6 +1214,7 @@ def download_data_job(identity:str):
 @app.post("/api/scan", status_code=202)
 def scan(root_id: int | None = None):
     with scanner.lock:
+        file_service.require_idle()
         with connection() as db:
             entries = [dict(x) for x in db.execute("SELECT * FROM roots WHERE (? IS NULL OR id=?)", (root_id,root_id))]
         if not entries: raise HTTPException(400, "请先添加有效的视频目录")
@@ -1105,6 +1223,7 @@ def scan(root_id: int | None = None):
 @app.post("/api/scan/resume", status_code=202)
 def resume_scan():
     with scanner.lock:
+        file_service.require_idle()
         job = scanner.snapshot()
         if not job or job.get('state') != 'interrupted':
             raise HTTPException(409, "没有可继续的中断扫描")
@@ -1352,7 +1471,8 @@ def media_siblings(media_id: int, page: int | None = Query(None, ge=1), page_siz
 @app.get("/api/media/{media_id}")
 def one_media(media_id: int):
     item=media_record(media_id)
-    item['external_subtitles']=sidecar_subtitles(Path(item['path']))
+    subtitles=sidecar_subtitles(Path(item['path']))+file_service.linked_subtitles(media_id,Path(item['path']))
+    item['external_subtitles']=list({value['path']:value for value in subtitles}.values())
     return item
 
 

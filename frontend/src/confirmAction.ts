@@ -1,4 +1,5 @@
-// Keep native confirmation and explicit consequences for destructive actions.
+import {confirmInApp} from './AppConfirm';
+// Keep explicit consequences; confirmation is themed and cancellation is default.
 export function confirmAction(title:string,details:string,consequence:string){
-  return window.confirm(`${title}\n\n${details}\n\n${consequence}`);
+  return confirmInApp(title,details,consequence,'确认',true);
 }

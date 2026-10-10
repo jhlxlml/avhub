@@ -1,5 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import {AppConfirmHost} from './AppConfirm';
+import {BatchRecycle} from './BatchRecycle';
 import { api, checkServiceBuild, json, duration, errorText, views, type View, type Media, type MediaUpdate, type Root, type MediaPage, type PlaylistSource } from './api';
 import { Settings } from './Settings';
 import {AboutHost} from './AppTools';
@@ -117,8 +119,8 @@ function App() {
   const [searchOpen, setSearchOpen] = useState(() => Boolean(readFilters().q));
   const [notification, setNotification] = useState({message:'', autoDismissMs:0, id:0});
   const notice = notification.message;
-  const setNotice = useCallback((message:string) => {
-    setNotification(current => ({message, autoDismissMs:0, id:current.id+1}));
+  const setNotice = useCallback((message:string,autoDismissMs=0) => {
+    setNotification(current => ({message, autoDismissMs, id:current.id+1}));
   }, []);
   const playlistAdded = useCallback((message:string) => {
     // A fresh identity restarts the timer even when the same video is added again.
@@ -129,6 +131,7 @@ function App() {
   const [bulkMode, setBulkMode] = useState(false);
   const [picked, setPicked] = useState<number[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [recycleBatch,setRecycleBatch]=useState<number[]|null>(null);
   const grouped = filters.view === 'series' && filters.grouped;
   const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q,libraryRetry);
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
@@ -372,7 +375,7 @@ function App() {
         {bulkMode && <div className="bulk-selection-bar" aria-label="批量选择"><span>已选 {picked.length} / 500 · 支持跨页选择</span>
           <Button disabled={loading} onClick={() => pick(visible.map(m => m.id))}>选中本页</Button>
           <Button disabled={!picked.length} onClick={() => setPicked([])}>清空选择</Button>
-          <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button><Button icon="playlist" disabled={!picked.length} onClick={()=>setPlaylistBatch([...picked])}>所选加入播放列表</Button></div>}
+          <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button><Button icon="playlist" disabled={!picked.length} onClick={()=>setPlaylistBatch([...picked])}>所选加入播放列表</Button><Button icon="trash" variant="danger" disabled={!picked.length||!window.avhubDesktop?.fileOperation} onClick={()=>setRecycleBatch([...picked])}>所选移入回收站</Button></div>}
         {roots.find(root => String(root.id) === filters.root) && <FolderBrowser key={filters.root} root={roots.find(root => String(root.id) === filters.root)!}
           folder={filters.folder} recursive={filters.recursive} revision={revision} treeMode={treeOpen} change={folder => setFilters(f => ({ ...f, folder, page: 1 }))}
           changeRecursive={recursive => setFilters(f => ({ ...f, recursive, page: 1 }))} />}
@@ -421,6 +424,7 @@ function App() {
         </>}
       </section></div>
       {bulkOpen && <BulkEditor ids={picked} close={() => setBulkOpen(false)} done={count => { setBulkOpen(false); setPicked([]); setRevision(value => value + 1); setNotice(`已整理 ${count} 个视频，源文件未修改`); }}/ >}
+      {recycleBatch&&<BatchRecycle ids={recycleBatch} close={()=>setRecycleBatch(null)} done={ids=>{setPicked(current=>current.filter(id=>!ids.includes(id)));if(ids.length)setRevision(value=>value+1);}}/>}
       {editingMedia&&<MediaEditDialog media={editingMedia} update={updateMedia} close={()=>setEditingMedia(null)}/>}
       {settings && <Settings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
       {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={playlistAdded} />}
@@ -442,4 +446,4 @@ function Startup() {
   if(ready)return <App/>;
   return <div className="empty" role={error?'alert':'status'}>{error||'正在载入本地设置…'}{error&&<><button onClick={()=>setAttempt(value=>value+1)}>重试启动</button><Diagnostics/></>}</div>;
 }
-createRoot(document.getElementById('root')!).render(<><AutoScrollbars/><WindowChrome/><AboutHost/><div id="app-scroll-area"><Startup/></div></>);
+createRoot(document.getElementById('root')!).render(<><AppConfirmHost/><AutoScrollbars/><WindowChrome/><AboutHost/><div id="app-scroll-area"><Startup/></div></>);

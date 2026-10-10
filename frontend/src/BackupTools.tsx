@@ -80,7 +80,7 @@ export function BackupTools({busy,changeBusy,scanning,reload}:{busy:boolean;chan
   }
   async function restore(){
     if(!job||job.kind!=='inspect'||job.state!=='ready'||busy)return;
-    if(!confirmAction('恢复所选备份？','将用已校验的备份替换当前媒体库记录。','原视频不受影响，提交后不可取消。继续吗？'))return;
+    if(!await confirmAction('恢复所选备份？','将用已校验的备份替换当前媒体库记录。','原视频不受影响，提交后不可取消。继续吗？'))return;
     changeBusy(true);setError('');setNotice('');
     try{
       if(!await flushPreferences())throw new Error('设置尚未保存，请重试后再恢复');

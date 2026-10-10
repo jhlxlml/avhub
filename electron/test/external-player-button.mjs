@@ -20,5 +20,15 @@ try {
   await expect.poll(()=>desktop.evaluate(()=>globalThis.externalLaunches.length)).toBe(1);
   assert.deepEqual(await desktop.evaluate(()=>globalThis.externalLaunches),[realpathSync(file)]);assert.equal(dialogs,0);assert.equal(page.url(),url);await expect(page.locator('.toast')).toHaveCount(0);
   await page.locator('.media-more').click();await expect(page.getByRole('menuitem',{name:'用系统播放器打开'})).toHaveCount(0);assert.equal(hash(),before);
-  console.log('Real Electron cover external-player button passed: direct indexed-ID preload dispatch, validated original path reaches shell.openPath, no confirmation/toast/internal navigation, source unchanged. OS player launch intercepted to avoid opening a user app.');
+  await page.keyboard.press('Escape');
+  await desktop.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];window.setMinimumSize(360,220);window.setSize(520,400);});
+  const trigger=page.locator('.media-more');await trigger.scrollIntoViewIfNeeded();await trigger.click();
+  const inside=()=>page.getByRole('menu').evaluate(menu=>{
+    const box=menu.getBoundingClientRect(),titlebar=document.querySelector('.desktop-titlebar').getBoundingClientRect();
+    return box.left>=7&&box.right<=innerWidth-7&&box.top>=titlebar.bottom+7&&box.bottom<=innerHeight-7;
+  });
+  await expect.poll(inside).toBe(true);await page.keyboard.press('Escape');await expect(trigger).toBeFocused();
+  await trigger.click();await page.getByRole('menuitem',{name:'编辑信息与封面',exact:true}).click();await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');await expect(trigger).toBeFocused();assert.equal(hash(),before);
+  console.log('Real Electron cover actions passed: direct indexed-ID preload dispatch, validated original path reaches shell.openPath, no confirmation/toast/internal navigation, viewport-clamped menu, modal focus restoration, source unchanged. OS player launch intercepted to avoid opening a user app.');
 }finally{if(desktop)await desktop.close();}

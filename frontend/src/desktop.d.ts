@@ -12,6 +12,7 @@ interface Window {
     appCommand:(command:'data-folder'|'project-page')=>Promise<{ok:boolean}>;
     screenshotAction:(id:string|null,action:'reveal'|'folder')=>Promise<{ok:boolean}>;
     mediaAction:(mediaId:number,action:'reveal'|'open')=>Promise<{ok:boolean}>;
+    fileOperation?:(value:{action:'rename'|'recycle'|'permissions'|'recycle-bin'|'recheck'|'forget'|'preview'|'release-preview';id?:number;ids?:number[];previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean})=>Promise<{ok?:boolean;media_id?:number;operation_id?:string;restored?:boolean;message?:string;preview_token?:string;expires_in?:number;items?:{id:number;title:string;path:string;size:number;eligible:boolean;reason:string}[]}>;
     getWindowState: () => Promise<WindowPlaybackState>;
     setWindowMode: (value: {purePlayback?:boolean;alwaysOnTop?:boolean;videoAspectRatio?:number}) => Promise<WindowPlaybackState>;
     windowAction: (action:'minimize'|'maximize'|'close') => Promise<WindowPlaybackState|null>;

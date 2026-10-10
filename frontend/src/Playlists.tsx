@@ -113,7 +113,7 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
     await mutate(async()=>{ await api(`/api/playlists/${detail.id}?compact=true`,json('PATCH',{name:renameValue.trim()})); setEditingName(false); });
   }
   async function deleteList() {
-    if(!detail || !confirmAction('删除播放列表？',`“${detail.name}” · ${detail.count} 个视频`,'删除片单名称和顺序记录，视频文件不会受影响。此操作不能撤销。')) return;
+    if(!detail || !await confirmAction('删除播放列表？',`“${detail.name}” · ${detail.count} 个视频`,'删除片单名称和顺序记录，视频文件不会受影响。此操作不能撤销。')) return;
     await mutate(()=>api(`/api/playlists/${detail.id}`,{method:'DELETE'}),null);
     setPage(1); setSearch('');
   }

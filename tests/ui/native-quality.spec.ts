@@ -91,13 +91,22 @@ test('lossless failure stops rather than automatically escalating to video encod
 test('lossy quality selection can be declined and needs explicit permission when accepted',async({page})=>{
   const bodies:any[]=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/media/2/playback')bodies.push(r.postDataJSON());});
   await page.goto('/?video=2');await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused)).toBe(true);
-  page.once('dialog',dialog=>dialog.dismiss());
-  await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('720p');
+  await page.locator('.player-controls').hover({force:true});await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('720p');
+  await page.getByRole('dialog',{name:'启用有损兼容播放？',exact:true}).getByRole('button',{name:'取消',exact:true}).click();
   expect(bodies).toHaveLength(1);await expect(page.getByRole('button',{name:'画质',exact:true})).toHaveAttribute('title',/原片优先/);
-  page.once('dialog',dialog=>dialog.accept());
-  await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('compat');
+  await page.locator('.player-controls').hover({force:true});await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('compat');
+  await page.getByRole('dialog',{name:'启用有损兼容播放？',exact:true}).getByRole('button',{name:'接受并继续',exact:true}).click();
   await expect.poll(()=>bodies.length).toBe(2);expect(bodies[1]).toMatchObject({allow_video_transcode:true,allow_audio_transcode:true,quality:'compat'});
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused)).toBe(true);
-  await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('auto');
+  await page.locator('.player-controls').hover({force:true});await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('auto');
   await expect.poll(()=>bodies.length).toBe(3);expect(bodies[2]).toMatchObject({allow_video_transcode:false,allow_audio_transcode:false,prefer_original:true,quality:'auto'});
+});
+
+test('fullscreen confirmation stays visible and Escape cancels without leaving fullscreen or granting conversion',async({page})=>{
+  const bodies:any[]=[];page.on('request',r=>{if(new URL(r.url()).pathname==='/api/media/2/playback')bodies.push(r.postDataJSON());});
+  await page.goto('/?video=2');await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBe(true);
+  await page.locator('.player-controls').hover({force:true});await page.getByRole('button',{name:'全屏',exact:true}).click();
+  await page.locator('.player-controls').hover({force:true});await page.getByRole('button',{name:'画质',exact:true}).click();await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('720p');
+  const confirm=page.getByRole('dialog',{name:'启用有损兼容播放？',exact:true});await expect(confirm).toBeVisible();expect(await confirm.evaluate(el=>document.fullscreenElement?.contains(el))).toBe(true);
+  await page.keyboard.press('Escape');await expect(confirm).toHaveCount(0);expect(await page.evaluate(()=>!!document.fullscreenElement)).toBe(true);expect(bodies.every(body=>!body.allow_video_transcode&&!body.allow_audio_transcode)).toBe(true);
 });

@@ -18,7 +18,7 @@ try{
   const state={id:identity,kind:'restore',state:'running',stage:'committing',done:0,total:0,cancellable:false,error:'',result:null};
   await page.route(`**/api/data-jobs/${identity}/restore`,route=>route.fulfill({status:202,json:state}));
   await page.route(`**/api/data-jobs/${identity}`,route=>route.fulfill({json:state}));
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'恢复所选备份'}).click();
+  await page.getByRole('button',{name:'恢复所选备份'}).click();await page.getByRole('dialog',{name:'恢复所选备份？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByText('提交恢复（不能取消）',{exact:true})).toBeVisible();
   await desktop.evaluate(({dialog})=>{dialog.showMessageBox=async(_window,options)=>{globalThis.__commitDialog=options;return {response:0,checkboxChecked:false};};});
   await page.getByRole('button',{name:'关闭窗口',exact:true}).click();

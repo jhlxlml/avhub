@@ -152,6 +152,22 @@ main>header {background:var(--ui-bg);border-color:var(--ui-divider);gap:20px;min
 .media-actions .media-menu>button .ui-icon {color:var(--ui-muted)}
 .media-actions .media-menu>button:hover,.media-actions .media-menu>button:focus-visible {background:var(--ui-hover);color:var(--ui-text)}
 .media-actions .media-menu>small {border-top:1px solid var(--ui-divider);margin:5px 4px 0;padding:9px 5px;color:var(--ui-muted);font-size:10px}
+.media-actions.media-menu-layer{position:fixed;inset:0;z-index:18;padding:0;pointer-events:none}
+.media-menu-layer .media-menu{box-sizing:border-box;overflow-y:auto;overscroll-behavior:contain;pointer-events:auto;scrollbar-width:thin}
+.media-menu-layer .media-menu>button{white-space:normal;overflow-wrap:anywhere}
+.media-menu-file-heading{border-top:1px solid var(--ui-divider);margin:6px 4px 0;padding:9px 5px 4px;color:var(--ui-muted);font-size:10px}
+.file-permission-fields{display:flex;flex-wrap:wrap;gap:10px;margin-top:7px}
+.file-permission-fields label{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ui-secondary)}
+.file-operation-list{list-style:none;padding:0;display:grid;gap:8px;max-height:340px;overflow:auto}
+.file-operation-list>li{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--ui-divider);border-radius:8px;background:var(--ui-field)}
+.file-operation-list>li>div{min-width:0;flex:1}.file-operation-list strong,.file-operation-list small,.file-operation-list code{display:block;font-size:11px;overflow-wrap:anywhere;white-space:normal}
+.file-operation-list small{color:var(--ui-muted);margin:5px 0}.file-operation-list .file-operation-error{color:var(--ui-danger)}
+.app-confirm-backdrop{z-index:30}.app-confirm-dialog{max-width:480px;width:100%}.app-confirm-details{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;border-radius:10px;background:var(--ui-field);border:1px solid var(--ui-divider);font-size:13px}
+.file-action-target{display:flex;align-items:center;gap:14px;margin:18px 0;padding:12px;border:1px solid var(--ui-divider);border-radius:12px;background:var(--ui-field)}
+.file-action-cover{width:112px;aspect-ratio:16/9;flex-shrink:0;border-radius:8px;overflow:hidden;display:grid;place-items:center;background:var(--ui-hover);color:var(--ui-muted)}
+.file-action-cover img{width:100%;height:100%;object-fit:contain}
+.file-action-target>div:last-child{min-width:0}.file-action-target strong{display:block;font-size:14px;overflow-wrap:anywhere}.file-action-target small{display:block;margin-top:6px;color:var(--ui-muted);overflow-wrap:anywhere}
+@media(max-width:540px){.file-action-cover{width:80px}.file-operation-list>li{align-items:flex-start;flex-direction:column}}
 
 /* Surfaces and dialogs share borders, radius, typography and action hierarchy. */
 .modal-backdrop {background:#03070cc7;backdrop-filter:blur(5px);padding:18px;z-index:20}

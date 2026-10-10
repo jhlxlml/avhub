@@ -284,8 +284,8 @@ test('creates a playlist from library cards and plays its queue in both directio
   await page.locator('.player-top').getByRole('button', { name: /返回媒体库/ }).click();
   await page.getByRole('button', { name: '播放列表', exact: true }).click();
   await page.getByRole('button', { name: /精选片单/ }).click();
-  page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '删除列表', exact: true }).click();
+  await page.getByRole('dialog',{name:'删除播放列表？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByText('还没有播放列表')).toBeVisible();
 });
 
@@ -461,7 +461,6 @@ test('media editor persists title, series classification, rating and tags', asyn
 });
 
 test('quality selection starts an HLS stream at the requested preset', async ({ page, request }) => {
-  page.on('dialog',dialog=>dialog.accept());
   const playbackRequests: Array<{ prefer_original?: boolean; force_transcode?: boolean }> = [];
   await page.route('**/api/media/1/playback', async route => {
     playbackRequests.push(route.request().postDataJSON());
@@ -476,6 +475,7 @@ test('quality selection starts an HLS stream at the requested preset', async ({ 
   await expect(page.getByRole('button', { name: '倍速', exact: true })).toHaveAttribute('title', '倍速：1.5×');
   await page.getByRole('button', { name: '画质', exact: true }).click();
   await page.getByRole('combobox', { name: '画质' }).selectOption('720p');
+  await page.getByRole('dialog',{name:'启用有损兼容播放？',exact:true}).getByRole('button',{name:'接受并继续',exact:true}).click();
   await expect(page.getByRole('button', { name: '画质', exact: true })).toHaveAttribute('title', '画质：720p');
   await expect.poll(async () => (await (await request.get('/test/sessions')).json()).count).toBe(1);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused)).toBeTruthy();

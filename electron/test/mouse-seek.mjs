@@ -55,7 +55,7 @@ try {
   await page.keyboard.press('Space');await expect(page.locator('.window-pin')).toHaveAttribute('aria-pressed','false');
   await page.goto(new URL('/',page.url()).href);assert.equal(await command('back'),false);
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
-  await page.getByLabel('鼠标侧键跳播时长').fill('17');page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(page.getByLabel('鼠标侧键跳播时长')).toHaveValue('17');
+  await page.getByLabel('鼠标侧键跳播时长').fill('17');await page.getByRole('button',{name:'关闭设置',exact:true}).click();await page.getByRole('dialog',{name:'放弃未保存的修改？',exact:true}).getByRole('button',{name:'取消',exact:true}).click();await expect(page.getByLabel('鼠标侧键跳播时长')).toHaveValue('17');
   await desktop.evaluate(({dialog})=>{globalThis.quitPrompts=[];dialog.showMessageBox=async(_window,options)=>{globalThis.quitPrompts.push(options);return {response:2,checkboxChecked:false};};});
   let rendererQuitPrompts=0;page.on('dialog',async dialog=>{rendererQuitPrompts++;await dialog.dismiss();});
   await page.getByRole('button',{name:'关闭窗口',exact:true}).click();await expect.poll(()=>desktop.evaluate(()=>globalThis.quitPrompts.length)).toBe(1);

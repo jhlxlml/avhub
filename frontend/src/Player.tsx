@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import type Hls from 'hls.js';
+import {confirmInApp} from './AppConfirm';
 import { api, request as httpRequest, json, duration, errorText, isHtmlResponse, readJson, SERVICE_MISMATCH, type ExternalSubtitle, type Media, type MediaUpdate, type QueuePage, type PlaylistSource, type PlaybackColor } from './api';
 import { MediaEditor } from './MediaEditor';
 import { toWebVtt } from './subtitleTimeline';
@@ -74,7 +75,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   changePlaylistPlayback:(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>)=>void;
   favoriteBusy: boolean; changeFavorite: (media: Media) => Promise<void>;
   registerNavigationGuard:(guard:()=>Promise<boolean>)=>()=>void;
-  notify:(message:string)=>void;
+  notify:(message:string,autoDismissMs?:number)=>void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const videoWrap = useRef<HTMLDivElement>(null);
@@ -179,7 +180,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   const [subtitleOffset, setSubtitleOffset] = useState(0);
   const metadataDirty = useRef(false);
   const metadataChanged = useCallback((dirty: boolean) => { metadataDirty.current = dirty; }, []);
-  const canDiscardMetadata = () => !metadataDirty.current || window.confirm('媒体信息尚未保存，放弃更改并离开吗？');
+  const canDiscardMetadata = async () => !metadataDirty.current || await confirmInApp('放弃未保存的修改？','媒体信息尚未保存，放弃更改并离开吗？','未保存的标题、标签等修改会丢失。','放弃修改',true);
   const [subtitleError, setSubtitleError] = useState('');
   const [subtitleLoading,setSubtitleLoading] = useState(false);
   const [subtitleAppearance, setSubtitleAppearance] = useState<SubtitleAppearance>(loadSubtitleAppearance);
@@ -284,7 +285,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
 
   useEffect(()=>registerNavigationGuard(async()=>{
     if(navigationBusy.current)return false;
-    if(!canDiscardMetadata())return false;
+    if(!await canDiscardMetadata())return false;
     navigationBusy.current=true;setClosing(true);video.current?.pause();
     try {await save();return true;}
     catch {return false;}
@@ -751,7 +752,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
 
   async function back() {
     if (desktopQuitting.current || navigationBusy.current) return;
-    if (!canDiscardMetadata()) return;
+    if (!await canDiscardMetadata()) return;
     navigationBusy.current = true;
     setClosing(true); video.current?.pause();
     try { await save(); if (activePlayer.current) close(); }
@@ -759,7 +760,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   }
   async function switchMedia(next: Media, automatic=false) {
     if (desktopQuitting.current || next.id === media.id || next.missing || navigationBusy.current) return;
-    if (!canDiscardMetadata()) return;
+    if (!await canDiscardMetadata()) return;
     navigationBusy.current = true;
     const intent=autoplayPreferences.current;
     setNextStarting(true);
@@ -779,6 +780,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   }
   async function startNextEpisode(automatic=false) {
     if (desktopQuitting.current) return;
+    if(automatic&&document.querySelector('.app-confirm-dialog'))return;
     if(nextEpisode?.id===media.id){
       if(navigationBusy.current)return;
       navigationBusy.current=true;setNextStarting(true);
@@ -795,7 +797,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     if (desktopQuitting.current) return;
     if(queueMode!=='random'){if(navigationSiblings?.next)await switchMedia(navigationSiblings.next);return;}
     if(navigationBusy.current)return;
-    if(!canDiscardMetadata())return;
+    if(!await canDiscardMetadata())return;
     navigationBusy.current=true;setNextStarting(true);video.current?.pause();
     try {
       await save();
@@ -921,16 +923,18 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     const stop=window.avhubDesktop?.onMouseSeek?.(direction=>seek(direction==='forward'?1:-1,'native'));
     return()=>{for(const type of ['pointerdown','mousedown','pointerup','mouseup','auxclick'])document.removeEventListener(type,side,true);document.removeEventListener('pointercancel',reset,true);window.removeEventListener('blur',reset);document.removeEventListener('mouseleave',reset);stop?.();};
   },[phase,closing,nextStarting,openSetting,media.id,media.duration]);
-  function changeQuality(value: Quality) {
-    if(value!=='auto'&&!window.confirm('这是有损兼容播放，不是原画：会重新编码视频，HDR/高位深可能变为 SDR/8-bit，低分辨率选项还会缩小画面。仅在你明确接受时使用。继续吗？')) {setOpenSetting(null);return;}
+  async function changeQuality(value: Quality) {
+    if(value!=='auto'&&!await confirmInApp('启用有损兼容播放？','不是原画：视频会重新编码，HDR/高位深可能变为 SDR/8-bit，低分辨率选项还会缩小画面。','仅在你明确接受画质损失时使用。','接受并继续',true)) {setOpenSetting(null);return;}
+    if(!activePlayer.current||desktopQuitting.current)return;
     if(value==='auto'){originalFailed.current=false;indexedTsFailed.current=false;indexedRemuxFailed.current=false;}
     setQuality(value);
     setOpenSetting(null);
     startAt(positionRef.current, value !== 'auto', value, audioTrack ? Number(audioTrack) : undefined,
       value === 'auto' && !audioTrack, !(video.current?.paused ?? true),value==='auto');
   }
-  function allowAudioCompatibility() {
-    if(!window.confirm('仅将不兼容的音轨转换为 AAC（音频有损），视频仍保持原编码、分辨率和色彩。继续吗？'))return;
+  async function allowAudioCompatibility() {
+    if(!await confirmInApp('启用有损音频兼容？','不兼容的音轨将转换为 AAC，音频有损；视频仍保持原编码、分辨率和色彩。','仅在你明确接受音频损失时使用。','接受并继续',true))return;
+    if(!activePlayer.current||desktopQuitting.current)return;
     setQuality('auto');setRequest(previous=>({...(previous||{quality:'auto' as const,key:0}),start:positionRef.current,
       force_transcode:false,prefer_original:false,skip_direct:true,allow_video_transcode:false,allow_audio_transcode:true,key:(previous?.key||0)+1}));
   }

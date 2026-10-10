@@ -22,7 +22,7 @@ test('complete backup restores custom cover and records after replacing the curr
   await page.getByLabel('选择备份文件',{exact:true}).setInputFiles({name:'library.zip',mimeType:'application/zip',buffer:payload});
   await page.getByRole('button',{name:'校验并预览备份',exact:true}).click();
   await expect(page.getByRole('region',{name:'备份恢复预览'})).toContainText('当前');
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'恢复所选备份',exact:true}).click();
+  await page.getByRole('button',{name:'恢复所选备份',exact:true}).click();await page.getByRole('dialog',{name:'恢复所选备份？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByRole('button',{name:'媒体库设置',exact:true})).toBeVisible();
   await expect.poll(async()=>Boolean((await(await request.get('/api/media/1')).json()).custom_cover)).toBe(true);
   const restored=await(await request.get('/api/media/1')).json();expect(restored.custom_cover).not.toBe(before.custom_cover);

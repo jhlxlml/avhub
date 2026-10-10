@@ -6,11 +6,17 @@ Downloads and version-specific release notes are available on [GitHub Releases](
 
 AVHub is an offline local video library and player for Windows. It brings multiple video directories into one interface, lets you browse by folder or by movie and series, and remembers favorites, playlists, and viewing progress.
 
+File organization is disabled by default. Grant rename/recycle permissions per directory in Settings → Media directories, then use a video's More actions menu to rename a single file or send it to the Windows Recycle Bin. Renaming updates the display title while retaining the media ID, favorites, progress and playlist membership; rename undo is not provided. The extension is locked. Same-directory sidecar subtitle associations survive renaming without changing or copying subtitle files; modified or replaced videos/subtitles require rematching or importing. Busy files are protected. This first stage supports local NTFS only, never overwrites a collision and never falls back to permanent deletion.
+
+Bulk selection supports Windows system recycling for up to 500 explicitly selected videos. Preview paths, total size and skipped items before confirming. Each file's permission, availability, activity and preview identity are checked again during serial execution. Previews expire after ten minutes. Stop prevents later operations but lets the current one finish; results retain success, failure, skipped and unstarted items. Batch renaming, permanent-delete fallback and application-owned video trash copies are not provided.
+
+Settings → Data management separates recycled, missing and review-required files, provides restoration checks and a system Recycle Bin entry point. Ordinary missing entries can be removed from the index, including their favorites, progress and playlist references, without touching disk files; recycled and review-required entries are protected. Rescanning the same path creates a new record. Restore deleted files through Windows to their original directory, then check restoration or refresh the library; mismatched file identities require review. AVHub stores operation metadata, not recycled video copies. Video editing, batch renaming and moving/copying are not included in this stage. Imported library backups require new directory grants; a database backup is not a source-video backup.
+
 ![AVHub main interface: video library, navigation and filters](docs/images/main.png)
 
 *Main interface preview; media covers and file details are obscured for privacy.*
 
-Videos stay in their original locations. The app does not offer operations to move, rename, or delete source videos. Indexes, artwork, settings, and viewing records are stored separately. Once dependencies are installed or a portable build is ready, everyday scanning and playback work offline, without online artwork or metadata scraping.
+Videos remain read-only by default. Only explicitly authorized directories allow single-file renaming or Windows system recycling; moving, permanent deletion and video editing are not provided. Indexes, artwork, settings, and viewing records are stored separately. Once dependencies are installed or a portable build is ready, everyday scanning and playback work offline, without online artwork or metadata scraping.
 
 The main project supports **Electron desktop only**, with always-on-top, adaptive borderless Pure Playback and native folder operations. React, FastAPI and localhost delivery are internal architecture, not a standalone browser product.
 

@@ -62,7 +62,7 @@ test('failed settings save leaves the previous duration active',async({page,requ
   const section=page.getByRole('region',{name:'鼠标侧键设置'});await section.getByLabel('鼠标侧键跳播时长').fill('10');
   await section.getByRole('button',{name:'保存鼠标快捷键'}).click();await expect(section.getByRole('alert')).toContainText('模拟保存失败');
   expect((await(await request.get('/api/preferences')).json()).values.mouseSeekSeconds).toBeUndefined();
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'关闭设置',exact:true}).click();await player(page);await side(page,4);await expect.poll(()=>time(page)).toBeCloseTo(45,1);
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();await page.getByRole('dialog',{name:'放弃未保存的修改？',exact:true}).getByRole('button',{name:'放弃修改',exact:true}).click();await player(page);await side(page,4);await expect.poll(()=>time(page)).toBeCloseTo(45,1);
 });
 test('media action menu blocks both keyboard and mouse side-key seeking',async({page})=>{
   await player(page);await page.locator('.media-more').first().click();await expect(page.getByRole('menu')).toBeVisible();

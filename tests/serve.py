@@ -151,6 +151,7 @@ def reset():
     # A browser closed by the runner may not send its final beacon. Reset the
     # test-only transient playback state so leases cannot cross test cases.
     with m.thumbnail_service.lock:m.thumbnail_service.playback_leases.clear()
+    with m.file_service.lock:m.file_service.activities.clear();m.file_service.retired_owners.clear()
     with m.thumbnail_service.mutation(),m.connection() as db:
         db.execute('DELETE FROM media')
         db.execute('DELETE FROM thumbnail_jobs')

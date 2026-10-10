@@ -23,8 +23,8 @@ test('cleanup preview explicitly confirms and refuses stale contents',async({pag
   await page.route('**/api/storage/cleanup',route=>{calls++;return route.fulfill({status:409,json:{detail:'可清理内容已变化，请刷新预览后再确认'}});});
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置'}).click();await page.getByRole('tab',{name:'数据管理'}).click();
   await expect(page.locator('.storage-preview')).toContainText('可清理 1 个');expect(calls).toBe(0);
-  page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'清理已预览内容'}).click();expect(calls).toBe(0);
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'清理已预览内容'}).click();
+  await page.getByRole('button',{name:'清理已预览内容'}).click();await page.getByRole('dialog',{name:'清理已预览内容？',exact:true}).getByRole('button',{name:'取消',exact:true}).click();expect(calls).toBe(0);
+  await page.getByRole('button',{name:'清理已预览内容'}).click();await page.getByRole('dialog',{name:'清理已预览内容？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByRole('alert')).toContainText('可清理内容已变化');expect(calls).toBe(1);await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();
 });
 
@@ -50,7 +50,7 @@ test('restore commit disables cancellation, navigation and dismissal until compl
   await expect.poll(()=>identity).not.toBe('');const state={id:identity,kind:'restore',state:'running',stage:'committing',done:0,total:0,cancellable:false,error:'',result:null};
   await page.route(`**/api/data-jobs/${identity}/restore`,route=>{committing=true;return route.fulfill({status:202,json:state});});
   await page.route(`**/api/data-jobs/${identity}`,route=>committing?route.fulfill({json:state}):route.continue());
-  page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'恢复所选备份'}).click();
+  await page.getByRole('button',{name:'恢复所选备份'}).click();await page.getByRole('dialog',{name:'恢复所选备份？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByText('提交恢复（不能取消）',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'取消数据任务'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'关闭设置'})).toBeDisabled();await expect(page.getByRole('tab',{name:'媒体目录'})).toBeDisabled();
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toBeVisible();
@@ -110,7 +110,7 @@ for(const failure of ['rejected','preferences','uncertain'] as const){
       await page.getByRole('tab',{name:'媒体目录'}).click();await page.getByRole('checkbox',{name:'封面悬停预览'}).check();await page.getByRole('tab',{name:'数据管理'}).click();
     }
     if(failure==='uncertain')await page.route(`**/api/data-jobs/${identity}`,route=>unavailable?route.abort():route.continue());
-    page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'恢复所选备份'}).click();
+    await page.getByRole('button',{name:'恢复所选备份'}).click();await page.getByRole('dialog',{name:'恢复所选备份？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
     if(failure==='uncertain'){
       await expect(page.getByRole('button',{name:'重新检查恢复状态'})).toBeVisible();await expect(page.getByRole('button',{name:'关闭设置'})).toBeDisabled();
       unavailable=false;await page.getByRole('button',{name:'重新检查恢复状态'}).click();

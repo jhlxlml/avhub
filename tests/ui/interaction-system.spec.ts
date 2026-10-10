@@ -158,7 +158,7 @@ test('shared dialog does not dismiss a drag starting inside and reports write er
   await page.getByRole('button', { name: '添加目录', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('测试目录添加失败');
   await expect(page.getByRole('alert')).toHaveClass(/ui-status.*error/);
-  page.once('dialog',dialog=>dialog.accept());
   await page.mouse.click(2, 2);
+  await page.getByRole('dialog',{name:'放弃未保存的修改？',exact:true}).getByRole('button',{name:'放弃修改',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });

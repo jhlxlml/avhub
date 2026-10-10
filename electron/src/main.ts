@@ -193,6 +193,59 @@ ipcMain.handle('avhub:media-action',async(event,mediaId:unknown,action:unknown)=
   return {ok:true};
 });
 
+let fileActionBusy=false;
+function recycleError(error:unknown):string {
+  const value=error as {code?:string;message?:string},message=String(value?.message||error);
+  if(value?.code==='EBUSY'||/\b(?:WinError\s*|winerror\s*[:=]\s*)(32|33)\b/i.test(message))return '文件正被其他程序占用，请关闭对应程序后重试；应用不会自动关闭它们';
+  if(value?.code==='EACCES'||value?.code==='EPERM')return '系统拒绝访问，请检查文件权限、只读属性或安全软件；不会改为永久删除';
+  if(value?.code==='ENOENT')return '源文件或目录已不存在，请刷新媒体库并核对操作记录';
+  return `回收站操作未完成：${message.slice(0,180)}。请检查文件占用、权限以及该位置是否支持系统回收站；不会改为永久删除`;
+}
+ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
+  trustedWindow(event);
+  if(fileActionBusy||shuttingDown||allowQuit)throw new Error('文件操作尚未完成或应用正在退出');
+  const value=input as {action?:string;id?:number|string;ids?:number[];previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean};
+  if(!value||!['rename','recycle','permissions','recycle-bin','recheck','forget','preview','release-preview'].includes(value.action||''))throw new Error('文件操作参数无效');
+  if(value.action==='recycle-bin'){await shell.openExternal('shell:RecycleBinFolder');return {ok:true};}
+  const action=value.action;
+  if(action==='preview'){
+    if(!Array.isArray(value.ids)||!value.ids.length||value.ids.length>500||value.ids.some(id=>typeof id!=='number'||!Number.isSafeInteger(id)||id<=0))throw new Error('请选择 1–500 个有效视频');
+  }else if(action!=='release-preview'&&(typeof value.id!=='number'||!Number.isSafeInteger(value.id)||value.id<=0))throw new Error('媒体或目录标识无效');
+  if(action==='release-preview'&&typeof value.previewToken!=='string')throw new Error('回收预览标识无效');
+  if(value.previewToken!==undefined&&(typeof value.previewToken!=='string'||!/^[a-f0-9]{32}$/.test(value.previewToken)))throw new Error('回收预览标识无效');
+  if(action==='rename'&&(typeof value.stem!=='string'||value.stem.length>255))throw new Error('新文件名无效');
+  if(action==='permissions'&&(typeof value.rename!=='boolean'||typeof value.recycle!=='boolean'))throw new Error('目录权限无效');
+  const call=async(route:string,body:unknown,method='POST')=>{
+    const response=await fetch(`http://127.0.0.1:${backendPort}${route}`,{method,headers:{'X-AVHub-Token':sessionToken,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('本地文件服务响应异常，请查看操作记录后重启');
+    const result=await response.json() as {detail?:string;id?:string;source?:string;media_id?:number};
+    if(!response.ok)throw new Error(result.detail||'文件操作未完成');return result;
+  };
+  fileActionBusy=true;
+  try {
+    if(action==='preview')return await call('/api/file-operations/preview',{media_ids:value.ids});
+    if(action==='release-preview')return await call(`/api/file-operations/preview/${value.previewToken}`,{},'DELETE');
+    if(action==='permissions')return await call(`/api/roots/${value.id}/file-permissions`,{rename:value.rename,recycle:value.recycle},'PUT');
+    if(action==='recheck')return await call(`/api/media/${value.id}/recheck-file`,{});
+    if(action==='forget')return await call(`/api/media/${value.id}/forget-missing`,{});
+    const operation=await call('/api/file-operations',{media_id:value.id,action,stem:value.stem,preview_token:value.previewToken});
+    if(action==='rename')return operation;
+    try {
+      const checked=await call(`/api/file-operations/${operation.id}/verify`,{});
+      if(typeof checked.source!=='string'||await realpath(checked.source)!==checked.source)throw new Error('源文件路径发生变化');
+      // Windows Electron's progress sink vetoes non-recyclable deletes.
+      // No unlink/remove fallback, custom trash directory, or video copies.
+      await shell.trashItem(checked.source);
+    }catch(error){
+      const message=recycleError(error);
+      try{await call(`/api/file-operations/${operation.id}/result`,{success:false,error:message});}
+      catch(reportError){throw new Error(`${message}；结果未能确认：${String(reportError)}。请核对操作记录、原目录和系统回收站，不要重复操作`);}
+      throw new Error(message);
+    }
+    return await call(`/api/file-operations/${operation.id}/result`,{success:true});
+  } finally {fileActionBusy=false;}
+});
+
 ipcMain.handle('avhub:screenshot-action',async(event,id:unknown,action:unknown)=>{
   trustedWindow(event);
   if(!((action==='reveal'&&typeof id==='string'&&/^[a-f0-9]{32}$/.test(id))||(action==='folder'&&id===null)))throw new Error('截图操作参数无效');
@@ -526,6 +579,7 @@ async function stopBackend() {
 
 app.on('before-quit', event => {
   if (allowQuit) return;
+  if(fileActionBusy){event.preventDefault();if(mainWindow&&!mainWindow.isDestroyed())void dialog.showMessageBox(mainWindow,{type:'info',title:'文件操作正在进行',message:'请等待文件操作结果后再关闭应用。',buttons:['返回应用']});return;}
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;

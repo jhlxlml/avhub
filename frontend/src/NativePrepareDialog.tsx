@@ -20,7 +20,7 @@ export function NativePrepareDialog({media,close,play}:{media:Media;close:()=>vo
   },[media.id]);
   async function action(kind:'start'|'cancel'|'clear') {
     if(busy)return;
-    if(kind==='clear'&&!confirmAction('清理无损副本？',media.title,'只清理应用生成的无损副本，原视频及媒体库记录不修改。继续吗？'))return;
+    if(kind==='clear'&&!await confirmAction('清理无损副本？',media.title,'只清理应用生成的无损副本，原视频及媒体库记录不修改。继续吗？'))return;
     setBusy(true);setError('');
     try{
       await api(`/api/media/${media.id}/native-prepare${kind==='cancel'?'/cancel':''}`,{method:kind==='clear'?'DELETE':'POST'});

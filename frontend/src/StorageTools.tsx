@@ -18,8 +18,8 @@ export function StorageTools({busy,changeBusy,scanning,enabled}:{busy:boolean;ch
   async function clean(){
     if(!report||busy)return;
     const plan=report.cleanup;
-    if(!confirmAction('清理已预览内容？',`永久清理 ${plan.files} 个应用文件，约 ${size(plan.bytes)}。`,'原视频及手动封面不变。继续吗？'))return;
-    if(plan.rollback_files>0&&!confirmAction('删除旧回滚数据库？',`其中包含 ${plan.rollback_files} 个旧恢复前数据库，删除后不可恢复。`,'建议先保存完整备份。确认删除这些副本吗？'))return;
+    if(!await confirmAction('清理已预览内容？',`永久清理 ${plan.files} 个应用文件，约 ${size(plan.bytes)}。`,'原视频及手动封面不变。继续吗？'))return;
+    if(plan.rollback_files>0&&!await confirmAction('删除旧回滚数据库？',`其中包含 ${plan.rollback_files} 个旧恢复前数据库，删除后不可恢复。`,'建议先保存完整备份。确认删除这些副本吗？'))return;
     changeBusy(true);setError('');setNotice('');
     try{
       const result=await api<{removed:number;freed_bytes:number;skipped:number}>('/api/storage/cleanup',json('POST',{token:plan.token,rollback_days:plan.rollback_days}));

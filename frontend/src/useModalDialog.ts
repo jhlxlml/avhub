@@ -29,6 +29,7 @@ export function useModalDialog(ref: RefObject<HTMLElement | null>, busy: boolean
     };
     focusFirst();
     const keydown = (event: KeyboardEvent) => {
+      if(dialog.closest('[inert]'))return;
       if (event.key === 'Escape') {
         event.preventDefault(); event.stopImmediatePropagation();
         if (!latest.current.busy) latest.current.close();
@@ -42,6 +43,7 @@ export function useModalDialog(ref: RefObject<HTMLElement | null>, busy: boolean
       }
     };
     const focusin = (event: FocusEvent) => {
+      if(dialog.closest('[inert]'))return;
       const target=event.target;
       if(target instanceof Element&&target.closest('.desktop-titlebar'))return;
       if (!dialog.contains(target as Node)) focusFirst();

@@ -67,7 +67,7 @@ jobs:
         # Shared renderer tests are harnesses, not browser product acceptance.
         run: python tests/check_path_alias.py --ui
       - name: Renderer interaction and theme regression harness
-        run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts
+        run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts tests/ui/media-menu-position.spec.ts tests/ui/file-management.spec.ts tests/ui/batch-recycle.spec.ts
       - name: Real Electron startup/exit
         run: node electron/test/smoke.mjs
       - name: Startup trace unit regression
@@ -78,6 +78,10 @@ jobs:
         run: node electron/test/mouse-seek.mjs
       - name: Real Electron cover external player dispatch
         run: node electron/test/external-player-button.mjs
+      - name: Real Electron opt-in file organization with owned TEMP samples
+        run: node electron/test/file-management.mjs
+      - name: Native batch recycle safety regression
+        run: node electron/test/batch-recycle.mjs
       - name: Native text editing menu regression
         run: |
           node electron/test/text-edit-menu-policy.mjs

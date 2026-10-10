@@ -83,8 +83,8 @@ test('empty state, unavailable cover and all-offline list remain usable',async({
   await expect(page.getByText('列表为空，可在视频封面上点击“加入播放列表”。')).toBeVisible();
   await page.getByRole('button',{name:'删除列表',exact:true}).click({trial:true});
   // The existing delete confirmation must still protect a list.
-  page.once('dialog',dialog=>dialog.accept());
   await page.getByRole('button',{name:'删除列表',exact:true}).click();
+  await page.getByRole('dialog',{name:'删除播放列表？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
   await expect(page.getByText(/还没有播放列表/)).toBeVisible();
   expect((await request.get(`/api/playlists/${list.id}?page=1`)).status()).toBe(404);
   await page.getByRole('button',{name:'完成',exact:true}).click();
