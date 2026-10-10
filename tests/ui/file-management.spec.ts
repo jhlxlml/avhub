@@ -43,13 +43,17 @@ test('operation history retains results without a rename undo entry',async({page
 });
 
 test('file state filters distinguish missing and recycled; checks use only media IDs',async({page})=>{
-  await page.route('**/api/file-states?**',route=>{
+  let reads=0;
+  await page.route('**/api/file-states?**',async route=>{
+    // Keep refresh and completion statuses simultaneously visible to reproduce
+    // slower CI responses instead of assuming there is only one live region.
+    if(++reads>=3)await new Promise(resolve=>setTimeout(resolve,250));
     const state=new URL(route.request().url()).searchParams.get('state');const status=state==='missing'?'missing':'recycled';
     return route.fulfill({json:{items:[{id:2,name:'second.mp4',title:'视频 002',path:'D:\\media\\second.mp4',status}],total:1,page:1,pages:1}});
   });
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();
   const section=page.getByRole('region',{name:'文件状态管理'});await expect(section).toContainText('已移入系统回收站 · 视频 002');await section.getByLabel('文件状态筛选').selectOption('missing');await expect(section).toContainText('文件缺失 · 视频 002');
-  await section.getByRole('button',{name:'核对恢复',exact:true}).click();await expect(section.getByRole('status')).toContainText('已核对文件状态');expect(await page.evaluate(()=>(window as any).fileCalls)).toEqual([{action:'recheck',id:2}]);
+  await section.getByRole('button',{name:'核对恢复',exact:true}).click();await expect(section.getByRole('status').filter({hasText:'已核对文件状态'})).toBeVisible();await expect(section.locator('.ui-status.loading')).toHaveCount(0);expect(await page.evaluate(()=>(window as any).fileCalls)).toEqual([{action:'recheck',id:2}]);
   await section.getByRole('button',{name:'仅移除记录',exact:true}).click();const confirm=page.getByRole('dialog',{name:'仅移除缺失记录？',exact:true});await expect(confirm).toContainText('不删除磁盘文件');await confirm.getByRole('button',{name:'取消',exact:true}).click();expect(await page.evaluate(()=>(window as any).fileCalls.length)).toBe(1);
-  await section.getByRole('button',{name:'仅移除记录',exact:true}).click();await confirm.getByRole('button',{name:'移除记录',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).fileCalls.length)).toBe(2);expect(await page.evaluate(()=>(window as any).fileCalls[1])).toEqual({action:'forget',id:2});
+  await section.getByRole('button',{name:'仅移除记录',exact:true}).click();await confirm.getByRole('button',{name:'移除记录',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).fileCalls.length)).toBe(2);expect(await page.evaluate(()=>(window as any).fileCalls[1])).toEqual({action:'forget',id:2});await expect(section.locator('.ui-status.loading')).toHaveCount(0);
 });
