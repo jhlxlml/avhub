@@ -1,12 +1,12 @@
 // All mutations and the real system-recycle acceptance use unique TEMP samples.
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
-import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,renameSync,existsSync,realpathSync} from 'node:fs';
-import {tmpdir} from 'node:os';
+import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync} from 'node:fs';
+import {ownedTemporaryWorkspace} from './owned-temp-workspace.mjs';
 import {spawnSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
-const root=path.resolve(import.meta.dirname,'../..'),workspace=realpathSync(mkdtempSync(path.join(tmpdir(),'avhub-file-acceptance-')));
+const root=path.resolve(import.meta.dirname,'../..'),workspace=ownedTemporaryWorkspace('avhub-file-acceptance-');
 const data=path.join(workspace,'profile'),media=path.join(workspace,'media');mkdirSync(media);
 const basename='AVHub-owned-'+randomUUID();let file=path.join(media,basename+'.mp4');
 assert.equal(spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','lavfi','-i','color=c=navy:s=320x180:r=25','-t','3','-c:v','libx264','-pix_fmt','yuv420p',file],{windowsHide:true,timeout:15000}).status,0);
