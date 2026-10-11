@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('avhubDesktop', {
   appCommand:(command:'data-folder'|'project-page')=>ipcRenderer.invoke('avhub:app-command',command) as Promise<{ok:boolean}>,
   screenshotAction:(id:string|null,action:'reveal'|'folder')=>ipcRenderer.invoke('avhub:screenshot-action',id,action) as Promise<{ok:boolean}>,
   mediaAction:(mediaId:number,action:'reveal'|'open')=>ipcRenderer.invoke('avhub:media-action',mediaId,action) as Promise<{ok:boolean}>,
-  fileOperation:(value:{action:'rename'|'recycle'|'permissions'|'recycle-bin'|'recheck'|'forget'|'preview'|'release-preview';id?:number;ids?:number[];previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean})=>ipcRenderer.invoke('avhub:file-operation',value),
+  fileOperation:(value:{action:'rename'|'recycle'|'permissions'|'recycle-bin'|'recheck'|'forget'|'preview'|'release-preview'|'restore-record'|'delete-record'|'clear-record'|'preview-records'|'release-record-preview'|'recheck-record'|'resolve-source';id?:number|string;ids?:number[];recordIds?:string[];recordAction?:'restore'|'delete'|'clear';previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean;permanentDelete?:boolean;decision?:'keep'|'reset';signature?:string;confirmed?:boolean})=>ipcRenderer.invoke('avhub:file-operation',value),
   getWindowState: () => ipcRenderer.invoke('avhub:window-state'),
   setWindowMode: (value: {purePlayback?:boolean;alwaysOnTop?:boolean;videoAspectRatio?:number}) => ipcRenderer.invoke('avhub:window-mode', value),
   windowAction: (action:'minimize'|'maximize'|'close') => ipcRenderer.invoke('avhub:window-action', action),

@@ -2,8 +2,26 @@ import {test,expect} from '@playwright/test';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
+for(const theme of ['dark','light'])test(`${theme}: conditions live only in more filters and collapsing preserves them`,async({page,request})=>{
+  await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
+  await page.goto('/?root=1&q=视频&format=mp4&resolution=FHD');
+  const toggle=page.getByRole('button',{name:/^更多筛选/});await expect(toggle).toHaveAttribute('aria-expanded','false');
+  await expect(page.locator('.library-heading')).not.toContainText('筛选');
+  await toggle.click();const panel=page.getByRole('region',{name:'高级筛选',exact:true});
+  await expect(panel.getByRole('region',{name:'当前筛选条件'})).toContainText('筛选 4 项');
+  await expect(panel.getByRole('button',{name:'清除全部筛选',exact:true})).toBeVisible();
+  await page.screenshot({path:`build/more-filters-${theme}.png`});
+  await toggle.click();await expect(panel).toHaveCount(0);await expect(page).toHaveURL(/format=mp4/);
+  await toggle.click();await expect(panel.getByRole('combobox',{name:'视频格式'})).toHaveValue('mp4');
+  await page.setViewportSize({width:760,height:700});expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await panel.getByRole('button',{name:'清除全部筛选',exact:true}).click();await expect(panel).toBeVisible();await expect(panel).toContainText('尚未设置筛选条件');
+});
+
 test('filter chips clear only their condition, reset pages, and preserve the category',async({page})=>{
   await page.goto('/?view=movies&q=002&format=mp4&watch=unwatched&page=2');
+  await expect(page.locator('.library-heading .library-filter-summary')).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'当前筛选条件'})).toHaveCount(0);
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   const filters=page.getByRole('region',{name:'当前筛选条件'});
   await expect(filters.getByRole('button',{name:'移除筛选：搜索：002',exact:true})).toBeVisible();
   await filters.getByRole('button',{name:'移除筛选：搜索：002',exact:true}).focus();await page.keyboard.press('Enter');
@@ -18,13 +36,15 @@ test('clearing a season filter preserves the series detail and returns keyboard 
   await request.patch('/api/media/2',{data:{kind:'episode',series_title:'季筛选验收',season:1,episode:1}});
   const groups=await(await request.get('/api/series?q=季筛选验收&page=1&page_size=48')).json();const id=groups.items[0].id;
   await page.goto(`/?view=series&grouped=true&show=${id}&season=1`);
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   const summary=page.getByRole('region',{name:'当前筛选条件'});await summary.getByRole('button',{name:'移除筛选：季：第 1 季',exact:true}).focus();await page.keyboard.press('Enter');
   await expect(summary).toHaveCount(0);expect(new URL(page.url()).searchParams.get('show')).toBe(String(id));expect(new URL(page.url()).searchParams.has('season')).toBe(false);
-  await expect(page.getByRole('combobox',{name:'选择季',exact:true})).toBeFocused();
+  await expect(page.getByRole('button',{name:/^更多筛选/})).toBeFocused();
 });
 
 test('root-chip removal also clears subfolder scope and wide/compact resolution controls agree',async({page})=>{
   await page.goto('/?root=1&folder=sub-folder&recursive=false');
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   await page.getByRole('region',{name:'当前筛选条件'}).getByRole('button',{name:/^移除筛选：目录：/}).click();
   expect(new URL(page.url()).searchParams.has('root')).toBe(false);expect(new URL(page.url()).searchParams.has('folder')).toBe(false);
   await page.setViewportSize({width:800,height:620});

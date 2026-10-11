@@ -68,6 +68,8 @@ jobs:
         run: python tests/check_path_alias.py --ui
       - name: Renderer interaction and theme regression harness
         run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts tests/ui/media-menu-position.spec.ts tests/ui/file-management.spec.ts tests/ui/batch-recycle.spec.ts
+      - name: Recycle records and filter containment renderer harnesses
+        run: npx playwright test tests/ui/recycle-records.spec.ts tests/ui/library-refinement.spec.ts tests/ui/source-changes.spec.ts
       - name: Real Electron startup/exit
         run: node electron/test/smoke.mjs
       - name: Startup trace unit regression
@@ -84,6 +86,10 @@ jobs:
         run: node electron/test/file-management.mjs
       - name: Native batch recycle safety regression
         run: node electron/test/batch-recycle.mjs
+      - name: Native recycle records with isolated owned samples
+        run: node electron/test/recycle-records.mjs
+      - name: Native external file identity and explicit replacement acceptance
+        run: node electron/test/media-identity.mjs
       - name: Native text editing menu regression
         run: |
           node electron/test/text-edit-menu-policy.mjs

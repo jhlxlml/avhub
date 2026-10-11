@@ -32,7 +32,7 @@ export function BatchRecycle({ids,close,done}:{ids:number[];close:()=>void;done:
     if(locked.current||phase!=='ready'||!eligible.length)return;
     locked.current=true;setPhase('confirming');setError('');
     const confirmed=await confirmInApp(`确认回收 ${eligible.length} 个视频？`,`文件总大小约 ${fileSizeLabel(bytes)||'未知'}；跳过 ${items.length-eligible.length} 个不可操作项。`,
-      '将逐项移入 Windows 系统回收站，不永久删除，也不修改视频内容。收藏、进度和片单保留。还原请使用系统回收站。','确认回收',true);
+      '将逐项移入 Windows 系统回收站，不永久删除，也不修改视频内容。收藏、进度和片单保留。可从回收记录恢复。','确认回收',true);
     if(!confirmed||!active.current){locked.current=false;if(active.current)setPhase('ready');return;}
     setPhase('running');const succeeded:number[]=[];
     try{

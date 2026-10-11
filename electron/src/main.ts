@@ -204,17 +204,25 @@ function recycleError(error:unknown):string {
 ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
   trustedWindow(event);
   if(fileActionBusy||shuttingDown||allowQuit)throw new Error('文件操作尚未完成或应用正在退出');
-  const value=input as {action?:string;id?:number|string;ids?:number[];previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean};
-  if(!value||!['rename','recycle','permissions','recycle-bin','recheck','forget','preview','release-preview'].includes(value.action||''))throw new Error('文件操作参数无效');
+  const value=input as {action?:string;id?:number|string;ids?:number[];recordIds?:string[];recordAction?:string;previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean;permanentDelete?:boolean;decision?:string;signature?:string;confirmed?:boolean};
+  if(!value||!['rename','recycle','permissions','recycle-bin','recheck','forget','preview','release-preview','restore-record','delete-record','clear-record','preview-records','release-record-preview','recheck-record','resolve-source'].includes(value.action||''))throw new Error('文件操作参数无效');
   if(value.action==='recycle-bin'){await shell.openExternal('shell:RecycleBinFolder');return {ok:true};}
   const action=value.action;
-  if(action==='preview'){
+  const recordAction=['restore-record','delete-record','clear-record','recheck-record','resolve-source'].includes(action!);
+  if(recordAction){
+    if(typeof value.id!=='string'||!/^[a-f0-9]{32}$/.test(value.id))throw new Error('回收记录标识无效');
+    if(action==='delete-record'&&value.confirmed!==true)throw new Error('永久删除需要明确确认');
+  }else if(action==='preview-records'){
+    if(!Array.isArray(value.recordIds)||!value.recordIds.length||value.recordIds.length>500||value.recordIds.some(id=>typeof id!=='string'||!/^[a-f0-9]{32}$/.test(id))||!['restore','delete','clear'].includes(value.recordAction||''))throw new Error('回收记录预览参数无效');
+  }else if(action==='preview'){
     if(!Array.isArray(value.ids)||!value.ids.length||value.ids.length>500||value.ids.some(id=>typeof id!=='number'||!Number.isSafeInteger(id)||id<=0))throw new Error('请选择 1–500 个有效视频');
-  }else if(action!=='release-preview'&&(typeof value.id!=='number'||!Number.isSafeInteger(value.id)||value.id<=0))throw new Error('媒体或目录标识无效');
-  if(action==='release-preview'&&typeof value.previewToken!=='string')throw new Error('回收预览标识无效');
+  }else if(!['release-preview','release-record-preview'].includes(action!)&&(typeof value.id!=='number'||!Number.isSafeInteger(value.id)||value.id<=0))throw new Error('媒体或目录标识无效');
+  if(['release-preview','release-record-preview'].includes(action!)&&typeof value.previewToken!=='string')throw new Error('回收预览标识无效');
   if(value.previewToken!==undefined&&(typeof value.previewToken!=='string'||!/^[a-f0-9]{32}$/.test(value.previewToken)))throw new Error('回收预览标识无效');
   if(action==='rename'&&(typeof value.stem!=='string'||value.stem.length>255))throw new Error('新文件名无效');
   if(action==='permissions'&&(typeof value.rename!=='boolean'||typeof value.recycle!=='boolean'))throw new Error('目录权限无效');
+  if(value.permanentDelete!==undefined&&typeof value.permanentDelete!=='boolean')throw new Error('永久删除权限参数无效');
+  if(action==='resolve-source'&&(!['keep','reset'].includes(value.decision||'')||typeof value.signature!=='string'||!/^[a-f0-9]{64}$/.test(value.signature)))throw new Error('来源确认参数无效');
   const call=async(route:string,body:unknown,method='POST')=>{
     const response=await fetch(`http://127.0.0.1:${backendPort}${route}`,{method,headers:{'X-AVHub-Token':sessionToken,'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('本地文件服务响应异常，请查看操作记录后重启');
@@ -223,9 +231,14 @@ ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
   };
   fileActionBusy=true;
   try {
+    if(action==='resolve-source')return await call(`/api/source-changes/${value.id}/resolve`,{decision:value.decision,signature:value.signature});
+    if(action==='preview-records')return await call('/api/recycle-records/preview',{record_ids:value.recordIds,action:value.recordAction});
+    if(action==='release-record-preview')return await call(`/api/recycle-records/preview/${value.previewToken}`,{},'DELETE');
+    if(action==='recheck-record')return await call(`/api/recycle-records/${value.id}/recheck`,{});
+    if(recordAction)return await call(`/api/recycle-records/${value.id}`,{action:action!.split('-')[0],confirmed:value.confirmed===true,preview_token:value.previewToken});
     if(action==='preview')return await call('/api/file-operations/preview',{media_ids:value.ids});
     if(action==='release-preview')return await call(`/api/file-operations/preview/${value.previewToken}`,{},'DELETE');
-    if(action==='permissions')return await call(`/api/roots/${value.id}/file-permissions`,{rename:value.rename,recycle:value.recycle},'PUT');
+    if(action==='permissions')return await call(`/api/roots/${value.id}/file-permissions`,{rename:value.rename,recycle:value.recycle,permanent_delete:value.permanentDelete===true},'PUT');
     if(action==='recheck')return await call(`/api/media/${value.id}/recheck-file`,{});
     if(action==='forget')return await call(`/api/media/${value.id}/forget-missing`,{});
     const operation=await call('/api/file-operations',{media_id:value.id,action,stem:value.stem,preview_token:value.previewToken});

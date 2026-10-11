@@ -1,7 +1,7 @@
 {
   "name": "avhub",
   "private": true,
-  "version": "0.2.12",
+  "version": "0.2.13",
   "main": "electron/dist/main.js",
   "scripts": {
     "prebuild": "node scripts/write-build-info.mjs",
@@ -26,6 +26,7 @@
     "test:electron:library-refinement": "npm run build && npm run build:electron && node electron/test/library-refinement.mjs",
     "test:electron:permissions": "npm run build:electron && node electron/test/permission-policy.mjs",
     "test:electron:logs": "npm run build:electron && node electron/test/logs.mjs",
+    "test:electron:recycle-records": "npm run build && npm run build:electron && node electron/test/recycle-records.mjs",
     "test:electron:data-commit": "npm run build && npm run build:electron && node electron/test/data-commit.mjs",
     "test:electron:data-location": "npm run build && npm run build:electron && node electron/test/data-location.mjs",
     "test:electron:shutdown": "npm run build && npm run build:electron && node electron/test/shutdown-policy.mjs && node electron/test/shutdown.mjs"

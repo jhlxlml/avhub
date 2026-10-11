@@ -23,7 +23,7 @@ export function LibraryFilters({value,roots,change,grouped=false}:{value:Library
     if(focusIndex.current===null)return;
     if(document.activeElement===document.body){
       const buttons=panel.current?.querySelectorAll<HTMLButtonElement>('button');
-      const target=buttons?.length?buttons[Math.min(focusIndex.current,buttons.length-1)]:document.querySelector<HTMLElement>('.series-heading select')||document.querySelector<HTMLElement>('.toolbar .sort-select,.toolbar select');
+      const target=buttons?.length?buttons[Math.min(focusIndex.current,buttons.length-1)]:document.querySelector<HTMLElement>('.advanced-filters select')||document.querySelector<HTMLElement>('.advanced-toggle');
       target?.focus({preventScroll:true});
     }
     focusIndex.current=null;

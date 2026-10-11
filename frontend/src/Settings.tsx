@@ -19,6 +19,7 @@ import {useDraftGuard} from './useDraftGuard';
 import {ThumbnailSummary} from './ThumbnailSummary';
 import {confirmInApp} from './AppConfirm';
 import {desktopFile,FileOperationHistory,FileStatePanel,type FilePermission} from './FileManagement';
+import {SourceChanges} from './SourceChanges';
 
 const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'help',label:'帮助',icon:'help'}];
 
@@ -48,11 +49,11 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
   const shownRoots = matching.slice((page - 1) * 20, page * 20);
   const statusIds = shownRoots.map(root => root.id).join(',');
   useEffect(()=>{if(!statusIds||tab!=='directories')return;const controller=new AbortController();void api<FilePermission[]>(`/api/file-permissions?ids=${statusIds}`,{signal:controller.signal}).then(values=>{if(!controller.signal.aborted)setFilePermissions(Object.fromEntries(values.map(value=>[value.root_id,value])));}).catch(()=>{});return()=>controller.abort();},[statusIds,tab,roots]);
-  async function permission(root:Root,action:'rename'|'recycle',enabled:boolean){
+  async function permission(root:Root,action:'rename'|'recycle'|'permanentDelete',enabled:boolean){
     const current=filePermissions[root.id];if(!current||busy||scanning)return;
-    if(enabled&&!await confirmInApp('开启文件整理权限？',root.path,`允许${action==='rename'?'修改真实文件名并同步标题':'移入 Windows 系统回收站'}。该授权只作用于此目录，更具体的子目录授权优先；不会修改视频内容。`,'开启权限'))return;
+    if(enabled&&!await confirmInApp(action==='permanentDelete'?'开启永久删除权限？':'开启文件整理权限？',root.path,action==='permanentDelete'?'仅允许回收记录中精确识别的项目永久删除，无法通过回收站恢复；每次操作仍需单独确认。不会直接删除源目录的视频。':`允许${action==='rename'?'修改真实文件名并同步标题':'移入 Windows 系统回收站或恢复原目录'}。该授权只作用于此目录，更具体的子目录授权优先；不会修改视频内容。`,'开启权限',action==='permanentDelete'))return;
     setBusy(true);setNotice('');setNoticeError(false);
-    try{await desktopFile({action:'permissions',id:root.id,rename:action==='rename'?enabled:current.rename,recycle:action==='recycle'?enabled:current.recycle});setFilePermissions(value=>({...value,[root.id]:{...current,[action]:enabled}}));}
+    try{await desktopFile({action:'permissions',id:root.id,rename:action==='rename'?enabled:current.rename,recycle:action==='recycle'?enabled:current.recycle,permanentDelete:action==='permanentDelete'?enabled:current.permanentDelete===true});setFilePermissions(value=>({...value,[root.id]:{...current,[action]:enabled}}));}
     catch(error){setNoticeError(true);setNotice(errorText(error));}finally{setBusy(false);}
   }
   useEffect(() => {
@@ -126,7 +127,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <div className="root-list">{shownRoots.map(root => <div key={root.id}>
         <span className="root-icon"><Icon name="folder" size={18}/></span>
         <div className="root-info"><code title={root.path}>{root.path}</code>{(availability[root.id] ?? root.available) === false && <small>目录离线或不可访问</small>}
-          <div className="file-permission-fields">{(['rename','recycle'] as const).map(action=><label key={action} title={filePermissions[root.id]?.reason}><input type="checkbox" aria-label={`${action==='rename'?'允许重命名':'允许系统回收'} ${root.path}`} checked={filePermissions[root.id]?.[action]||false} disabled={busy||scanning||!filePermissions[root.id]?.supported||!window.avhubDesktop?.fileOperation} onChange={event=>void permission(root,action,event.target.checked)}/>{action==='rename'?'允许重命名':'允许系统回收'}</label>)}</div>
+          <div className="file-permission-fields">{(['rename','recycle','permanentDelete'] as const).map(action=><label key={action} title={filePermissions[root.id]?.reason}><input type="checkbox" aria-label={`${action==='rename'?'允许重命名':action==='recycle'?'允许系统回收':'允许永久删除'} ${root.path}`} checked={filePermissions[root.id]?.[action]||false} disabled={busy||scanning||!filePermissions[root.id]?.supported||!window.avhubDesktop?.fileOperation} onChange={event=>void permission(root,action,event.target.checked)}/>{action==='rename'?'允许重命名':action==='recycle'?'允许系统回收':'允许永久删除'}</label>)}</div>
         </div>
         <button className="ui-button" disabled={busy || scanning} onClick={() => void scan(root.id)}><Icon name="refresh" size={14}/>扫描此目录</button>
         {(availability[root.id] ?? root.available) === false && <button className="ui-button" disabled={busy || scanning} onClick={() => void relocate(root.id)}><Icon name="reveal" size={14}/>重新定位</button>}
@@ -146,7 +147,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <MouseSeekSettings busy={busy} changeBusy={setBusy} onDirtyChange={setMouseDirty}/>
       <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'} onDirtyChange={setScreenshotDirty}/>
       <details className="settings-advanced"><summary>高级播放设置</summary><NativePrepareSettings busy={busy} changeBusy={setBusy}/></details>
-      </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><FileStatePanel busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><FileOperationHistory busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
+      </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><FileStatePanel busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><SourceChanges busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><FileOperationHistory busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
       {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'success'}>{notice}</StatusMessage>}
       <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics changeBusy={setBusy}/></div>
       <div className="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" hidden={tab!=='help'}>{tab==='help'&&<HelpPanel changeBusy={setBusy} busy={busy}/>}</div>

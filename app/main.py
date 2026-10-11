@@ -56,6 +56,7 @@ from . import storage_management
 from .data_jobs import DataJobs, summary as backup_summary
 from . import screenshots
 from . import file_operations
+from . import media_identity
 from starlette.concurrency import run_in_threadpool
 
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -216,6 +217,7 @@ def bootstrap() -> None:
         media_order.install(db)
         series_library.install(db)
         file_operations.install(db)
+        media_identity.install(db)
         install_scan_jobs(db)
         playlist_columns = {row[1] for row in db.execute('PRAGMA table_info(playlists)')}
         if 'revision' not in playlist_columns:
@@ -327,16 +329,39 @@ def sidecar_subtitles(path: Path) -> list[dict[str, str]]:
     return [{"name": item.name, "path": str(item)} for item in sorted(matches, key=lambda item: item.name.casefold())]
 
 
+def next_media_id(db):
+    return db.execute('SELECT MAX(COALESCE((SELECT MAX(id) FROM media),0),COALESCE((SELECT MAX(media_id) FROM file_operations),0),COALESCE((SELECT MAX(media_id) FROM source_changes),0),COALESCE((SELECT MAX(new_media_id) FROM source_changes),0))+1').fetchone()[0]
+
+
+def commit_source_decision(db,row,root_id,path,stat,metadata,decision):
+    media_id=row['media_id'];now=time.time()
+    if not metadata.get('video_codec'):raise HTTPException(409,'无法探测新来源，未保存决定')
+    color=metadata.get('video_color') or {};color.update(source_modified=stat.st_mtime,source_size=stat.st_size)
+    if decision=='reset':
+        new_id=next_media_id(db);title,kind,season,episode=parse_title(path)
+        db.execute('UPDATE playlists SET revision=revision+1 WHERE id IN (SELECT playlist_id FROM playlist_items WHERE media_id=?)',(media_id,))
+        for table in ('playlist_items','media_subtitle_links','thumbnail_jobs'):db.execute(f'DELETE FROM {table} WHERE media_id=?',(media_id,))
+        db.execute('DELETE FROM media WHERE id=?',(media_id,))
+        db.execute('''INSERT INTO media(id,path,root_id,name,title,kind,season,episode,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)''',
+            (new_id,str(path),root_id,path.name,title,kind,season,episode,now,now));media_id=new_id
+    db.execute('''UPDATE media SET root_id=?,name=?,ext=?,size=?,modified=?,duration=?,width=?,height=?,video_codec=?,audio_tracks=?,subtitles=?,video_color=?,
+        missing=0,file_state='normal',source_identity=?,thumbnail=NULL,updated_at=? WHERE id=?''',
+        (root_id,path.name,path.suffix.lower(),stat.st_size,stat.st_mtime,metadata['duration'],metadata['width'],metadata['height'],metadata['video_codec'],json.dumps(metadata['audio_tracks']),json.dumps(metadata['subtitles']),json.dumps(color),media_identity.encoded(stat),now,media_id))
+    series_library.assign(db,media_id);return media_id
+
+
 def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_path: str | None = None, thumbnails=None) -> bool:
     """Probe outside write transactions; refreshing technical metadata preserves user edits."""
     resolved = resolved_path or str(path.resolve())
-    if not file_service.allow_scan(Path(resolved)):return False
     stat = path.stat()
     if existing is not None:
         old = existing.get(resolved)
     else:
         with connection() as db:
-            old = db.execute("SELECT id,root_id,modified,size,missing,thumbnail,duration FROM media WHERE path=?", (resolved,)).fetchone()
+            old = db.execute("SELECT * FROM media WHERE path=?", (resolved,)).fetchone()
+    old=identity_service.observe(root_id,Path(resolved),stat,dict(old) if old else None)
+    if old and old.get('identity_review'):return False
+    if not file_service.allow_scan(Path(resolved)):return False
     unchanged = old and old["modified"] == stat.st_mtime and old["size"] == stat.st_size
     if unchanged:
         if old["missing"] or old["root_id"] != root_id:
@@ -354,6 +379,7 @@ def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_
     metadata = probe(path, cancelled)
     if not metadata["video_codec"]:
         raise ValueError("无法读取视频信息，请检查文件或 FFprobe")
+    if media_identity.encoded(path.stat())!=media_identity.encoded(stat):raise ValueError('探测期间源文件变化，请重新扫描')
     title, kind, season, episode = parse_title(path)
     now = time.time()
     color = metadata.get('video_color') or {}
@@ -367,13 +393,14 @@ def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_
                  metadata["width"],metadata["height"],metadata["video_codec"],json.dumps(metadata["audio_tracks"]),
                  json.dumps(metadata["subtitles"]),json.dumps(color),now,media_id))
         else:
-            fresh_id=db.execute('SELECT MAX(COALESCE((SELECT MAX(id) FROM media),0),COALESCE((SELECT MAX(media_id) FROM file_operations),0))+1').fetchone()[0]
+            fresh_id=next_media_id(db)
             cur = db.execute("""INSERT INTO media(id,path,root_id,name,title,kind,season,episode,ext,size,modified,
                 duration,width,height,video_codec,audio_tracks,subtitles,video_color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (fresh_id,resolved,root_id,path.name,title,kind,season,episode,path.suffix.lower(),stat.st_size,stat.st_mtime,
                  metadata["duration"],metadata["width"],metadata["height"],metadata["video_codec"],
                  json.dumps(metadata["audio_tracks"]),json.dumps(metadata["subtitles"]),json.dumps(color),now,now))
             media_id = cur.lastrowid
+        db.execute('UPDATE media SET source_identity=? WHERE id=?',(media_identity.encoded(stat),media_id))
         series_library.assign(db,media_id)
     if thumbnails:
         thumbnails.submit(path, media_id, metadata['duration'], True)
@@ -417,7 +444,7 @@ def run_scan(entries: list[dict], manager: ScanManager):
         # not re-resolve every offline root before processing the first video.
         all_roots = [(row['id'], Path(row['path'])) for row in db.execute("SELECT id,path FROM roots")]
         existing = {row['path']: dict(row) for row in db.execute(
-            "SELECT path,id,root_id,modified,size,missing,thumbnail,duration FROM media")}
+            "SELECT path,id,root_id,modified,size,missing,thumbnail,duration,source_identity,file_state FROM media")}
     index = RootPathIndex(all_roots)
     manager.update(state='running')
 
@@ -561,11 +588,16 @@ async def lifespan(app):
         await asyncio.to_thread(scanner.close)
         await asyncio.to_thread(thumbnail_service.close)
         await asyncio.to_thread(data_jobs.close)
+        await asyncio.to_thread(recycle_service.close)
 
 
 bootstrap()
 file_service=file_operations.FileOperations(connection,read_connection,(ROOT,APP_HOME,DATA,Path(os.environ.get('WINDIR','C:/Windows'))))
 file_service.recover()
+identity_service=media_identity.MediaIdentity(file_service,lambda p:parse_title(p)[0],sidecar_subtitles)
+from .recycle_records import RecycleRecords
+recycle_service=RecycleRecords(file_service)
+recycle_service.recover()
 with connection() as db:
     checkpoint = db.execute("SELECT root_id FROM scan_checkpoint WHERE id=1").fetchone()
 if checkpoint:
@@ -769,6 +801,7 @@ def diagnostics():
     result['database_timing']=database_timing.report()
     result['thumbnail_service']=thumbnail_service.snapshot()
     result['runtime_evidence']=runtime_evidence.report()
+    result['recycle_bridge']={**getattr(recycle_service.bridge,'stats',{}),'active':bool(getattr(recycle_service.bridge,'process',None))}
     return result
 
 
@@ -791,6 +824,7 @@ def file_bridge(request:Request):
 class FilePermissionInput(BaseModel):
     rename:bool=False
     recycle:bool=False
+    permanent_delete:bool=False
 class FileActionInput(BaseModel):
     media_id:int=Field(ge=1)
     action:Literal['rename','recycle']
@@ -801,6 +835,16 @@ class FilePreviewInput(BaseModel):
 class FileResultInput(BaseModel):
     success:bool
     error:str=Field(default='',max_length=1000)
+class RecycleRecordInput(BaseModel):
+    action:Literal['restore','delete','clear']
+    confirmed:bool=False
+    preview_token:str|None=Field(default=None,pattern=r'^[a-f0-9]{32}$')
+class RecyclePreviewInput(BaseModel):
+    record_ids:list[str]=Field(min_length=1,max_length=500)
+    action:Literal['restore','delete','clear']
+class SourceDecisionInput(BaseModel):
+    decision:Literal['keep','reset']
+    signature:str=Field(pattern=r'^[a-f0-9]{64}$')
 
 @contextmanager
 def file_mutation(media_id=None):
@@ -840,7 +884,7 @@ def file_permissions(ids:str):
 @app.put('/api/roots/{root_id}/file-permissions')
 def set_file_permissions(root_id:int,body:FilePermissionInput,request:Request):
     file_bridge(request)
-    with file_mutation():return file_service.authorize(root_id,body.rename,body.recycle)
+    with file_mutation():return file_service.authorize(root_id,body.rename,body.recycle,body.permanent_delete)
 
 @app.get('/api/media/{media_id}/file-actions')
 def file_action_info(media_id:int):return file_service.info(media_id)
@@ -851,6 +895,57 @@ def file_history(page:int=Query(1,ge=1)):return file_service.history(page)
 @app.get('/api/file-states')
 def file_states(page:int=Query(1,ge=1),state:Literal['all','missing','recycled','review','pending']='all'):
     return file_service.states(page,state)
+
+@app.get('/api/recycle-records')
+def recycle_records(page:int=Query(1,ge=1),q:str=Query('',max_length=200),refresh:bool=False):
+    try:return recycle_service.list(page,q,refresh)
+    except OSError as error:raise HTTPException(409,str(error)) from error
+
+@app.get('/api/source-changes')
+def source_changes(page:int=Query(1,ge=1)):return identity_service.list(page)
+
+@app.get('/api/recycle-records/{op_id}/location')
+def recycle_record_location(op_id:str):
+    if not re.fullmatch(r'[a-f0-9]{32}',op_id):raise HTTPException(422,'回收记录标识无效')
+    return recycle_service.location(op_id)
+
+@app.post('/api/source-changes/{change_id}/resolve')
+def resolve_source_change(change_id:str,body:SourceDecisionInput,request:Request):
+    file_bridge(request)
+    if not re.fullmatch(r'[a-f0-9]{32}',change_id):raise HTTPException(422,'来源记录标识无效')
+    try:result=identity_service.resolve(change_id,body.decision,body.signature,probe,commit_source_decision,file_mutation)
+    except OSError as error:raise HTTPException(409,'来源已变化或离线，请刷新媒体库：'+str(error)) from error
+    with read_connection() as db:item=db.execute('SELECT * FROM media WHERE id=?',(result['media_id'],)).fetchone()
+    if item:thumbnail_service.submit(Path(item['path']),item['id'],item['duration'] or 0,True)
+    return result
+
+@app.post('/api/recycle-records/preview')
+def recycle_record_preview(body:RecyclePreviewInput,request:Request):
+    file_bridge(request)
+    if any(not re.fullmatch(r'[a-f0-9]{32}',value) for value in body.record_ids):raise HTTPException(422,'回收记录标识无效')
+    try:return recycle_service.preview(body.record_ids,body.action)
+    except OSError as error:raise HTTPException(409,str(error)) from error
+
+@app.delete('/api/recycle-records/preview/{token}')
+def release_recycle_record_preview(token:str,request:Request):
+    file_bridge(request)
+    with file_service.lock:recycle_service.previews.pop(token,None)
+    return {'ok':True}
+
+@app.post('/api/recycle-records/{op_id}/recheck')
+def recheck_recycle_record(op_id:str,request:Request):
+    file_bridge(request)
+    if not re.fullmatch(r'[a-f0-9]{32}',op_id):raise HTTPException(422,'回收记录标识无效')
+    return recycle_service.recheck(op_id)
+
+@app.post('/api/recycle-records/{op_id}')
+def recycle_record_action(op_id:str,body:RecycleRecordInput,request:Request):
+    file_bridge(request)
+    if not re.fullmatch(r'[a-f0-9]{32}',op_id):raise HTTPException(422,'回收记录标识无效')
+    try:return recycle_service.execute(op_id,body.action,body.confirmed,body.preview_token,file_mutation)
+    except (OSError,sqlite3.DatabaseError) as error:
+        uncertain=recycle_service.unresolved_check(op_id)
+        raise HTTPException(409,('操作结果未确认，请先核对：' if uncertain else '文件操作未完成：')+str(error)) from error
 
 @app.post('/api/media/{media_id}/recheck-file')
 def recheck_file(media_id:int,request:Request):
@@ -1072,6 +1167,7 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
             with connection() as db:
                 db.execute('DELETE FROM root_file_permissions')
                 db.execute("UPDATE file_operations SET state='review',error='从备份恢复的未完成操作需要人工核对' WHERE state='prepared'")
+                db.execute("UPDATE recycle_actions SET state='review',error='从备份恢复的未完成操作需要核对结果，不会自动执行' WHERE state IN ('prepared','dispatched')")
                 db.execute("UPDATE media SET file_state='review',missing=1 WHERE file_state='pending'")
                 if images is not None:
                     for relative in sorted(name for name in images if name.startswith('thumbnails/')):
@@ -1109,6 +1205,7 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
                     if not valid_thumbnail(THUMBS / f"{row['id']}.jpg"):
                         db.execute("UPDATE media SET thumbnail=NULL WHERE id=?", (row["id"],))
             file_service.reload_blocked()
+            recycle_service.invalidate()
             thumbnail_service.reload_control()
             with connection() as db:checkpoint=db.execute('SELECT root_id FROM scan_checkpoint WHERE id=1').fetchone()
             if checkpoint:scanner.restore_interrupted(checkpoint['root_id'])

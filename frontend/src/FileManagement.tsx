@@ -7,7 +7,7 @@ import {useDraftGuard} from './useDraftGuard';
 import {fileSizeLabel} from './mediaLabels';
 import {confirmInApp} from './AppConfirm';
 
-export type FilePermission={root_id:number;supported:boolean;rename:boolean;recycle:boolean;reason:string};
+export type FilePermission={root_id:number;supported:boolean;rename:boolean;recycle:boolean;permanentDelete?:boolean;reason:string};
 export type FileActionInfo={rename:boolean;recycle:boolean;name:string;reason:string;rename_reason?:string;recycle_reason?:string};
 export async function desktopFile(value:Parameters<NonNullable<NonNullable<Window['avhubDesktop']>['fileOperation']>>[0]) {
   const desktop=requireDesktop('fileOperation');
@@ -47,12 +47,13 @@ export function FileActionDialog({media,action,close,changed}:{media:Media;actio
 type Operation={id:string;media_id:number;action:string;source:string;target:string|null;state:string;error:string;created_at:number};
 type Operations={items:Operation[];total:number;page:number;pages:number};
 const states:Record<string,string>={prepared:'操作未完成',completed:'已完成',failed:'未执行或失败',review:'需要核对',undone:'已撤销'};
-type FileState={id:number;name:string;title:string;path:string;status:'missing'|'recycled'|'review'|'pending'};
+type FileState={id:number;name:string;title:string;path:string;status:'missing'|'recycled'|'review'|'pending';source_change_id?:string|null;recycle_id?:string|null};
 type FileStates={items:FileState[];total:number;page:number;pages:number};
 const fileStates:Record<FileState['status'],string>={missing:'文件缺失',recycled:'已移入系统回收站',review:'待核对',pending:'操作中'};
 export function FileStatePanel({enabled,busy,changeBusy,reload}:{enabled:boolean;busy:boolean;changeBusy:(value:boolean)=>void;reload:()=>Promise<void>}){
   const [filter,setFilter]=useState('all'),[page,setPage]=useState(1),[revision,setRevision]=useState(0),[data,setData]=useState<FileStates|null>(null),[loading,setLoading]=useState(false),[notice,setNotice]=useState(''),[error,setError]=useState('');
   const running=useRef(false);
+  useEffect(()=>{const refresh=()=>setRevision(value=>value+1);window.addEventListener('avhub-file-states-changed',refresh);return()=>window.removeEventListener('avhub-file-states-changed',refresh);},[]);
   useEffect(()=>{
     if(!enabled)return;const controller=new AbortController();setLoading(true);setError('');
     void api<FileStates>(`/api/file-states?page=${page}&state=${filter}`,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted)setData(value);}).catch(error=>{if(!controller.signal.aborted)setError(errorText(error));}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
@@ -68,7 +69,7 @@ export function FileStatePanel({enabled,busy,changeBusy,reload}:{enabled:boolean
   return <section className="settings-section" aria-label="文件状态管理"><h3><Icon name="shield"/>文件状态管理</h3>
     <p className="dialog-description">系统还原到原目录后可核对恢复；文件身份不一致时不会误认。普通缺失项可仅移除记录（包括收藏、进度和片单引用），不删除磁盘文件。已回收和待核对项不允许清理。</p>
     <div className="app-tool-actions"><label className="app-select-field">文件状态<select aria-label="文件状态筛选" value={filter} disabled={busy} onChange={event=>{setFilter(event.target.value);setPage(1);setData(null);}}><option value="all">全部异常状态</option>{Object.entries(fileStates).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label><Button icon="refresh" disabled={busy||loading} onClick={()=>setRevision(value=>value+1)}>刷新状态</Button></div>
-    {loading?<StatusMessage kind="loading">正在核对索引状态…</StatusMessage>:data?.items.length?<ol className="file-operation-list">{data.items.map(item=><li key={item.id}><div><strong>{fileStates[item.status]} · {item.title}</strong><code>{item.path}</code></div><div className="app-tool-actions"><Button icon="refresh" disabled={busy||item.status==='pending'||!window.avhubDesktop?.fileOperation} onClick={()=>void recheck(item.id)}>核对恢复</Button>{item.status==='missing'&&<Button icon="trash" variant="danger" disabled={busy||!window.avhubDesktop?.fileOperation} onClick={()=>void recheck(item.id,true)}>仅移除记录</Button>}</div></li>)}</ol>:!error&&<p className="dialog-description">暂无此类文件状态</p>}
+    {loading?<StatusMessage kind="loading">正在核对索引状态…</StatusMessage>:data?.items.length?<ol className="file-operation-list">{data.items.map(item=><li key={item.id}><div><strong>{item.source_change_id?'来源变更待确认':fileStates[item.status]} · {item.title}</strong><code>{item.path}</code></div><div className="app-tool-actions">{item.source_change_id?<Button icon="shield" disabled={busy} onClick={()=>window.dispatchEvent(new Event('avhub-open-source-changes'))}>处理来源变更</Button>:item.recycle_id?<Button icon="trash" disabled={busy||item.status==='pending'} onClick={()=>window.dispatchEvent(new CustomEvent('avhub-open-recycle-records',{detail:item.recycle_id}))}>查看回收记录</Button>:<Button icon="refresh" disabled={busy||item.status==='pending'||!window.avhubDesktop?.fileOperation} onClick={()=>void recheck(item.id)}>核对恢复</Button>}{item.status==='missing'&&<Button icon="trash" variant="danger" disabled={busy||!window.avhubDesktop?.fileOperation} onClick={()=>void recheck(item.id,true)}>仅移除记录</Button>}</div></li>)}</ol>:!error&&<p className="dialog-description">暂无此类文件状态</p>}
     {data&&data.pages>1&&<div className="root-pager"><span>{data.page} / {data.pages} 页 · {data.total} 条</span><Button disabled={busy||loading||page<=1} onClick={()=>setPage(value=>value-1)}>上一页</Button><Button disabled={busy||loading||page>=data.pages} onClick={()=>setPage(value=>value+1)}>下一页</Button></div>}
     {notice&&<StatusMessage kind="info">{notice}</StatusMessage>}{error&&<StatusMessage kind="error">{error}</StatusMessage>}
   </section>;
@@ -82,9 +83,9 @@ export function FileOperationHistory({enabled,busy,changeBusy}:{enabled:boolean;
     catch(error){setError(errorText(error));}finally{setWorking(false);changeBusy(false);}
   }
   return <section className="settings-section" aria-label="文件操作记录"><h3><Icon name="history"/>文件操作记录</h3>
-    <p className="dialog-description">只保存操作日志，不保存视频副本。重命名不提供撤销；删除还原由系统回收站负责，恢复后核对恢复或刷新媒体库。</p>
+    <p className="dialog-description">只保存操作日志，不保存视频副本。重命名不提供撤销；可在媒体库工具栏的回收记录中恢复或明确确认永久删除。也可在系统回收站还原后核对恢复。</p>
     <div className="app-tool-actions"><Button icon="trash" disabled={busy||working||!window.avhubDesktop?.fileOperation} onClick={()=>void action()}>打开系统回收站</Button><Button icon="refresh" disabled={busy||working} onClick={()=>{setError('');setRevision(value=>value+1);}}>刷新记录</Button></div>
-    {result?.items.length?<ol className="file-operation-list">{result.items.map(op=><li key={op.id}><div><strong>{op.action==='rename'?'重命名':op.action==='forget'?'仅移除记录':'系统回收'} · {states[op.state]||op.state}</strong><small>{new Date(op.created_at*1000).toLocaleString()}</small><code>{op.source}</code>{op.target&&<code>→ {op.target}</code>}{op.error&&<small className="file-operation-error">{op.error}</small>}</div></li>)}</ol>:<p className="dialog-description">暂无文件操作记录</p>}
+    {result?.items.length?<ol className="file-operation-list">{result.items.map(op=><li key={op.id}><div><strong>{op.action==='rename'?'重命名':op.action==='external-rename'?'外部改名识别':op.action==='forget'?'仅移除记录':'系统回收'} · {states[op.state]||op.state}</strong><small>{new Date(op.created_at*1000).toLocaleString()}</small><code>{op.source}</code>{op.target&&<code>→ {op.target}</code>}{op.error&&<small className="file-operation-error">{op.error}</small>}</div></li>)}</ol>:<p className="dialog-description">暂无文件操作记录</p>}
     {result&&result.pages>1&&<div className="root-pager"><span>{result.page} / {result.pages} 页 · {result.total} 条</span><Button disabled={busy||working||page<=1} onClick={()=>setPage(value=>value-1)}>上一页</Button><Button disabled={busy||working||page>=result.pages} onClick={()=>setPage(value=>value+1)}>下一页</Button></div>}
     {error&&<StatusMessage kind="error">{error}</StatusMessage>}
   </section>;

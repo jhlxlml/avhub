@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { createRoot } from 'react-dom/client';
 import {AppConfirmHost} from './AppConfirm';
 import {BatchRecycle} from './BatchRecycle';
+import {RecycleRecords} from './RecycleRecords';
 import { api, checkServiceBuild, json, duration, errorText, views, type View, type Media, type MediaUpdate, type Root, type MediaPage, type PlaylistSource } from './api';
 import { Settings } from './Settings';
 import {AboutHost} from './AppTools';
@@ -102,9 +103,7 @@ function App() {
   const [filters, setFilters] = useState(readFilters);
   const [treeOpen,setTreeOpen]=useState(false);
   useEffect(()=>{savePreference('librarySort',filters.sort);},[filters.sort]);
-  const [advancedOpen, setAdvancedOpen] = useState(() => {
-    const initial = readFilters(); return Boolean(initial.format || initial.watch !== 'all' || initial.duration);
-  });
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [libraryCache]=useState(()=>new LibraryPageCache());
   const [rootsReady,setRootsReady]=useState(false);
   const [roots, setRoots] = useState<Root[]>([]);
@@ -132,6 +131,8 @@ function App() {
   const [picked, setPicked] = useState<number[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [recycleBatch,setRecycleBatch]=useState<number[]|null>(null);
+  const [recycleRecordsOpen,setRecycleRecordsOpen]=useState(false);
+  useEffect(()=>{const show=()=>setRecycleRecordsOpen(true);window.addEventListener('avhub-open-recycle-records',show);return()=>window.removeEventListener('avhub-open-recycle-records',show);},[]);
   const grouped = filters.view === 'series' && filters.grouped;
   const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q,libraryRetry);
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
@@ -296,9 +297,9 @@ function App() {
   const pages = Math.max(1, Math.ceil(displayTotal / filters.pageSize));
   function changePage(page: number) { setFilters(f => ({ ...f, page })); scrollPageTo(0); }
   const title = views.find(v => v.id === filters.view)!.label;
+  const hasConditions=Boolean(filters.q||filters.root||filters.folder||filters.format||filters.resolution||filters.watch!=='all'||filters.duration||grouped&&filters.season);
   const filterSummary=<LibraryFilters value={filters} roots={roots} grouped={grouped} change={change=>{
     setFilters(f=>({...f,...change,page:1}));
-    if('q' in change&&'format' in change&&'root' in change)setAdvancedOpen(false);
   }}/>;
   return <>
     {notice && <Toast key={notification.id} message={notice} autoDismissMs={notification.autoDismissMs} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
@@ -333,7 +334,7 @@ function App() {
       <div className={`app-layout${treeOpen?' with-directory-tree':''}`}>
       <DirectoryTree roots={roots} root={filters.root} folder={filters.folder} revision={revision} visible={treeOpen} active={treeOpen&&!router.route.mediaId&&!routeLoading}
         close={()=>setTreeOpen(false)} select={(root,folder)=>setFilters(f=>({...f,root,folder,show:'',season:'',page:1,recursive:root?f.recursive:true,grouped:folder?false:f.grouped}))}/>
-      <section className="library">
+      <section className="library" aria-busy={loading}>
         <ScanProgress job={scan.job} cancel={scan.cancel} connectionError={scan.connectionError} />
         <div className="toolbar">
           <button className="ui-icon-button" aria-label={treeOpen?'隐藏目录树':'显示目录树'} aria-pressed={treeOpen} title={treeOpen?'隐藏目录树':'显示目录树'} onClick={()=>setTreeOpen(open=>!open)}><Icon name="folder"/></button>
@@ -349,12 +350,12 @@ function App() {
             title={`${isAscending(filters.sort)?'升序':'降序'} · ${isAscending(filters.sort)?sortField(filters.sort).ascending:sortField(filters.sort).descending}（点击切换）`}
             onClick={()=>setFilters(f=>({...f,sort:isAscending(f.sort)?sortField(f.sort).desc:sortField(f.sort).asc,page:1}))}>
             <Icon name={isAscending(filters.sort)?'sortAsc':'sortDesc'} size={18}/>
-          </button></div>
-          <button className={`advanced-toggle toolbar-icon-action${filters.format || filters.watch !== 'all' || filters.duration ? ' active' : ''}`} aria-expanded={advancedOpen}
-            aria-label={`更多筛选${filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}`} title={`更多筛选${filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}`}
-            onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/><span className="toolbar-action-label">更多筛选{filters.format || filters.watch !== 'all' || filters.duration ? ' · 已启用' : ''}</span></button>
-          <Button icon="edit" className="toolbar-icon-action" aria-label="批量整理" title="批量整理" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}><span className="toolbar-action-label">批量整理</span></Button>
-          </>}
+          </button></div></>}
+          <button className={`advanced-toggle toolbar-icon-action${hasConditions?' active':''}`} aria-expanded={advancedOpen} aria-controls="library-advanced-filters"
+            aria-label={`更多筛选${hasConditions?' · 已启用':''}`} title={`更多筛选${hasConditions?' · 已启用':''}`}
+            onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/><span className="toolbar-action-label">更多筛选{hasConditions?' · 已启用':''}</span></button>
+          {!grouped&&<Button icon="edit" className="toolbar-icon-action" aria-label="批量整理" title="批量整理" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}><span className="toolbar-action-label">批量整理</span></Button>}
+          <Button icon="trash" className="recycle-record-entry" aria-label="回收记录" title="回收记录" onClick={()=>setRecycleRecordsOpen(true)}/>
           <div className="library-toolbar-right">
           {!grouped&&<div className="resolution-filter" role="group" aria-label="分辨率筛选">
             <span className="resolution-filter-label" title="分辨率"><Icon name="resolution" size={18}/></span>
@@ -370,16 +371,8 @@ function App() {
             aria-pressed={filters.layout===layout} title={layout==='grid'?'封面墙':'列表'} className={filters.layout === layout ? 'active' : ''} onClick={() => setFilters(f => ({ ...f, layout }))}><Icon name={layout==='grid'?'grid':'list'} size={17}/></button>)}</div>}</div>
           </div>
         </div>
-        {grouped ? <SeriesLibrary cache={libraryCache} active={rootsReady&&!selected} q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
-          filterSummary={filterSummary} change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
-        {bulkMode && <div className="bulk-selection-bar" aria-label="批量选择"><span>已选 {picked.length} / 500 · 支持跨页选择</span>
-          <Button disabled={loading} onClick={() => pick(visible.map(m => m.id))}>选中本页</Button>
-          <Button disabled={!picked.length} onClick={() => setPicked([])}>清空选择</Button>
-          <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button><Button icon="playlist" disabled={!picked.length} onClick={()=>setPlaylistBatch([...picked])}>所选加入播放列表</Button><Button icon="trash" variant="danger" disabled={!picked.length||!window.avhubDesktop?.fileOperation} onClick={()=>setRecycleBatch([...picked])}>所选移入回收站</Button></div>}
-        {roots.find(root => String(root.id) === filters.root) && <FolderBrowser key={filters.root} root={roots.find(root => String(root.id) === filters.root)!}
-          folder={filters.folder} recursive={filters.recursive} revision={revision} treeMode={treeOpen} change={folder => setFilters(f => ({ ...f, folder, page: 1 }))}
-          changeRecursive={recursive => setFilters(f => ({ ...f, recursive, page: 1 }))} />}
-        {advancedOpen && <div className="advanced-filters" aria-label="高级筛选">
+        {advancedOpen && <section id="library-advanced-filters" className="advanced-filters" aria-label="高级筛选">
+          {!grouped&&<div className="advanced-filter-fields">
           <label>视频格式<select aria-label="视频格式" value={filters.format} onChange={event => setFilters(f => ({ ...f, format: event.target.value, page: 1 }))}>
             <option value="">全部格式</option>{formats.map(format => <option key={format} value={format}>{formatLabel(format)}</option>)}
           </select></label>
@@ -388,10 +381,20 @@ function App() {
           </select></label>
           <label>视频时长<select aria-label="视频时长范围" value={filters.duration} onChange={event => setFilters(f => ({ ...f, duration: event.target.value as Filters['duration'], page: 1 }))}>
             <option value="">不限时长</option><option value="short">短片 · 30 分钟内</option><option value="medium">中等 · 30–90 分钟</option><option value="long">长片 · 90 分钟以上</option>
-          </select></label>
-          {(filters.format || filters.watch !== 'all' || filters.duration || filters.resolution) && <button className="filter-reset" onClick={() => setFilters(f => ({ ...f, format: '', resolution: '', watch: 'all', duration: '', page: 1 }))}>清除筛选</button>}
-        </div>}
-        <LibraryHeading title={title} filters={filterSummary} count={library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}
+          </select></label></div>}
+          {filterSummary}
+          {!hasConditions&&<p className="advanced-filter-help">尚未设置筛选条件。搜索、目录和分辨率等已选条件会集中显示在这里。</p>}
+        </section>}
+        {grouped ? <SeriesLibrary cache={libraryCache} active={rootsReady&&!selected} q={filters.q} root={filters.root} show={filters.show} season={filters.season} page={filters.page} pageSize={filters.pageSize} revision={revision}
+          change={change => setFilters(f => ({...f, ...change, ...(change.show ? {q: ''} : {})}))} play={open}/> : <>
+        {bulkMode && <div className="bulk-selection-bar" aria-label="批量选择"><span>已选 {picked.length} / 500 · 支持跨页选择</span>
+          <Button disabled={loading} onClick={() => pick(visible.map(m => m.id))}>选中本页</Button>
+          <Button disabled={!picked.length} onClick={() => setPicked([])}>清空选择</Button>
+          <Button icon="edit" variant="primary" disabled={!picked.length} onClick={() => setBulkOpen(true)}>编辑所选</Button><Button icon="playlist" disabled={!picked.length} onClick={()=>setPlaylistBatch([...picked])}>所选加入播放列表</Button><Button icon="trash" variant="danger" disabled={!picked.length||!window.avhubDesktop?.fileOperation} onClick={()=>setRecycleBatch([...picked])}>所选移入回收站</Button></div>}
+        {roots.find(root => String(root.id) === filters.root) && <FolderBrowser key={filters.root} root={roots.find(root => String(root.id) === filters.root)!}
+          folder={filters.folder} recursive={filters.recursive} revision={revision} treeMode={treeOpen} change={folder => setFilters(f => ({ ...f, folder, page: 1 }))}
+          changeRecursive={recursive => setFilters(f => ({ ...f, recursive, page: 1 }))} />}
+        <LibraryHeading title={title} count={library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}
           updating={Boolean(library.data&&library.showLoading)}/>
         {requestError&&library.data&&<StatusMessage kind="error">{requestError}<Button icon="refresh" onClick={()=>setRevision(x=>x+1)}>重试</Button></StatusMessage>}
         {requestError&&!library.data ? <div className="empty"><StatusMessage kind="error">{requestError}</StatusMessage><Button icon="refresh" onClick={() => setRevision(x => x + 1)}>重试</Button></div> :
@@ -425,6 +428,7 @@ function App() {
       </section></div>
       {bulkOpen && <BulkEditor ids={picked} close={() => setBulkOpen(false)} done={count => { setBulkOpen(false); setPicked([]); setRevision(value => value + 1); setNotice(`已整理 ${count} 个视频，源文件未修改`); }}/ >}
       {recycleBatch&&<BatchRecycle ids={recycleBatch} close={()=>setRecycleBatch(null)} done={ids=>{setPicked(current=>current.filter(id=>!ids.includes(id)));if(ids.length)setRevision(value=>value+1);}}/>}
+      {recycleRecordsOpen&&<RecycleRecords close={()=>setRecycleRecordsOpen(false)} changed={()=>{setRevision(value=>value+1);window.dispatchEvent(new Event('avhub-file-states-changed'));}}/>}
       {editingMedia&&<MediaEditDialog media={editingMedia} update={updateMedia} close={()=>setEditingMedia(null)}/>}
       {settings && <Settings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
       {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={playlistAdded} />}

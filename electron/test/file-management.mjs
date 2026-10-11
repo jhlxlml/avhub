@@ -26,7 +26,7 @@ try{
   console.log('Native directory opt-in confirmed for the owned TEMP media folder.');
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await page.evaluate(async id=>{await fetch('/api/media/'+id+'/favorite',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({favorite:true})});await fetch('/api/media/'+id+'/progress',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({progress:1,updated_at:Date.now()})});await fetch('/api/playlists',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'保留片单',media_ids:[id]})});},id);
-  await expect.poll(()=>page.evaluate(async()=>{const status=await(await fetch('/api/thumbnails')).json();return status.current_media_id??null;})).toBe(null);
+  await expect.poll(()=>page.evaluate(async()=>{const status=await(await fetch('/api/thumbnails')).json();return status.current==null&&status.pending===0;})).toBe(true);
   await page.locator('.media-more').click();await page.getByRole('menuitem',{name:'重命名文件',exact:true}).click();await page.getByLabel('新文件名').fill('重命名⭐'+basename);
   await expect(page.locator('.file-action-target')).toContainText(basename+'.mp4');await expect(page.locator('.file-action-cover img')).toBeVisible();
   await page.getByRole('button',{name:'确认重命名',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -60,5 +60,9 @@ try{
   const offline=path.join(workspace,'owned-offline.mp4');renameSync(file,offline);await page.evaluate(()=>fetch('/api/scan',{method:'POST'}));await expect.poll(async()=>(await read(id)).missing).toBe(1);
   await page.reload();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();await page.getByRole('region',{name:'文件状态管理'}).getByRole('button',{name:'仅移除记录',exact:true}).click();
   await page.getByRole('dialog',{name:'仅移除缺失记录？',exact:true}).getByRole('button',{name:'移除记录',exact:true}).click();await expect.poll(()=>page.evaluate(async()=>(await(await fetch('/api/file-states')).json()).total)).toBe(0);assert.equal(digest(offline),before);assert.equal(digest(subtitle),subtitleDigest);
-  console.log('Real Electron file management passed: default deny, native-header boundary, themed directory opt-in, rename/title persistence after restart, removed undo command, unchanged bytes and media ID/records, refusal without permanent fallback, real Windows recycle and uniquely identified TEMP-only restoration.');
-}finally{if(desktop)await desktop.close();}
+  // The DB result becoming visible is not proof Settings.reload() has settled.
+  // Wait for its busy guard, close it, then assert the real process exits.
+  await expect(page.getByRole('button',{name:'关闭设置',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);
+}finally{if(desktop){let timer;try{await Promise.race([desktop.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Owned file-management desktop exit timeout')),20000);})]);}finally{clearTimeout(timer);}}}
+console.log('Real Electron file management and clean exit passed: default deny, native-header boundary, themed directory opt-in, rename/title persistence, unchanged bytes/records, refusal without permanent fallback and TEMP-only system recycling/restoration.');

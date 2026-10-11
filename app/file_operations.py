@@ -24,10 +24,18 @@ def install(db):
         undo_of TEXT);
         CREATE INDEX IF NOT EXISTS file_operations_media ON file_operations(media_id,created_at);
         CREATE TABLE IF NOT EXISTS media_subtitle_links(media_id INTEGER NOT NULL,path TEXT NOT NULL,stamp TEXT NOT NULL,PRIMARY KEY(media_id,path));
+        CREATE TABLE IF NOT EXISTS recycle_actions(id TEXT PRIMARY KEY,recycle_id TEXT NOT NULL,media_id INTEGER NOT NULL,
+        action TEXT NOT NULL,bin_path TEXT NOT NULL,source TEXT NOT NULL,stamp TEXT NOT NULL,state TEXT NOT NULL,
+        error TEXT NOT NULL DEFAULT '',created_at REAL NOT NULL,finished_at REAL);
+        CREATE INDEX IF NOT EXISTS recycle_actions_record ON recycle_actions(recycle_id,state,created_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS recycle_actions_active ON recycle_actions(recycle_id) WHERE state IN ('prepared','dispatched','review');
     ''')
     columns={row[1] for row in db.execute('PRAGMA table_info(file_operations)')}
-    for name in ('old_title','new_title','sidecars'):
+    for name in ('old_title','new_title','sidecars','recycle_receipt','recycle_status'):
         if name not in columns:db.execute(f'ALTER TABLE file_operations ADD COLUMN {name} TEXT')
+    if 'recycle_hidden' not in columns:db.execute('ALTER TABLE file_operations ADD COLUMN recycle_hidden INTEGER NOT NULL DEFAULT 0')
+    if 'permanent_delete_allowed' not in {row[1] for row in db.execute('PRAGMA table_info(root_file_permissions)')}:
+        db.execute('ALTER TABLE root_file_permissions ADD COLUMN permanent_delete_allowed INTEGER NOT NULL DEFAULT 0')
 
 
 def identity(path):
@@ -92,19 +100,19 @@ class FileOperations:
             for row in db.execute(f"SELECT id,path FROM roots WHERE id IN ({','.join('?' for _ in ids)})",ids):
                 path=Path(row['path']).resolve();value=db.execute('SELECT * FROM root_file_permissions WHERE root_id=? AND root_path=?',(row['id'],str(path))).fetchone()
                 supported=path.is_dir() and not self.protected_path(path) and self.volume(path)
-                result.append({'root_id':row['id'],'supported':supported,'rename':bool(value and value['rename_allowed'] and supported),'recycle':bool(value and value['recycle_allowed'] and supported),
+                result.append({'root_id':row['id'],'supported':supported,'rename':bool(value and value['rename_allowed'] and supported),'recycle':bool(value and value['recycle_allowed'] and supported),'permanentDelete':bool(value and value['permanent_delete_allowed'] and supported),
                                'reason':'' if supported else '仅支持非应用目录的本地 NTFS 磁盘；受保护目录保持只读'})
             return result
 
-    def authorize(self,root_id,rename,recycle):
+    def authorize(self,root_id,rename,recycle,permanent_delete=False):
         with self.lock,self.connection() as db:
             self.require_idle()
             root=db.execute('SELECT path FROM roots WHERE id=?',(root_id,)).fetchone()
             if not root:raise HTTPException(404,'媒体目录不存在')
             path=Path(root['path']).resolve()
-            if (rename or recycle) and (self.protected_path(path) or not path.is_dir() or not self.volume(path)):
+            if (rename or recycle or permanent_delete) and (self.protected_path(path) or not path.is_dir() or not self.volume(path)):
                 raise HTTPException(403,'本目录不能开启整理权限；仅支持本地 NTFS，开发验证保护目录保持只读')
-            db.execute('INSERT OR REPLACE INTO root_file_permissions VALUES(?,?,?,?)',(root_id,str(path),int(rename),int(recycle)))
+            db.execute('INSERT OR REPLACE INTO root_file_permissions(root_id,root_path,rename_allowed,recycle_allowed,permanent_delete_allowed) VALUES(?,?,?,?,?)',(root_id,str(path),int(rename),int(recycle),int(permanent_delete)))
         return {'ok':True}
 
     def require_idle(self):
@@ -284,10 +292,11 @@ class FileOperations:
 
     def history(self,page=1):
         with self.lock,self.read_connection() as db:
-            total=db.execute('SELECT COUNT(*) FROM file_operations').fetchone()[0]
-            rows=[dict(row) for row in db.execute('SELECT * FROM file_operations ORDER BY created_at DESC LIMIT 30 OFFSET ?',((page-1)*30,))]
+            total=db.execute('SELECT COUNT(*) FROM file_operations WHERE recycle_hidden=0').fetchone()[0]
+            rows=[dict(row) for row in db.execute('SELECT * FROM file_operations WHERE recycle_hidden=0 ORDER BY created_at DESC LIMIT 30 OFFSET ?',((page-1)*30,))]
             for row in rows:
                 row.pop('stamp',None)
+                row.pop('recycle_receipt',None)
         return {'items':rows,'total':total,'page':page,'pages':max(1,(total+29)//30)}
 
     def info(self,media_id):
@@ -308,7 +317,7 @@ class FileOperations:
         if db is None:
             with self.read_connection() as connection:return self.linked_subtitles(media_id,path,connection)
         result=[]
-        operation=db.execute("SELECT stamp FROM file_operations WHERE media_id=? AND action='rename' AND state='completed' ORDER BY created_at DESC LIMIT 1",(media_id,)).fetchone()
+        operation=db.execute("SELECT stamp FROM file_operations WHERE media_id=? AND action IN ('rename','external-rename') AND state='completed' ORDER BY created_at DESC LIMIT 1",(media_id,)).fetchone()
         if not operation or not self.matches(path,json.loads(operation['stamp'])):return result
         for row in db.execute('SELECT path,stamp FROM media_subtitle_links WHERE media_id=?',(media_id,)):
             candidate=Path(row['path'])
@@ -343,9 +352,13 @@ class FileOperations:
             row=db.execute('SELECT id,file_state FROM media WHERE path=?',(str(path),)).fetchone()
             if not row or row['file_state']=='normal':return True
             if row['file_state']=='pending':return False
+            if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_changes'").fetchone() and db.execute("SELECT 1 FROM source_changes WHERE media_id=? AND state='pending'",(row['id'],)).fetchone():return False
+            if db.execute("SELECT 1 FROM recycle_actions WHERE media_id=? AND state IN ('prepared','dispatched','review')",(row['id'],)).fetchone():return False
             op=db.execute('SELECT stamp FROM file_operations WHERE media_id=? ORDER BY created_at DESC LIMIT 1',(row['id'],)).fetchone()
             if op and self.matches(path,json.loads(op['stamp'])):
-                db.execute("UPDATE media SET file_state='normal',missing=0 WHERE id=?",(row['id'],));self.blocked.discard(row['id']);return True
+                db.execute("UPDATE media SET file_state='normal',missing=0 WHERE id=?",(row['id'],))
+                db.execute("UPDATE file_operations SET recycle_status='restored' WHERE media_id=? AND action='recycle' AND stamp=? AND state IN ('completed','review') AND recycle_status IS NULL",(row['id'],op['stamp']))
+                self.blocked.discard(row['id']);return True
             return False
 
     def states(self,page=1,state='all'):
@@ -356,6 +369,12 @@ class FileOperations:
             total=db.execute(f'SELECT COUNT(*) FROM media WHERE {clause}').fetchone()[0]
             rows=[dict(row) for row in db.execute(f'SELECT id,name,title,path,file_state,missing FROM media WHERE {clause} ORDER BY id DESC LIMIT 30 OFFSET ?',((page-1)*30,))]
         for row in rows:row['status']='missing' if row['file_state']=='normal' else row['file_state']
+        with self.read_connection() as db:
+            has_sources=db.execute("SELECT 1 FROM sqlite_master WHERE name='source_changes'").fetchone()
+            for row in rows:
+                source=db.execute("SELECT id FROM source_changes WHERE media_id=? AND state='pending'",(row['id'],)).fetchone() if has_sources else None
+                recycle=db.execute("SELECT id FROM file_operations WHERE media_id=? AND action='recycle' AND state IN ('completed','review') AND recycle_hidden=0 ORDER BY created_at DESC LIMIT 1",(row['id'],)).fetchone()
+                row['source_change_id']=source['id'] if source else None;row['recycle_id']=recycle['id'] if recycle else None
         return {'items':rows,'total':total,'page':page,'pages':max(1,(total+29)//30)}
 
     def recheck(self,media_id):

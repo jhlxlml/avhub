@@ -10,7 +10,7 @@ test('directory permissions start disabled, require explicit consent and use nat
   await page.route('**/api/file-permissions?**',route=>route.fulfill({json:[{root_id:1,supported:true,rename:false,recycle:false,reason:''},{root_id:2,supported:true,rename:false,recycle:false,reason:''}]}));
   await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();const rename=page.getByRole('checkbox',{name:/^允许重命名/}).first();await expect(rename).not.toBeChecked();
   await rename.click();const confirmation=page.getByRole('dialog',{name:'开启文件整理权限？',exact:true});await expect(confirmation).toBeVisible();await expect(page.getByRole('button',{name:'关闭窗口',exact:true})).toBeEnabled();await page.keyboard.press('Escape');await expect(confirmation).toHaveCount(0);await expect(rename).not.toBeChecked();expect(await page.evaluate(()=>(window as any).fileCalls.length)).toBe(0);
-  await rename.click();await confirmation.getByRole('button',{name:'开启权限',exact:true}).click();await expect(rename).toBeChecked();expect(await page.evaluate(()=>(window as any).fileCalls)).toEqual([{action:'permissions',id:1,rename:true,recycle:false}]);
+  await rename.click();await confirmation.getByRole('button',{name:'开启权限',exact:true}).click();await expect(rename).toBeChecked();expect(await page.evaluate(()=>(window as any).fileCalls)).toEqual([{action:'permissions',id:1,rename:true,recycle:false,permanentDelete:false}]);
 });
 for(const theme of ['dark','light'])test(`${theme}: file dialogs have locked extensions, preserve drafts on errors and never execute on cancel`,async({page,request})=>{
   await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});

@@ -25,6 +25,9 @@ try{
   for(let index=0;index<items.length;index++)await api(`/api/media/${items[index].id}`,'PATCH',{title:`示例视频 ${index+1}`,kind:'movie'});
   items=(await api('/api/media?page=1&sort=name')).items;
   await page.goto(origin+`/?view=movies&root=${registered.id}&q=示例&format=mp4&watch=unwatched`);await expect(page.locator('.card')).toHaveCount(6);
+  await expect(page.locator('.library-heading .library-filter-summary')).toHaveCount(0);
+  await expect(page.getByRole('region',{name:'当前筛选条件'})).toHaveCount(0);
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   const summary=page.getByRole('region',{name:'当前筛选条件'});await summary.getByRole('button',{name:'移除筛选：搜索：示例',exact:true}).click();
   assert.equal(new URL(page.url()).searchParams.has('q'),false);await expect(page.getByRole('button',{name:'电影',exact:true})).toHaveAttribute('aria-pressed','true');await expect(summary).toContainText('格式：MP4');
   await shot('wide-filter-summary');
