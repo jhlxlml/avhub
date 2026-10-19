@@ -72,7 +72,17 @@ try {
   const sourceDigest=()=>createHash('sha256').update(readFileSync(sample)).digest('hex'),originalDigest=sourceDigest();
   await page.evaluate(async directory=>{const registered=await fetch('/api/roots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:directory})});if(!registered.ok)throw new Error('sample registration failed');await fetch('/api/scan',{method:'POST'});},mediaFolder);
   await expect.poll(()=>page.evaluate(async()=>(await(await fetch('/api/scan')).json()).state),{timeout:30000}).toBe('completed');
-  const mediaId=await page.evaluate(async()=>(await(await fetch('/api/media')).json()).items.find(item=>item.name==='owned-first-frame.mp4')?.id);assert.ok(mediaId);
+  const mediaId=await page.evaluate(async name=>{
+    // Supplying page is part of the paginated API contract. Without it the
+    // compatibility endpoint intentionally returns an array, not {items}.
+    const response=await fetch('/api/media?page=1&q='+encodeURIComponent(name));
+    if(!response.ok)throw new Error(`Generated sample lookup failed: HTTP ${response.status}`);
+    const result=await response.json();
+    if(!Array.isArray(result.items))throw new Error('Generated sample lookup requires a paginated media response');
+    const matches=result.items.filter(item=>item.name===name);
+    if(matches.length!==1)throw new Error(`Expected exactly one generated sample, received ${matches.length}`);
+    return matches[0].id;
+  },'owned-first-frame.mp4');assert.ok(mediaId);
   const frameStarted=performance.now();await page.goto(new URL('/?video='+mediaId,page.url()).href);
   await page.locator('video').waitFor({timeout:30000});
   const frame=await page.locator('video').evaluate(video=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('real decoded frame timeout')),30000);video.requestVideoFrameCallback((_,meta)=>{clearTimeout(timer);resolve({mediaTime:meta.mediaTime,width:meta.width,height:meta.height,presentedFrames:meta.presentedFrames,decodedFrames:video.getVideoPlaybackQuality().totalVideoFrames});});}));

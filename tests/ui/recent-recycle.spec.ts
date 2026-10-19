@@ -1,5 +1,5 @@
 // Explicit renderer/native-bridge harness. Native restore uses owned Electron samples.
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
 const recordId='a'.repeat(32);
 const fixture=Array.from({length:8},(_,i)=>({id:(i+10).toString(16).padStart(32,'0'),name:`最近视频 ${i}.mp4`,source:`D:\\owned\\${i}.mp4`,size:1000,created_at:1,status:i===1?'review':'available',error:''}));
 test.beforeEach(async({request,page})=>{
@@ -37,9 +37,51 @@ test('batch success offers records, never one-click bulk restore',async({page})=
  await page.goto('/');await page.getByRole('button',{name:'最近回收',exact:true}).waitFor();await page.evaluate(()=>window.dispatchEvent(new CustomEvent('avhub-recycled',{detail:{records:[{id:'a'.repeat(32),title:'A'},{id:'b'.repeat(32),title:'B'}]}})));
  await expect(page.locator('.toast')).toContainText('2 个视频');await expect(page.getByRole('button',{name:'恢复视频',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'查看回收记录',exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryCalls)).toEqual([]);
 });
-test('long-name recovery toast fits 320px and does not expire while focused',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:'最近回收',exact:true}).waitFor();await page.setViewportSize({width:320,height:700});await page.clock.install();
+async function openTimedToast(page:Page){
+ await page.goto('/');await page.getByRole('button',{name:'最近回收',exact:true}).waitFor();await page.setViewportSize({width:320,height:700});
+ const time=new Date('2026-01-01T00:00:00Z');
+ await page.clock.install({time});await page.clock.pauseAt(new Date(time.getTime()+1000));
+ // React's passive effect can run AFTER focus() returns. Observe the actual
+ // timeout registration/cancellation before advancing virtual time; DOM focus
+ // alone does not prove that the toast's timer has restarted. No app test flags.
+ await page.evaluate(()=>{
+   const pending=new Set<number>(),schedule=window.setTimeout.bind(window),cancel=window.clearTimeout.bind(window);
+   window.setTimeout=(handler,delay,...args)=>{
+     const tracked=delay===10000&&typeof handler==='function';
+     const id=schedule(tracked?()=>{pending.delete(id);(handler as Function)(...args);}:handler,delay,...args);
+     if(tracked)pending.add(id);return id;
+   };
+   window.clearTimeout=id=>{if(id!==undefined)pending.delete(id);cancel(id);};
+   (window as any).recycleToastTimerCount=()=>pending.size;
+ });
  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('avhub-recycled',{detail:{records:[{id:'a'.repeat(32),title:'一个很长的视频文件名'.repeat(12)+'.mkv'}]}})));
- const toast=page.locator('.toast');await expect(toast).toBeVisible();expect(await toast.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
- await page.getByRole('button',{name:'恢复视频',exact:true}).focus();await page.clock.runFor(11000);await expect(toast).toBeVisible();await page.getByRole('button',{name:'最近回收',exact:true}).focus();await page.mouse.move(0,0);await page.clock.runFor(11000);await expect(toast).toHaveCount(0);
+ await expect(page.locator('.toast')).toBeVisible();await expectToastTimers(page,1);
+}
+async function expectToastTimers(page:Page,count:number){
+ await expect.poll(()=>page.evaluate(()=>(window as any).recycleToastTimerCount())).toBe(count);
+}
+async function expectToastExpires(page:Page){
+ await expectToastTimers(page,1);
+ await page.clock.runFor(9999);await expect(page.locator('.toast')).toBeVisible();
+ await page.clock.runFor(1);await expect(page.locator('.toast')).toHaveCount(0);await expectToastTimers(page,0);
+}
+test('long-name recovery toast fits 320px and does not expire while focused',async({page})=>{
+ await openTimedToast(page);
+ const toast=page.locator('.toast');expect(await toast.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+ await page.getByRole('button',{name:'恢复视频',exact:true}).focus();await expectToastTimers(page,0);
+ await page.clock.runFor(11000);await expect(toast).toBeVisible();
+ await page.getByRole('button',{name:'查看回收记录',exact:true}).focus();await expectToastTimers(page,0);
+ await page.clock.runFor(11000);await expect(toast).toBeVisible();
+ await page.getByRole('button',{name:'最近回收',exact:true}).focus();await page.mouse.move(0,0);
+ await expectToastExpires(page);
+});
+test('recovery toast resumes only after both pointer and focus leave',async({page})=>{
+ await openTimedToast(page);
+ const toast=page.locator('.toast');await toast.hover();await expectToastTimers(page,0);
+ await page.clock.runFor(11000);await expect(toast).toBeVisible();
+ await page.getByRole('button',{name:'恢复视频',exact:true}).focus();await page.mouse.move(0,0);await expectToastTimers(page,0);
+ await page.clock.runFor(11000);await expect(toast).toBeVisible();
+ await toast.hover();await page.getByRole('button',{name:'最近回收',exact:true}).focus();await expectToastTimers(page,0);
+ await page.clock.runFor(11000);await expect(toast).toBeVisible();
+ await page.mouse.move(0,0);await expectToastExpires(page);
 });
