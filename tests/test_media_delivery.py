@@ -2,6 +2,7 @@ import tempfile
 import unittest
 import anyio
 import io
+import os
 from unittest.mock import patch
 from pathlib import Path
 
@@ -63,6 +64,31 @@ class MediaDeliveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status, 416)
         self.assertEqual(headers[b'content-range'], f'bytes */{len(self.data)}'.encode())
         self.assertEqual(body, b'')
+
+    async def test_range_above_four_gib_preserves_large_offsets_without_large_fixture(self):
+        # Logical sparse reader: no multi-GiB allocation or user media mutation.
+        from app.media_delivery import MediaFileResponse
+        info=list(self.source.stat());info[6]=5*1024**3+17
+        response=MediaFileResponse(self.source,media_type='video/mp4',stat_result=os.stat_result(info))
+        class Reader:
+            position=0
+            closed=False
+            async def seek(self,position):self.position=position
+            async def read(self,length):
+                data=bytes((self.position+i)%256 for i in range(length));self.position+=length;return data
+            async def aclose(self):self.closed=True
+        reader=Reader()
+        async def opened(*args,**kwargs):return reader
+        messages=[]
+        async def send(message):messages.append(message)
+        async def receive():return {'type':'http.request','body':b'','more_body':False}
+        start=4*1024**3+123;end=start+15
+        with patch('anyio.open_file',opened):
+            await response({'type':'http','method':'GET','headers':[(b'range',f'bytes={start}-{end}'.encode())]},receive,send)
+        self.assertEqual(messages[0]['status'],206)
+        self.assertEqual(dict(messages[0]['headers'])[b'content-range'],f'bytes {start}-{end}/{info[6]}'.encode())
+        self.assertEqual(b''.join(message.get('body',b'') for message in messages[1:]),bytes((start+i)%256 for i in range(16)))
+        self.assertTrue(reader.closed)
 
     async def test_if_range_and_multipart_keep_standard_semantics(self):
         _, headers, _, _ = await self.deliver(method='HEAD')

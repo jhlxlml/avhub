@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url),{nativeTrackChoice,rememberedTrack}=require('../dist/nativeTrackMemory.js');
+const tracks=[{id:1,type:'audio','ff-index':1},{id:2,type:'audio','ff-index':3},{id:1,type:'sub','ff-index':2},{id:2,type:'sub',external:true,'ff-index':0}];
+assert.equal(nativeTrackChoice(tracks,'audio',3),2);
+assert.equal(nativeTrackChoice(tracks,'sub','embedded:2'),1);
+assert.equal(nativeTrackChoice(tracks,'sub',''),'no');
+assert.equal(nativeTrackChoice(tracks,'audio',99),undefined);
+assert.equal(nativeTrackChoice(tracks,'sub','embedded:0'),undefined);
+assert.equal(rememberedTrack(tracks,'audio',2),3);
+assert.equal(rememberedTrack(tracks,'sub',1),'embedded:2');
+assert.equal(rememberedTrack(tracks,'sub','no'),'');
+assert.equal(rememberedTrack(tracks,'sub',2),undefined);
+console.log('Native track identity mapping passed: per-kind IDs never cross stream indices; unknown/external tracks are not guessed.');

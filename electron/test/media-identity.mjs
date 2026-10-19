@@ -36,8 +36,7 @@ try{
   await api(`/api/media/${fresh.id}/favorite`,'PUT',{favorite:true});await api(`/api/media/${fresh.id}/progress`,'PUT',{progress:.5,updated_at:Date.now()});
   const touched=spawnSync(process.env.AVHUB_PYTHON||'python',['-c','import os; p=os.environ["AVHUB_OWNED_TOUCH"];s=os.stat(p);os.utime(p,ns=(s.st_atime_ns,s.st_mtime_ns+2000000000))'],{env:{...process.env,AVHUB_OWNED_TOUCH:renamed},windowsHide:true});assert.equal(touched.status,0);
   await scan();await expect.poll(async()=>(await api('/api/thumbnails')).current).toBe(null);
-  // Close and reopen Settings to reload its independent source-state panel.
-  await expect(page.getByRole('button',{name:'关闭设置',exact:true})).toBeEnabled();await page.getByRole('button',{name:'关闭设置',exact:true}).click();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();
+  // A completed scan refreshes the already-open Settings source-state panel.
   await expect(page.locator('.source-change-panel')).toContainText('源文件有变化');await page.getByRole('button',{name:'保留原媒体信息',exact:true}).click();await page.getByRole('dialog',{name:'保留原媒体信息？',exact:true}).getByRole('button',{name:'确认保留',exact:true}).click();
   await expect(page.locator('.source-change-panel')).toContainText('暂无待确认');const retained=await api(`/api/media/${fresh.id}`);assert.equal(retained.favorite,1);assert.equal(retained.progress,.5);assert.equal(hash(renamed),newer);
   await expect(page.getByRole('button',{name:'关闭设置',exact:true})).toBeEnabled();await page.getByRole('button',{name:'关闭设置',exact:true}).click();await expect(page.getByRole('dialog')).toHaveCount(0);

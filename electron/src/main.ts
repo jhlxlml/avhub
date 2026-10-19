@@ -5,6 +5,7 @@ import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
 import {StartupTrace} from './startupTrace';
 import {LocalExports} from './localExports';
+import {captureChromiumDiagnostics} from './chromiumDiagnostics';
 import { stopOwnedBackend } from './backendShutdown';
 import { appendBoundedLog } from './desktopLogs';
 import { previousDirectory,rememberDirectory,type DirectoryPurpose } from './directoryHistory';
@@ -16,6 +17,7 @@ import path from 'node:path';
 import { realpath,stat } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash, randomBytes } from 'node:crypto';
+import {NativePlayer} from './nativePlayer';
 
 const isPackaged = app.isPackaged;
 const projectRoot = app.getAppPath();
@@ -34,19 +36,43 @@ let normalPlaybackWindow: { contentBounds: Rectangle; maximized: boolean } | nul
 let playbackAspectRatio=0;
 let expandedPlaybackBounds:Rectangle|null=null;
 let fittingPlaybackWindow=false;
+let placementRevision=0;
+let placementTimer:ReturnType<typeof setTimeout>|undefined;
+let settlingPlaybackWindow=false;
+let lastFittedPlaybackBounds:Rectangle|null=null;
 const startupTrace=new StartupTrace(line=>appendDesktopLog(line));
 const dataHome=isPackaged?(process.env.PORTABLE_EXECUTABLE_DIR||path.dirname(app.getPath('exe'))):(process.env.AVHUB_APP_HOME||projectRoot);
 const dataConfigFile=path.join(dataHome,configName);
 const defaultDataDir=path.join(dataHome,'AVHub-data');
+const nativePlayer=new NativePlayer({origin:()=>`http://127.0.0.1:${backendPort}`,token:()=>sessionToken,
+  runtime:()=>path.join(isPackaged?process.resourcesPath:projectRoot,isPackaged?'mpv':'bin/mpv','mpv.exe'),
+  data:()=>dataDir,main:()=>mainWindow,icon:()=>loadDesktopIcon(projectRoot,process.resourcesPath,isPackaged),log:line=>appendDesktopLog(line),mode:value=>applyWindowMode(mainWindow!,value),windowAction:value=>applyWindowAction(mainWindow!,value),settled:()=>waitForWindowPlacement(mainWindow!),windowState:()=>windowState(mainWindow!)});
+ipcMain.handle('avhub:native-player',(event,action:unknown,input:unknown)=>{
+  if(shuttingDown&&action==='open')throw new Error('应用正在退出，不能打开新视频');
+  return nativePlayer.invoke(event,action,input);
+});
 let pendingDataMigration:DataMigration|undefined;
 
 function setExactContentBounds(window:BrowserWindow,target:Rectangle) {
+  const revision=++placementRevision;clearTimeout(placementTimer);settlingPlaybackWindow=true;
   window.setContentBounds(target);
-  // Correct fractional-DPI client rounding once, using measured differences.
-  const actual=window.getContentBounds();
-  const dw=actual.width-target.width,dh=actual.height-target.height;
-  if((dw || dh) && Math.abs(dw)<=2 && Math.abs(dh)<=2)
-    window.setContentBounds({...target,width:target.width-dw,height:target.height-dh});
+  let requested={...target},attempt=0;
+  const settle=()=>{
+    if(revision!==placementRevision)return;
+    if(window.isDestroyed()){settlingPlaybackWindow=false;return;}
+    const actual=window.getContentBounds();
+    const delta={x:target.x-actual.x,y:target.y-actual.y,width:target.width-actual.width,height:target.height-actual.height};
+    if(Object.values(delta).every(value=>value===0)||Object.values(delta).some(value=>Math.abs(value)>3)||attempt++>=3){settlingPlaybackWindow=false;if(purePlayback&&!expandedPlaybackBounds)lastFittedPlaybackBounds=actual;return;}
+    requested={x:requested.x+delta.x,y:requested.y+delta.y,width:requested.width+delta.width,height:requested.height+delta.height};
+    window.setContentBounds(requested);placementTimer=setTimeout(settle,20);
+  };
+  // Native client/outer rounding is not settled inside setContentBounds().
+  // Calibrate against the completed request, cancel on a newer placement.
+  placementTimer=setTimeout(settle,20);
+}
+async function waitForWindowPlacement(window:BrowserWindow){
+  const deadline=Date.now()+1000;
+  while(settlingPlaybackWindow&&!window.isDestroyed()&&Date.now()<deadline)await delay(10);
 }
 function fitPlaybackWindow(window:BrowserWindow,largest=expandedPlaybackBounds!==null) {
   if(!purePlayback || !playbackAspectRatio || window.isFullScreen() || window.isMinimized() || fittingPlaybackWindow)return;
@@ -61,23 +87,14 @@ function fitPlaybackWindow(window:BrowserWindow,largest=expandedPlaybackBounds!=
     window.setMinimumSize(...playbackMinimum(playbackAspectRatio,work));
     window.setAspectRatio(playbackAspectRatio);
     setExactContentBounds(window,fitPlaybackBounds(current,work,playbackAspectRatio,largest));
-    // At fractional DPI the nearest realizable height can differ by one DIP.
-    // Fit width to the *measured* height, rather than repeatedly requesting the
-    // same rounded rectangle. Bound attempts to avoid resize feedback loops.
-    for(let i=0;i<2;i++) {
-      const measured=window.getContentBounds();
-      if(Math.abs(measured.width-measured.height*playbackAspectRatio)<=Math.max(1,playbackAspectRatio/2))break;
-      const width=Math.min(work.width,Math.round(measured.height*playbackAspectRatio));
-      const height=width===work.width?Math.round(width/playbackAspectRatio):measured.height;
-      const x=Math.max(work.x,Math.min(work.x+work.width-width,Math.round(measured.x+(measured.width-width)/2)));
-      setExactContentBounds(window,{...measured,x,width,height});
-    }
   } finally {fittingPlaybackWindow=false;}
 }
 function togglePlaybackExpand(window:BrowserWindow) {
   if(expandedPlaybackBounds) {
     const restore=expandedPlaybackBounds;expandedPlaybackBounds=null;
-    setExactContentBounds(window,restore);fitPlaybackWindow(window,false);
+    // This was already fitted before expansion. Re-fitting its rounded area
+    // changes width/height again and accumulates drift on every toggle.
+    setExactContentBounds(window,restore);
   } else {
     expandedPlaybackBounds=window.getContentBounds();fitPlaybackWindow(window,true);
   }
@@ -93,6 +110,17 @@ function trustedWindow(event: IpcMainInvokeEvent): BrowserWindow {
 const localExports=new LocalExports(()=>dataDir,async(request,signal)=>{
   const origin=`http://127.0.0.1:${backendPort}`;
   const options={headers:{'X-AVHub-Token':sessionToken},signal,redirect:'error' as const};
+  if(request.kind==='playback-diagnostics'){
+    if(shuttingDown||!mainWindow||mainWindow.isDestroyed())throw new Error('播放窗口已关闭');
+    const health=await fetch(`${origin}/api/health`,options);
+    if(!health.ok)throw new Error('本地服务不可用，请稍后重试');
+    const metadata=await health.json() as {build_id?:unknown;api_protocol?:unknown};
+    const report=await captureChromiumDiagnostics(mainWindow.webContents,signal,{
+      gpu:()=>app.getGPUInfo('complete'),features:()=>app.getGPUFeatureStatus(),
+      build:{version:app.getVersion(),build_id:typeof metadata.build_id==='string'&&/^[a-f0-9]{16}$/.test(metadata.build_id)?metadata.build_id:null,api_protocol:typeof metadata.api_protocol==='number'?metadata.api_protocol:null},
+    });
+    return {filename:'avhub-playback-diagnostics.json',response:new Response(JSON.stringify(report,null,2)),maximum:256*1024};
+  }
   if(request.kind==='diagnostics'){
     const result=await fetch(`${origin}/api/diagnostics`,options);
     if(!result.ok)throw new Error('读取诊断失败，请刷新后重试');
@@ -116,8 +144,8 @@ function publishWindowState(window: BrowserWindow) {
 }
 ipcMain.handle('avhub:window-state', event => windowState(trustedWindow(event)));
 ipcMain.handle('avhub:startup-ready',event=>{trustedWindow(event);startupTrace.mark('library-ready');return {ok:true};});
-ipcMain.handle('avhub:window-mode', (event, value: unknown) => {
-  const window = trustedWindow(event);
+ipcMain.handle('avhub:window-mode', async(event, value: unknown) => {const window=trustedWindow(event);applyWindowMode(window,value);await waitForWindowPlacement(window);return windowState(window);});
+function applyWindowMode(window:BrowserWindow,value:unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Object.entries(value).some(([key, flag]) => key==='videoAspectRatio'
         ? typeof flag!=='number' || !Number.isFinite(flag) || flag<1/64 || flag>64
@@ -139,7 +167,7 @@ ipcMain.handle('avhub:window-mode', (event, value: unknown) => {
       needsFit=true;
     } else {
       purePlayback = false;
-      playbackAspectRatio=0;expandedPlaybackBounds=null;
+      playbackAspectRatio=0;expandedPlaybackBounds=null;lastFittedPlaybackBounds=null;
       window.setAspectRatio(0);
       window.setMinimumSize(760, 560);
       if (normalPlaybackWindow) {
@@ -161,9 +189,9 @@ ipcMain.handle('avhub:window-mode', (event, value: unknown) => {
   else if (update.alwaysOnTop !== undefined) window.setAlwaysOnTop(update.alwaysOnTop);
   publishWindowState(window);
   return windowState(window);
-});
-ipcMain.handle('avhub:window-action', (event, action: unknown) => {
-  const window = trustedWindow(event);
+}
+ipcMain.handle('avhub:window-action', async(event, action: unknown) => {const window=trustedWindow(event);applyWindowAction(window,action);await waitForWindowPlacement(window);return window.isDestroyed()?null:windowState(window);});
+function applyWindowAction(window:BrowserWindow,action:unknown) {
   if (action === 'minimize') window.minimize();
   else if (action === 'maximize') {
     if(purePlayback && playbackAspectRatio)togglePlaybackExpand(window);
@@ -172,7 +200,7 @@ ipcMain.handle('avhub:window-action', (event, action: unknown) => {
   else if (action === 'close') window.close();
   else throw new Error('窗口操作参数无效');
   return window.isDestroyed() ? null : windowState(window);
-});
+}
 
 ipcMain.handle('avhub:media-action',async(event,mediaId:unknown,action:unknown)=>{
   const origin=`http://127.0.0.1:${backendPort}`;
@@ -255,7 +283,8 @@ ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
       catch(reportError){throw new Error(`${message}；结果未能确认：${String(reportError)}。请核对操作记录、原目录和系统回收站，不要重复操作`);}
       throw new Error(message);
     }
-    return await call(`/api/file-operations/${operation.id}/result`,{success:true});
+    const completed=await call(`/api/file-operations/${operation.id}/result`,{success:true});
+    return {...completed,operation_id:operation.id};
   } finally {fileActionBusy=false;}
 });
 
@@ -469,7 +498,7 @@ function createWindow(): BrowserWindow {
   window.on('maximize', ()=>{
     // Native titlebar double-click / OS maximize must also preserve video ratio.
     if(purePlayback && playbackAspectRatio && !fittingPlaybackWindow) {
-      window.unmaximize();expandedPlaybackBounds ??=window.getContentBounds();fitPlaybackWindow(window,true);
+      const restore=lastFittedPlaybackBounds??window.getContentBounds();window.unmaximize();expandedPlaybackBounds ??=restore;fitPlaybackWindow(window,true);
     }
     publish();
   });
@@ -482,7 +511,7 @@ function createWindow(): BrowserWindow {
   let resizeTimer:ReturnType<typeof setTimeout>|undefined;
   window.on('resize',()=>{
     if(resizeTimer)clearTimeout(resizeTimer);
-    if(!purePlayback || !playbackAspectRatio || fittingPlaybackWindow || window.isFullScreen())return;
+    if(!purePlayback || !playbackAspectRatio || fittingPlaybackWindow || settlingPlaybackWindow || window.isFullScreen())return;
     // setAspectRatio constrains native dragging. OS snap/programmatic resize
     // bypasses it, so repair once after resizing, never on video time updates.
     resizeTimer=setTimeout(()=>{
@@ -598,6 +627,7 @@ app.on('before-quit', event => {
   shuttingDown = true;
   appendDesktopLog('shutdown-start');
   void (async()=>{
+    let discardUnsaved=false;
     while(mainWindow && !mainWindow.isDestroyed()) {
       let saved:boolean|'data-commit'=false;
       try {
@@ -628,7 +658,18 @@ app.on('before-quit', event => {
         if(mainWindow && !mainWindow.isDestroyed())mainWindow.webContents.send('avhub:quit-cancelled');
         return;
       }
-      if(choice.response===1)break;
+      if(choice.response===1){discardUnsaved=true;break;}
+    }
+    // Stop the owned decoder and save its progress BEFORE stopping the API.
+    for(;;){
+      try{await nativePlayer.shutdown(discardUnsaved);break;}
+      catch(error){
+        if(!mainWindow||mainWindow.isDestroyed())throw error;
+        const choice=await dialog.showMessageBox(mainWindow,{type:'warning',title:'原生播放器尚未关闭',message:String((error as Error).message),
+          detail:'先完成原生进度保存与解码进程退出，再关闭媒体服务。放弃进度不会跳过文件占用保护。',buttons:['重试关闭','放弃未保存进度并重试','取消退出'],defaultId:0,cancelId:2});
+        if(choice.response===2){shuttingDown=false;mainWindow.webContents.send('avhub:quit-cancelled');return;}
+        if(choice.response===1)discardUnsaved=true;
+      }
     }
     // Saving/discard confirmation is complete. Destroy the renderer BEFORE
     // waiting for Uvicorn: paused video/Range/HLS connections otherwise keep

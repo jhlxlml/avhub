@@ -1,4 +1,5 @@
 import { test,expect,type Page } from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 
 const visible='data-scrollbar-visible';
 const transparent='rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)';
@@ -97,14 +98,14 @@ test('nested playlist navigation reveals only its active native scrollbar',async
   await page.setViewportSize({width:390,height:600});await library(page);
   await page.getByRole('button',{name:'播放列表',exact:true}).click();
   const list=page.locator('.playlist-list');
-  await expect.poll(()=>list.evaluate(el=>el.scrollHeight>el.clientHeight)).toBeTruthy();
+  await expect.poll(()=>list.evaluate(el=>el.scrollWidth>el.clientWidth)).toBeTruthy();
   const box=(await list.boundingBox())!;
   await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
-  await page.mouse.wheel(0,150);
-  await expect.poll(()=>list.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+  await page.mouse.wheel(150,0);
+  await expect.poll(()=>list.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);
   await expect(list).toHaveAttribute(visible,'');
   await expect(list).not.toHaveAttribute(visible,'',{timeout:4000});
-  await page.mouse.move(box.x+box.width-14,box.y+box.height/2);
+  await page.mouse.move(box.x+box.width/2,box.y+box.height-2);
   await expect(list).toHaveAttribute(visible,'');
   await page.waitForTimeout(1500);await expect(list).toHaveAttribute(visible,'');
   await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -118,6 +119,7 @@ test('subtitle popover scrolling and edge hover work without changing paused pla
   if(await start.isVisible())await start.click();
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.scrollTest='same-decoder';});
+  await revealPlayerControls(page);
   await page.getByRole('button',{name:'纯净播放',exact:true}).click();
   await page.setViewportSize({width:960,height:360});await page.mouse.move(480,340);
   await page.getByRole('button',{name:'字幕',exact:true}).click();

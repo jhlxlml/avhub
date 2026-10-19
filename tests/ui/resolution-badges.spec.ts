@@ -7,6 +7,8 @@ test('resolution tiers are orientation-independent and do not overstate cropped 
   for(const [w,h] of [[0,1080],[-1920,1080],[NaN,720],[Infinity,1080],[undefined,undefined]])expect(resolutionTier(w,h)).toBeNull();
 });
 test('resolution filters are separate, request real server filtering and restore on refresh',async({page,request})=>{
+  // Virtual indexed root; availability is not under test here.
+  await page.route(/\/api\/roots(?:\/status)?(?:\?|$)/,async route=>{const response=await route.fetch();await route.fulfill({response,json:(await response.json()).map((root:any)=>({...root,available:true}))});});
   await request.post('/test/reset');await page.goto('/?sort=name&root=1&page=2');
   const filters=page.getByRole('group',{name:'分辨率筛选',exact:true});
   await expect(filters.getByRole('button')).toHaveCount(7);
@@ -21,13 +23,16 @@ test('resolution filters are separate, request real server filtering and restore
   const request4k=page.waitForRequest(r=>r.url().includes('/api/media?')&&new URL(r.url()).searchParams.get('resolution')==='4K');
   await filters.getByRole('button',{name:'筛选 4K',exact:true}).click();
   const url=new URL((await request4k).url());expect(url.searchParams.get('root_id')).toBe('1');expect(url.searchParams.get('page')).toBe('1');expect(url.searchParams.get('sort')).toBe('name');
-  await expect(page.getByText('暂无匹配的视频',{exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'暂无匹配的视频',exact:true})).toBeVisible();
+  await expect(page.locator('.card')).toHaveCount(0);
   await page.reload();await expect(filters.getByRole('button',{name:'筛选 4K',exact:true})).toHaveAttribute('aria-pressed','true');
   await filters.getByRole('button',{name:'全部分辨率',exact:true}).click();
   await expect(page.locator('.card').first()).toBeVisible();await expect(page).not.toHaveURL(/resolution=/);
   expect((await request.get('/api/media?resolution=invalid')).status()).toBe(422);
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();await page.setViewportSize({width:390,height:820});
-  expect(await filters.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  const compact=page.getByRole('combobox',{name:'按分辨率筛选',exact:true});
+  await expect(compact).toBeVisible();
+  const compactBox=(await compact.boundingBox())!;expect(compactBox.x+compactBox.width).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/resolution-filter-light.png'});
   await page.setViewportSize({width:1797,height:850});
   await page.screenshot({path:'test-results/resolution-filter-toolbar-light.png'});

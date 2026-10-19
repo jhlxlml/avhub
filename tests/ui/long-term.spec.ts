@@ -130,6 +130,8 @@ test('a slow or failed subtitle restore never saves the temporary disabled state
   const detail = await (await request.get('/api/media/1')).json();
   const saved = {id:detail.external_subtitles[0].path,delay:.4};
   await request.patch('/api/preferences', {data:{values:{'subtitle.1':saved}}});
+  const memory=await (await request.get('/api/media/1/playback-state')).json();
+  await request.patch('/api/media/1/playback-state',{data:{source:memory.source,changes:{subtitle:saved.id,delay:saved.delay}}});
   let waiting = false; let release!:()=>void;
   const gate = new Promise<void>(resolve => {release=resolve;});
   await page.route('**/media/1/subtitle?*', async route => {
@@ -155,11 +157,14 @@ test('a late subtitle preference read from an old Player cannot overwrite the ne
   const detail = await (await request.get('/api/media/1')).json();
   const saved = {id:detail.external_subtitles[0].path,delay:.4};
   await request.patch('/api/preferences', {data:{values:{'subtitle.1':saved}}});
+  const memory=await (await request.get('/api/media/1/playback-state')).json();
+  await request.patch('/api/media/1/playback-state',{data:{source:memory.source,changes:{subtitle:saved.id,delay:saved.delay}}});
   let reads=0; let release!:()=>void;
   const gate=new Promise<void>(resolve=>{release=resolve;});
-  await page.route('**/api/preferences/subtitle/1',async route=>{
+  await page.route('**/api/media/1/playback-state',async route=>{
+    if(route.request().method()!=='GET')return route.continue();
     reads++;
-    if(reads===1){await gate;await route.fulfill({json:{value:{id:'',delay:0}}});}
+    if(reads===1){await gate;await route.fulfill({json:{...memory,subtitle:'',delay:0}});}
     else await route.continue();
   });
   await page.goto('/?video=1');

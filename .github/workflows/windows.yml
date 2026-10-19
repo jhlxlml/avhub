@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      mpv_validation:
+        description: 'Run optional MPV runtime regression only; do not package or publish'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,17 +64,46 @@ jobs:
           npm run build:electron
       - name: Backend regression
         run: python -m unittest discover -s tests -p test_*.py
+      - name: Native playback control queue regression (no runtime download)
+        run: |
+          node electron/test/mpv-client.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-audio.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-startup-failure.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-coordination.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/independent-coordination.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-track-memory.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/library-soak-report.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/no-inspector-report.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/help-contract.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/chromium-diagnostics.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/process-diagnostics.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-embedding.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/check-mpv-readiness.mjs --manifest-only
       - name: Windows short-path regression
         run: python tests/check_path_alias.py
       - name: Shared renderer regression
-        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts tests/ui/mouse-seek.spec.ts
+        run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts tests/ui/mouse-seek.spec.ts tests/ui/chromium-diagnostics.spec.ts
       - name: Windows short-path screenshot regression
         # Shared renderer tests are harnesses, not browser product acceptance.
         run: python tests/check_path_alias.py --ui
       - name: Renderer interaction and theme regression harness
         run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts tests/ui/media-menu-position.spec.ts tests/ui/file-management.spec.ts tests/ui/batch-recycle.spec.ts
+      - name: Lossless delivery and playback recovery renderer harnesses
+        run: npx playwright test tests/ui/indexed-remux.spec.ts tests/ui/native-quality.spec.ts tests/ui/fullscreen-icon.spec.ts tests/ui/player-wheel.spec.ts tests/ui/playlist-notice.spec.ts tests/ui/ts-startup.spec.ts
       - name: Recycle records and filter containment renderer harnesses
-        run: npx playwright test tests/ui/recycle-records.spec.ts tests/ui/library-refinement.spec.ts tests/ui/source-changes.spec.ts
+        run: npx playwright test tests/ui/recycle-records.spec.ts tests/ui/library-refinement.spec.ts tests/ui/source-changes.spec.ts tests/ui/thumbnail-viewport.spec.ts tests/ui/recent-recycle.spec.ts tests/ui/native-player-controls.spec.ts tests/ui/native-launch-lifecycle.spec.ts tests/ui/cover-cache.spec.ts tests/ui/media-playback-memory.spec.ts tests/ui/library-polish.spec.ts tests/ui/workspace-polish.spec.ts tests/ui/player-polish.spec.ts
       - name: Real Electron startup/exit
         run: node electron/test/smoke.mjs
       - name: Startup trace unit regression
@@ -88,6 +122,8 @@ jobs:
         run: node electron/test/batch-recycle.mjs
       - name: Native recycle records with isolated owned samples
         run: node electron/test/recycle-records.mjs
+      - name: Native recycle toast and recent restoration shortcuts
+        run: node electron/test/recycle-shortcuts.mjs
       - name: Native external file identity and explicit replacement acceptance
         run: node electron/test/media-identity.mjs
       - name: Native text editing menu regression
@@ -101,20 +137,38 @@ jobs:
         run: node electron/test/library-workflows.mjs
       - name: Real Electron library refinement and playlist batches
         run: node electron/test/library-refinement.mjs
+      - name: Real Electron library visual system and compact layouts
+        run: node electron/test/library-polish.mjs
+      - name: Real Electron player visual system and retained source
+        run: node electron/test/player-polish.mjs
+      - name: Bounded Electron playback scan and thumbnail concurrency smoke
+        # One minute CI smoke; manual endurance default is ten minutes.
+        run: node electron/test/concurrent-soak.mjs 60
       - name: Package only tags or explicit manual runs
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -SkipDependencyInstall
       - name: Actual portable EXE acceptance
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
         run: node electron/test/portable-release.mjs
       - name: Actual extracted folder ZIP acceptance
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
         run: node electron/test/portable-release.mjs --folder
       - name: Checksums and source manifest
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
         run: python scripts/ci-artifacts.py
+      - name: Save packaged startup and decoded-frame measurements
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-acceptance-timings-${{ github.sha }}
+          path: |
+            build/portable-release-test-*/startup-timings.json
+            build/folder-release-test-*/startup-timings.json
+            build/concurrent-soak-*/soak.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Save verified release files
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-portable-${{ github.sha }}
@@ -135,9 +189,63 @@ jobs:
             test-results/**
             playwright-report/**
             build/electron-*/**/*.log
+            build/concurrent-soak-*/soak.json
+            build/portable-release-test-*/startup-timings.json
+            build/folder-release-test-*/startup-timings.json
           if-no-files-found: ignore
           retention-days: 7
           compression-level: 6
+
+  native-runtime:
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' && inputs.mpv_validation
+    runs-on: windows-2025
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24.19.0'
+          cache: npm
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.13.11'
+      - name: Prepare locked development runtimes (not redistribution approval)
+        run: |
+          python scripts/ci-prepare.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install -r requirements-ci.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node node_modules/electron/install.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run prepare:mpv
+      - name: Native runtime regression (not interactive desktop or mixed-DPI acceptance)
+        run: |
+          npm run test:electron:mpv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-embedded.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-startup-recovery.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-app-flow.mjs
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: native-runtime-regression-${{ github.sha }}
+          path: |
+            build/native-player-*/acceptance.json
+            build/native-player-*/failure.txt
+            build/native-app-flow-*/acceptance.json
+            build/native-app-flow-*/failure.json
+            build/native-embedded-*/acceptance.json
+            build/native-embedded-*/failure.txt
+          if-no-files-found: warn
 
   publish:
     needs: verify

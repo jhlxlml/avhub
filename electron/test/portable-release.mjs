@@ -3,6 +3,7 @@ import {chromium,expect} from '@playwright/test';
 import {spawn,spawnSync} from 'node:child_process';
 import {createServer} from 'node:net';
 import {mkdirSync,mkdtempSync,copyFileSync,readFileSync,writeFileSync,existsSync,readdirSync} from 'node:fs';
+import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 const root=path.resolve(import.meta.dirname,'../..'),version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
@@ -23,6 +24,7 @@ const seed=spawnSync(process.env.AVHUB_PYTHON||'python',['-c','from app import m
 assert.equal(seed.status,0,'isolated portable test database must initialize');
 let child,browser,page,port;
 const startupSamples=[];
+let firstFrameSample=null;
 async function launch(){
   const server=createServer();await new Promise(r=>server.listen(0,'127.0.0.1',r));port=server.address().port;await new Promise(r=>server.close(r));
   const env={...process.env,AVHUB_HEADLESS_TEST:'1'};delete env.AVHUB_DATA_DIR;delete env.AVHUB_APP_HOME;delete env.ELECTRON_RUN_AS_NODE;
@@ -61,6 +63,22 @@ try {
   await expect(page.locator('.manual-update-result [role="status"]')).toBeVisible();
   await page.screenshot({path:path.join(folder,'portable-about.png')});
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
+  // Generated acceptance media only. Record a real decoded frame, not a hidden
+  // loading indicator. This measures a short H.264 sample, not MKV/HDR seeking.
+  const mediaFolder=path.join(folder,'generated-media');mkdirSync(mediaFolder);
+  const sample=path.join(mediaFolder,'owned-first-frame.mp4');
+  const generated=spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','lavfi','-i','testsrc2=s=640x360:r=25','-t','10','-c:v','libx264','-pix_fmt','yuv420p',sample],{windowsHide:true,timeout:30000});
+  assert.equal(generated.status,0,'generate isolated first-frame sample');
+  const sourceDigest=()=>createHash('sha256').update(readFileSync(sample)).digest('hex'),originalDigest=sourceDigest();
+  await page.evaluate(async directory=>{const registered=await fetch('/api/roots',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:directory})});if(!registered.ok)throw new Error('sample registration failed');await fetch('/api/scan',{method:'POST'});},mediaFolder);
+  await expect.poll(()=>page.evaluate(async()=>(await(await fetch('/api/scan')).json()).state),{timeout:30000}).toBe('completed');
+  const mediaId=await page.evaluate(async()=>(await(await fetch('/api/media')).json()).items.find(item=>item.name==='owned-first-frame.mp4')?.id);assert.ok(mediaId);
+  const frameStarted=performance.now();await page.goto(new URL('/?video='+mediaId,page.url()).href);
+  await page.locator('video').waitFor({timeout:30000});
+  const frame=await page.locator('video').evaluate(video=>new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('real decoded frame timeout')),30000);video.requestVideoFrameCallback((_,meta)=>{clearTimeout(timer);resolve({mediaTime:meta.mediaTime,width:meta.width,height:meta.height,presentedFrames:meta.presentedFrames,decodedFrames:video.getVideoPlaybackQuality().totalVideoFrames});});}));
+  assert.equal(frame.width,640);assert.equal(frame.height,360);assert.ok(frame.decodedFrames>0);assert.equal(sourceDigest(),originalDigest);
+  firstFrameSample={navigationToDecodedFrameMs:Math.round(performance.now()-frameStarted),...frame,limitations:['Generated 10-second H.264 MP4; includes automation/navigation overhead; not real-media codec or random-seek acceptance.']};
+  await page.getByRole('button',{name:'返回媒体库',exact:true}).click();
   await page.evaluate(async()=>{await fetch('/api/preferences',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:{librarySort:'modified_asc',resumeBehavior:'resume'}})});});
   // Prepare an explicit next-launch migration using the same validated config
   // format; actual native selection is covered by the desktop IPC test.
@@ -73,6 +91,6 @@ try {
   await close();
   await launch();await close(); // Repeat launch without another migration.
   assert.ok(!readdirSync(path.join(root,'dist/electron/win-unpacked/resources')).includes('archive'));
-  writeFileSync(path.join(folder,'startup-timings.json'),JSON.stringify({startupSamples,limitations:['Isolated empty library; no OS cache flush; polling has up to 250 ms granularity; run 2 includes data migration.']},null,2));
+  writeFileSync(path.join(folder,'startup-timings.json'),JSON.stringify({startupSamples,firstFrameSample,limitations:['Initial startup uses an isolated empty library; later runs include one generated sample; no OS cache flush; polling has up to 250 ms granularity; run 2 includes data migration.']},null,2));
   console.log(JSON.stringify({passed:true,report:folder,startupSamples,limitations:['Isolated empty library; first run is not OS-cache-controlled cold boot. Second run includes explicit data migration.'],checks:[folderMode?'actual extracted folder ZIP':'actual portable EXE','frozen backend/FFmpeg','0 background checks',process.env.CI==='true'?'manual update UI (mock GitHub response)':'manual real GitHub check','default sibling data','packaged migration command','preferences retained','old data retained']}));
 }finally{if(page)await close();if(browser)await browser.close().catch(()=>{});if(child&&child.exitCode===null)spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}

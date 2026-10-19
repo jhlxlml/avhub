@@ -229,10 +229,13 @@ class LibraryTests(unittest.TestCase):
             with m.connection() as db:
                 db.execute("UPDATE media SET path=?,ext='.mp4',video_codec='h264',audio_tracks=? WHERE id=1",
                            (str(source), '[{"index":1,"codec":"aac"}]'))
-            with patch.object(m.playback, 'create', return_value={'token':'session'}) as create:
+            # Route-policy fixture contains placeholder bytes, not an MP4.
+            # Colour parsing has separate real-container/pixel acceptance.
+            with patch.object(m.playback, 'create', return_value={'token':'session'}) as create, patch('app.mp4_timeline.container_copy_color',return_value={'colour_primaries':9,'transfer_characteristics':16,'matrix_coefficients':9}):
                 result = m.start_playback(1, m.PlaybackInput(skip_direct=True, prefer_original=True))
                 self.assertEqual(result['mode'], 'remux')
                 self.assertTrue(create.call_args.kwargs['copy_video'])
+                self.assertIn('transfer_characteristics=16',create.call_args.kwargs['video_copy_args'][1])
                 self.assertIn('原片播放失败', result['reason'])
                 for body in [m.PlaybackInput(prefer_original=True, quality='720p',allow_video_transcode=True),
                              m.PlaybackInput(prefer_original=True, force_transcode=True,allow_video_transcode=True)]:
@@ -350,4 +353,14 @@ class SessionTests(unittest.TestCase):
         self.assertNotIn('-vf', command)
         self.assertNotIn('libx264', command)
         self.assertIn('0:3', command)
+        self.manager.stop(token)
+
+    def test_remux_color_metadata_filter_never_becomes_a_video_encoder(self):
+        metadata=['-bsf:v','h264_metadata=colour_primaries=9:transfer_characteristics=16:matrix_coefficients=9:video_full_range_flag=0,h264_mp4toannexb']
+        with patch('app.playback.subprocess.Popen',return_value=self.process) as popen:
+            token=self.manager.create(self.source,'ffmpeg',copy_video=True,copy_audio=True,video_copy_args=metadata)['token']
+            command=popen.call_args.args[0]
+        self.assertEqual(command[command.index('-bsf:v')+1],metadata[1])
+        self.assertEqual(command[command.index('-c:v')+1],'copy');self.assertEqual(command[command.index('-c:a')+1],'copy')
+        self.assertNotIn('-vf',command);self.assertNotIn('-pix_fmt',command);self.assertNotIn('libx264',command)
         self.manager.stop(token)

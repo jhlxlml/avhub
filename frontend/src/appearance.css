@@ -6,25 +6,26 @@
 :root .media-grid {grid-template-columns:repeat(auto-fill,minmax(min(var(--cover-card-min),100%),1fr))}
 
 :root[data-theme="light"] {
-  --ui-bg:#f4f6fa;
+  --ui-bg:#f5f5f7;
   --ui-surface:#ffffff;
-  --ui-raised:#e9eef5;
-  --ui-hover:#dfe7f0;
-  --ui-field:#f7f9fc;
-  --ui-border:#ced7e3;
-  --ui-divider:#dfe5ee;
-  --ui-text:#1d2b3d;
-  --ui-secondary:#42546a;
-  --ui-muted:#596c80;
-  --ui-accent:#b84434;
-  --ui-accent-hover:#a5382b;
-  --ui-accent-soft:#b8443410;
+  --ui-raised:#ededf0;
+  --ui-hover:#e4e4e8;
+  --ui-field:#ffffff;
+  --ui-chrome:#ffffff;
+  --ui-border:#d7d7dc;
+  --ui-divider:#e7e7eb;
+  --ui-text:#252527;
+  --ui-secondary:#52525b;
+  --ui-muted:#65656f;
+  --ui-accent:#315fbe;
+  --ui-accent-hover:#244c9f;
+  --ui-accent-soft:#315fbe12;
   --ui-danger:#a73042;
   --ui-warning:#91601c;
   --ui-success:#28724c;
   --ui-on-accent:#ffffff;
-  --ui-shadow:0 18px 55px #25334b1f;
-  --ui-shadow-soft:0 2px 8px #25334b0d;
+  --ui-shadow:0 16px 48px #18181b1f;
+  --ui-shadow-soft:0 1px 4px #18181b12;
   color-scheme:light;
 }
 :root[data-theme="light"] input::placeholder {color:var(--ui-muted)}
@@ -84,9 +85,9 @@
 :root[data-theme="light"] .scan-status {color:var(--ui-secondary)}
 :root[data-theme="light"] .scan-status details {color:#91601c}
 :root[data-theme="light"] .cover-placeholder {color:var(--ui-muted)}
-:root[data-theme="light"] .cover {box-shadow:0 2px 10px #25334b14,inset 0 0 0 1px #25334b08}
-:root[data-theme="light"] .card:hover .cover {box-shadow:0 3px 16px #25334b24,inset 0 0 0 1px var(--ui-accent-border)}
-:root[data-theme="light"] .modal-backdrop {background:#23334b66}
+:root[data-theme="light"] .cover {box-shadow:0 1px 3px #18181b0d,inset 0 0 0 1px #18181b08}
+:root[data-theme="light"] .card:hover .cover {box-shadow:0 3px 10px #18181b1a,inset 0 0 0 1px var(--ui-accent-border)}
+:root[data-theme="light"] .modal-backdrop {background:#18181b66}
 :root[data-theme="light"] .player-shell:not(.is-pure-playback) .video-wrap:not(:fullscreen) {box-shadow:0 8px 28px #25334b24}
 
 /* Contrast over video is independent of the library theme. Never alter pixels. */
@@ -94,8 +95,8 @@
   --ui-bg:#0b0f16;--ui-surface:#121923;--ui-raised:#18212e;--ui-hover:#212d3d;
   --ui-field:#0e151f;--ui-border:#283445;--ui-divider:#202c3a;
   --ui-text:#e8edf5;--ui-secondary:#b0bdce;--ui-muted:#8797ad;
-  --ui-accent:#f3907e;--ui-accent-hover:#ffa18e;--ui-accent-soft:#f3907e14;
-  --ui-danger:#f49a9a;--ui-on-accent:#211612;--ui-shadow:0 20px 70px #0008;
+  --ui-accent:var(--ui-overlay-accent);--ui-accent-hover:#bdd2ff;--ui-accent-soft:#9bbcff18;
+  --ui-danger:#f49a9a;--ui-on-accent:#14213b;--ui-shadow:0 20px 70px #0008;
   --ui-warning:#efbe79;--ui-success:#8ac5a4;
   --ui-danger-soft:color-mix(in srgb,var(--ui-danger) 9%,var(--ui-surface));
   --ui-accent-border:color-mix(in srgb,var(--ui-accent) 22%,transparent);
@@ -103,6 +104,6 @@
   --ui-shadow-soft:0 2px 8px #0002;
   color-scheme:dark;
 }
-:root.pure-playback .desktop-titlebar {--ui-accent:#f3907e}
+:root.pure-playback .desktop-titlebar {--ui-accent:var(--ui-overlay-accent)}
 .series-count,.episode-cover>.ui-icon {color:#e8edf5}
 @media(max-width:720px) {.library-view-controls{gap:6px}.cover-size-popover{padding:12px}}

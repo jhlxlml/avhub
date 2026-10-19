@@ -24,10 +24,11 @@
 .resolution-compact {display:none;align-items:center;gap:6px;color:var(--ui-muted);font-size:12px}.resolution-compact select {padding:8px 10px;min-width:110px}
 @media(max-width:1200px) {
   .toolbar .resolution-filter {display:none}.resolution-compact {display:flex}.library-toolbar-right {margin-left:auto}
-  .library .toolbar>.toolbar-icon-action {width:36px;height:36px;min-width:36px;flex:none;justify-content:center;padding:8px;gap:0}
+  .library .toolbar .toolbar-icon-action {width:36px;height:36px;min-width:36px;flex:none;justify-content:center;padding:8px;gap:0}
   .toolbar-icon-action .toolbar-action-label {display:none}
 }
 @media(max-width:860px) {.toolbar {flex-wrap:wrap}.library-toolbar-right {gap:8px}.resolution-compact {gap:4px}.resolution-compact select {min-width:94px}.filter-chip {max-width:100%}}
+@media(max-width:600px) {.library-organize-tools {padding-left:0;border-left:0}.library-browse-tools {width:100%}.library-browse-tools .directory-filter {flex:1;min-width:0}.library-browse-tools .folder-filter {width:100%;min-width:0}.library-toolbar-right {width:auto;flex:1;justify-content:flex-end}}
 .settings-group-heading {display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ui-secondary);margin:20px 0 8px}
 .settings-advanced {margin:20px 0 0;border:1px solid var(--ui-border);border-radius:10px;padding:12px;background:var(--ui-field)}
 .settings-advanced>summary {cursor:pointer;font-size:13px;color:var(--ui-secondary)}

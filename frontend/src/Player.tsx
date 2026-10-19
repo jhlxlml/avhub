@@ -7,15 +7,16 @@ import { toWebVtt } from './subtitleTimeline';
 import { MediaActions } from './MediaActions';
 import { Icon } from './Icon';
 import { ThemeToggle } from './AppearanceControls';
-import { IconButton, Popover, StatusMessage } from './ui';
+import { Button, IconButton, Popover, StatusMessage } from './ui';
 import { formatLabel, resolutionLabel } from './mediaLabels';
 import { PlaybackQueue } from './PlaybackQueue';
 import { changeAutoplay, useAutoplay } from './autoplay';
 import { usePlaybackDiagnostics } from './usePlaybackDiagnostics';
+import {PlaybackDiagnosticsExport} from './PlaybackDiagnosticsExport';
 import { usePlaybackFeedback } from './usePlaybackFeedback';
 import { useSeekFrame } from './useSeekFrame';
 import { usePreparationTrace, preparationLabels, type BackendPreparation } from './usePreparationTrace';
-import { preference, savePreference, loadSubtitlePreference as fetchSubtitlePreference } from './preferences';
+import { preference, savePreference } from './preferences';
 import { setWindowMode, useWindowMode } from './windowMode';
 import { saveScreenshot,screenshotKey,screenshotShortcutLabel,revealScreenshot,trackScreenshot,type SavedScreenshot } from './screenshots';
 import './screenshots.css';
@@ -23,11 +24,14 @@ import './playback.css';
 import {usePlaybackChrome} from './usePlaybackChrome';
 import {readMouseSeekSeconds,mouseSeekDeduper} from './mouseSeek';
 import {readResumeBehavior,startingPoint} from './resumeBehavior';
+import {NativePlayerLaunch} from './NativePlayerLaunch';
+import {playerShortcutTarget,playbackKeyIntent} from './playerShortcuts';
+import {readMediaPlaybackState,saveMediaPlaybackState,flushMediaPlaybackState,type MediaPlaybackState} from './mediaPlaybackState';
 
 type RemuxStats={processes:number;cache_hits:number;cache_misses:number;published:number;cancelled:number;batch_failures:number;workers:number};
 type Session = { mode?: 'direct' | 'remux' | 'hls'; state: 'preparing' | 'ready' | 'failed'; token?: string; url?: string; offset: number; start?: number; complete?:boolean; delivery?:'indexed-ts'|'indexed-remux'; error?: string; reason?: string; color?:PlaybackColor; window_start?:number; window_end?:number; preparation?: BackendPreparation;remux_stats?:RemuxStats|null;prepared?:boolean };
 type Quality = 'auto' | 'compat' | '1080p' | '720p' | '480p';
-type Request = { start: number; force_transcode: boolean; prefer_original: boolean; skip_direct?: boolean; indexed_ts?:boolean; indexed_remux?:boolean; autoplay?: boolean; quality: Quality; audio_track_index?: number; key: number;allow_video_transcode?:boolean;allow_audio_transcode?:boolean;skip_prepared?:boolean };
+type Request = { start: number; force_transcode: boolean; prefer_original: boolean; skip_direct?: boolean; indexed_ts?:boolean; indexed_remux?:boolean; autoplay?: boolean; quality: Quality; audio_track_index?: number; key: number;allow_video_transcode?:boolean;allow_audio_transcode?:boolean;skip_prepared?:boolean;strict_remux?:boolean };
 type SubtitleSource = { id: string; name: string; extension: string; text: string; assConverted?: boolean };
 type DragSession = { pointerId: number; startX: number; startY: number; panX: number; panY: number };
 const TEXT_SUBTITLE_CODECS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text', 'webvtt', 'text']);
@@ -69,13 +73,25 @@ function decodeSubtitle(buffer: ArrayBuffer): string {
   catch { return new TextDecoder('gb18030').decode(bytes); }
 }
 
-export function Player({ media, automatic=false, close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify }: {
+export function Player(props:Parameters<typeof ChromiumPlayer>[0]) {
+  const [engine,setEngine]=useState(()=>preference('playerEngine','chromium'));
+  return engine==='mpv'?<NativePlayerLaunch {...props} fallback={()=>setEngine('chromium')}/>:<ChromiumPlayerWithMemory {...props}/>;
+}
+
+function ChromiumPlayerWithMemory(props:Parameters<typeof ChromiumPlayer>[0]){
+  const [loaded,setLoaded]=useState<{id:number;value:MediaPlaybackState|null}|null>(null);
+  useEffect(()=>{let alive=true;void readMediaPlaybackState(props.media.id).then(value=>{if(alive)setLoaded({id:props.media.id,value});}).catch(error=>{if(alive){props.notify(`播放记忆暂不可用：${errorText(error)}`,5000);setLoaded({id:props.media.id,value:null});}});return()=>{alive=false;};},[props.media.id]);
+  return loaded?.id===props.media.id?<ChromiumPlayer {...props} initialPlaybackState={loaded.value}/>:<div className="player-shell"><div className="player-top"><Button icon="arrowLeft" onClick={props.close}>返回媒体库</Button><span>{props.media.title}</span></div><div className="video-wrap"><p role="status">正在读取播放设置…</p></div></div>;
+}
+
+function ChromiumPlayer({ media, automatic=false, close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify,initialPlaybackState }: {
   media: Media; automatic?:boolean; close: () => void; playNext: (media: Media, automatic?:boolean) => void; update: (value: MediaUpdate) => void;
   queue?: PlaylistSource;
   changePlaylistPlayback:(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>)=>void;
   favoriteBusy: boolean; changeFavorite: (media: Media) => Promise<void>;
   registerNavigationGuard:(guard:()=>Promise<boolean>)=>()=>void;
   notify:(message:string,autoDismissMs?:number)=>void;
+  initialPlaybackState?:MediaPlaybackState|null;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const videoWrap = useRef<HTMLDivElement>(null);
@@ -99,7 +115,8 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   const suppressStageClick = useRef(false);
   const [request, setRequest] = useState<Request | null>(() => {
     const decision=startingPoint(media,automatic,readResumeBehavior());
-    return decision.ask?null:{start:decision.start,force_transcode:false,prefer_original:true,quality:'auto',key:0};
+    const audio=initialPlaybackState?.audio;
+    return decision.ask?null:{start:decision.start,force_transcode:false,prefer_original:audio==null,audio_track_index:audio??undefined,quality:'auto',key:0};
   });
   const [phase, setPhase] = useState<'choice' | 'preparing' | 'ready' | 'error' | 'ended'>(request ? 'preparing' : 'choice');
   const [error, setError] = useState('');
@@ -152,6 +169,9 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     return()=>document.removeEventListener('pointerdown',pointer,true);
   },[]);
   const [quality, setQuality] = useState<Quality>('auto');
+  // Delivery is a per-open choice, never a saved preference or an automatic
+  // response to dropped frames. Conversion permissions stay separate.
+  const [losslessDelivery, setLosslessDelivery] = useState(false);
   const [playbackMode, setPlaybackMode] = useState<'direct' | 'remux' | 'hls' | null>(null);
   const [playbackReason, setPlaybackReason] = useState('');
   const [indexedPlayback,setIndexedPlayback]=useState(false);
@@ -160,7 +180,11 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   const [remuxStats,setRemuxStats]=useState<RemuxStats|null>(null);
   const [preparedPlayback,setPreparedPlayback]=useState(false);
   const preparation = usePreparationTrace();
-  const [audioTrack, setAudioTrack] = useState('');
+  const [audioTrack, setAudioTrack] = useState(initialPlaybackState?.audio==null?'':String(initialPlaybackState.audio));
+  const losslessContainer=media.video_codec==='h264'&&['.mp4','.m4v','.mov'].includes(media.ext.toLowerCase());
+  const selectedAudio=audioTrack?media.audio_tracks.find(track=>track.index===Number(audioTrack)):media.audio_tracks[0];
+  const losslessAudio=media.audio_tracks.length===0||Boolean(selectedAudio&&['aac','mp3'].includes(selectedAudio.codec));
+  const audioUserChanged=useRef(false),subtitleUserChanged=useRef(false);
   const [openSetting, setOpenSetting] = useState<'quality' | 'audio' | 'speed' | 'subtitles' | 'more' | null>(null);
   const [waitingForIndex,setWaitingForIndex]=useState(false);
   const feedback = usePlaybackFeedback(video,phase,request?.key??0,waitingForIndex);
@@ -262,6 +286,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   updateRef.current = update;
 
   const save = useCallback(async (keepalive = false) => {
+    if(!keepalive&&!await flushMediaPlaybackState()){setSaveError('播放记忆尚未保存，请重试');throw new Error('播放记忆尚未保存');}
     const v = video.current;
     // Opening a resume prompt or preparing a stream must never overwrite saved progress.
     if (!v || !Number.isFinite(v.currentTime) ||
@@ -287,7 +312,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     if(navigationBusy.current)return false;
     if(!await canDiscardMetadata())return false;
     navigationBusy.current=true;setClosing(true);video.current?.pause();
-    try {await save();return true;}
+    try {await save();return await flushMediaPlaybackState();}
     catch {return false;}
     finally {if(activePlayer.current){navigationBusy.current=false;setClosing(false);}}
   }),[save,registerNavigationGuard]);
@@ -492,6 +517,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
           return;
         }
         if(session.state==='failed'&&session.delivery==='indexed-remux') {
+          if(currentRequest.strict_remux||session.error?.includes('色彩标记无法无损封装'))throw new Error(session.error||'本次无损封装不可用，请返回原片播放');
           indexedRemuxFailed.current=true;
           setRequest({...currentRequest,indexed_remux:false,key:currentRequest.key+1});return;
         }
@@ -578,6 +604,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
                   indexed_ts:false,autoplay:sourceChanging.current?request.autoplay!==false:!v.paused,key:request.key+1});
               }
               else if(session.delivery==='indexed-remux'&&!indexedRemuxFailed.current) {
+                if(request.strict_remux){fail('本次无损封装无法解码，请返回原片播放；不会自动更换封装或降低画质');return;}
                 indexedRemuxFailed.current=true;
                 setRequest({...request,start:played.current?v.currentTime+offset.current:request.start,
                   indexed_remux:false,autoplay:sourceChanging.current?request.autoplay!==false:!v.paused,key:request.key+1});
@@ -676,14 +703,15 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   }, [speed]);
   useEffect(() => {
     let active = true;
-    void Promise.all([api<Media>(`/api/media/${media.id}`),fetchSubtitlePreference<SubtitlePreference>(media.id)]).then(([detail,preference]) => {
+    const remembered:SubtitlePreference|null=initialPlaybackState?{id:initialPlaybackState.subtitle??'',delay:initialPlaybackState.delay}:null;
+    void Promise.all([api<Media>(`/api/media/${media.id}`),Promise.resolve(remembered)]).then(([detail,preference]) => {
       if (!active) return;
       const files = (detail.external_subtitles || []).filter(item => /\.(srt|vtt|ass|ssa)$/i.test(item.name));
       setSubtitleFiles(files);
       const validExternal = files.some(item => item.path === preference?.id);
       const validEmbedded = preference?.id.startsWith('embedded:') && media.subtitles.some(item => `embedded:${item.index}` === preference.id && TEXT_SUBTITLE_CODECS.has(item.codec.toLowerCase()));
       if (preference && (validExternal || validEmbedded)) {
-        void selectSubtitle(preference.id, preference.delay, files);
+        void selectSubtitle(preference.id, preference.delay, files,false);
       } else {
         setActiveSubtitle(''); setSubtitleSource(null); setSubtitleDelay(0);
         setSubtitlePreferenceReady(true);
@@ -698,6 +726,8 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     try { savePreference(`subtitle.${media.id}`, { id: activeSubtitle, delay: activeSubtitle ? subtitleDelay : 0 }); }
     catch { /* Subtitle playback is unaffected if local storage is disabled. */ }
   }, [activeSubtitle, media.id, subtitleDelay, subtitlePreferenceReady]);
+  useEffect(()=>{if(initialPlaybackState&&subtitleUserChanged.current&&subtitlePreferenceReady&&activeSubtitle!=='uploaded')void saveMediaPlaybackState(media.id,initialPlaybackState,{subtitle:activeSubtitle,delay:subtitleDelay});},[activeSubtitle,subtitleDelay,subtitlePreferenceReady]);
+  useEffect(()=>{if(initialPlaybackState&&audioUserChanged.current&&phase==='ready'&&!sourceChanging.current)void saveMediaPlaybackState(media.id,initialPlaybackState,{audio:audioTrack?Number(audioTrack):null});},[audioTrack,phase]);
   useEffect(() => {
     if (!subtitleSource) { setSubtitleUrl(''); return; }
     const url = URL.createObjectURL(new Blob([toWebVtt(subtitleSource.text, subtitleSource.extension, subtitleDelay, subtitleOffset)], { type: 'text/vtt;charset=utf-8' }));
@@ -755,7 +785,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     if (!await canDiscardMetadata()) return;
     navigationBusy.current = true;
     setClosing(true); video.current?.pause();
-    try { await save(); if (activePlayer.current) close(); }
+    try { await save(); if(!await flushMediaPlaybackState())throw new Error('播放记忆尚未保存');if (activePlayer.current) close(); }
     catch { navigationBusy.current = false; setClosing(false); }
   }
   async function switchMedia(next: Media, automatic=false) {
@@ -809,7 +839,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
   function startAt(start: number, force = transcode.current, selectedQuality = quality,
                    selectedAudio: number | null | undefined = audioTrack ? Number(audioTrack) : undefined,
                    preferOriginal = !force && selectedQuality === 'auto' && selectedAudio == null,
-                   autoplay = true, resetAudioPermission = false) {
+                   autoplay = true, resetAudioPermission = false, selectedLossless = losslessDelivery) {
     if (desktopQuitting.current) return;
     if (seekTimer.current !== null) clearTimeout(seekTimer.current);
     seekTimer.current = null; queuedSeek.current = null;
@@ -817,9 +847,10 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     sourceChanging.current = true;
     void save().catch(() => {});
     if (phase === 'choice' || phase === 'ended' || phase === 'error') diagnostics.beginStartup();
-    setRequest(previous => ({ start, force_transcode: force, prefer_original: preferOriginal && !originalFailed.current,
-      skip_direct: originalFailed.current, quality: selectedQuality, audio_track_index: selectedAudio ?? undefined,
-      autoplay,allow_video_transcode:selectedQuality!=='auto',allow_audio_transcode:selectedQuality!=='auto'||(!resetAudioPermission&&request?.allow_audio_transcode===true),
+    const lossless=selectedLossless&&selectedQuality==='auto';
+    setRequest(previous => ({ start, force_transcode: lossless?false:force, prefer_original: !lossless&&preferOriginal && !originalFailed.current,
+      skip_direct: lossless||originalFailed.current, strict_remux:lossless, quality: selectedQuality, audio_track_index: selectedAudio ?? undefined,
+      autoplay,allow_video_transcode:selectedQuality!=='auto',allow_audio_transcode:!lossless&&(selectedQuality!=='auto'||(!resetAudioPermission&&request?.allow_audio_transcode===true)),
       key: (previous?.key || 0) + 1 }));
   }
   restartSeek.current = target => startAt(target, transcode.current, quality,
@@ -927,18 +958,26 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     if(value!=='auto'&&!await confirmInApp('启用有损兼容播放？','不是原画：视频会重新编码，HDR/高位深可能变为 SDR/8-bit，低分辨率选项还会缩小画面。','仅在你明确接受画质损失时使用。','接受并继续',true)) {setOpenSetting(null);return;}
     if(!activePlayer.current||desktopQuitting.current)return;
     if(value==='auto'){originalFailed.current=false;indexedTsFailed.current=false;indexedRemuxFailed.current=false;}
+    setLosslessDelivery(false);
     setQuality(value);
     setOpenSetting(null);
     startAt(positionRef.current, value !== 'auto', value, audioTrack ? Number(audioTrack) : undefined,
-      value === 'auto' && !audioTrack, !(video.current?.paused ?? true),value==='auto');
+      value === 'auto' && !audioTrack, !(video.current?.paused ?? true),value==='auto',false);
+  }
+  function chooseLosslessDelivery() {
+    if(!activePlayer.current||desktopQuitting.current||!losslessContainer||!losslessAudio)return;
+    originalFailed.current=false;indexedRemuxFailed.current=false;
+    setQuality('auto');setLosslessDelivery(true);setOpenSetting(null);
+    startAt(positionRef.current,false,'auto',audioTrack?Number(audioTrack):undefined,false,!(video.current?.paused??true),true,true);
   }
   async function allowAudioCompatibility() {
     if(!await confirmInApp('启用有损音频兼容？','不兼容的音轨将转换为 AAC，音频有损；视频仍保持原编码、分辨率和色彩。','仅在你明确接受音频损失时使用。','接受并继续',true))return;
     if(!activePlayer.current||desktopQuitting.current)return;
-    setQuality('auto');setRequest(previous=>({...(previous||{quality:'auto' as const,key:0}),start:positionRef.current,
-      force_transcode:false,prefer_original:false,skip_direct:true,allow_video_transcode:false,allow_audio_transcode:true,key:(previous?.key||0)+1}));
+    setQuality('auto');setLosslessDelivery(false);setRequest(previous=>({...(previous||{quality:'auto' as const,key:0}),start:positionRef.current,
+      force_transcode:false,prefer_original:false,skip_direct:true,strict_remux:false,allow_video_transcode:false,allow_audio_transcode:true,key:(previous?.key||0)+1}));
   }
   function changeAudio(value: string) {
+    audioUserChanged.current=true;
     setAudioTrack(value);
     setOpenSetting(null);
     startAt(positionRef.current, quality !== 'auto' || transcode.current, quality,
@@ -1015,9 +1054,9 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     setZoom(next);
   }
   wheelAction.current = event => {
-    const panel = (event.target as Element).closest<HTMLElement>('.setting-popover');
+    const panel = (event.target as Element).closest<HTMLElement>('.setting-popover,.resume');
     if (panel) {
-      // Scroll long settings inside the player, never chain into the page.
+      // Scroll long settings/decisions inside the player, never into the page.
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? panel.clientHeight : 1;
       panel.scrollTop += event.deltaY * unit;
       return;
@@ -1060,7 +1099,8 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
     setSeekHover({ time: ratio * (media.duration || 0), x: ratio * 100 });
   }
-  async function selectSubtitle(id: string, restoreDelay = 0, availableFiles = subtitleFiles) {
+  async function selectSubtitle(id: string, restoreDelay = 0, availableFiles = subtitleFiles,remember=true) {
+    if(remember)subtitleUserChanged.current=true;
     const currentRequest=++subtitleRequest.current;
     subtitleController.current?.abort();
     const controller=new AbortController(); subtitleController.current=controller;
@@ -1140,6 +1180,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     finally {if(currentRequest===subtitleRequest.current && activePlayer.current)setSubtitleLoading(false);}
   }
   function adjustSubtitleDelay(delta: number) {
+    subtitleUserChanged.current=true;
     setSubtitleDelay(current => Math.max(-10, Math.min(10, Math.round((current + delta) * 10) / 10)));
   }
   useEffect(() => {
@@ -1150,9 +1191,6 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
       // Mouse focus on a player slider must not disable playback shortcuts.
       // Preserve native slider navigation for explicit keyboard/Tab focus.
       if(event.code==='Tab'){keyboardNavigation.current=true;pointerFocusedRange.current=null;controlsKeyboardFocus.current=true;}
-      const playerRange=target instanceof HTMLInputElement&&target.type==='range'&&!!target.closest('.player-controls');
-      const rangePlaybackKey=playerRange&&(['Space','KeyK','KeyJ','KeyL','KeyR','KeyM','KeyF','KeyW','KeyC','KeyP','KeyN'].includes(event.code)||
-        pointerFocusedRange.current===target&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.code));
       if (desktopQuitting.current) return;
       if(event.defaultPrevented || event.isComposing || event.keyCode===229 || document.querySelector('[role="dialog"]')) return;
       if(openSetting) return;
@@ -1169,40 +1207,40 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
           !(target instanceof HTMLElement && target.closest('[role="menu"]'))) {
         event.preventDefault();void togglePurePlayback();return;
       }
-      if (event.altKey || event.ctrlKey || event.metaKey || target instanceof HTMLElement &&
-          (target.isContentEditable || target.closest('[role="menu"], .setting-popover') || ['INPUT','SELECT','TEXTAREA'].includes(target.tagName) && !rangePlaybackKey || target.getAttribute('type') === 'range' && !rangePlaybackKey || target.tagName === 'SUMMARY' && event.code === 'Space')) return;
+      if(!playerShortcutTarget(event,pointerFocusedRange.current,keyboardNavigation.current))return;
+      const intent=playbackKeyIntent(event);
       const v = video.current;
       if (!v) return;
-      if (event.code === 'KeyR' && phase === 'ready') {
+      if (intent === 'rotate' && phase === 'ready') {
         event.preventDefault(); rotateVideo();
-      } else if ((event.code === 'Space' || event.code === 'KeyK') && phase === 'ready') {
+      } else if (intent === 'pause' && phase === 'ready') {
         event.preventDefault();
         // A mouse-clicked control keeps focus. Space belongs to playback here,
         // not to that button's default keyup click (mute/rotate/capture/etc.).
         // Prevent the default even for held keys, but toggle only once.
         if(event.repeat)return;
         togglePlayback();
-      } else if ((event.code === 'ArrowLeft' || event.code === 'ArrowRight' || event.code === 'KeyJ' || event.code === 'KeyL') && (phase === 'ready' || phase === 'preparing')) {
+      } else if (intent&&['back5','forward5','back10','forward10'].includes(intent) && (phase === 'ready' || phase === 'preparing')) {
         event.preventDefault();
         const current = queuedSeek.current ?? (sourceChanging.current ? positionRef.current : Number.isFinite(v.currentTime) ? v.currentTime + offset.current : 0);
         const limit = media.duration || Number.MAX_SAFE_INTEGER;
         const delta = event.code === 'KeyJ' ? -10 : event.code === 'KeyL' ? 10 : event.code === 'ArrowRight' ? 5 : -5;
         seekTo(Math.max(0, Math.min(limit, current + delta)));
-      } else if (event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+      } else if (intent === 'volumeUp' || intent === 'volumeDown') {
         event.preventDefault();
         v.volume = Math.max(0, Math.min(1, v.volume + (event.code === 'ArrowUp' ? .05 : -.05)));
         if (event.code === 'ArrowUp') v.muted = false;
-      } else if (event.code === 'KeyM') {
+      } else if (intent === 'mute') {
         event.preventDefault(); v.muted = !v.muted;
-      } else if (event.code === 'KeyF' && phase === 'ready') {
+      } else if (intent === 'fullscreen' && phase === 'ready') {
         event.preventDefault(); toggleFullscreen();
-      } else if(event.code==='KeyW' && phase==='ready') {
+      } else if(intent==='pure' && phase==='ready') {
         event.preventDefault();void togglePurePlayback();
-      } else if(screenshotKey(event) && phase==='ready') {
+      } else if(intent==='screenshot' && screenshotKey(event) && phase==='ready') {
         event.preventDefault();if(!event.repeat)takeScreenshot();
-      } else if(event.code==='KeyP' && phase==='ready') {
+      } else if(intent==='pip' && phase==='ready') {
         event.preventDefault();void togglePictureInPicture();
-      } else if(event.code==='KeyN' && phase==='ready') {
+      } else if(intent==='next' && phase==='ready') {
         event.preventDefault();quietNext.current=!controlsVisible;void nextInMode();
       }
     }
@@ -1266,7 +1304,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
             <span>延迟</span><button aria-label="字幕延迟减少 0.1 秒" disabled={!activeSubtitle || subtitleDelay <= -10} onClick={() => adjustSubtitleDelay(-.1)}>−</button>
             <output aria-label="当前字幕延迟">{subtitleDelay > 0 ? '+' : ''}{subtitleDelay.toFixed(1)} 秒</output>
             <button aria-label="字幕延迟增加 0.1 秒" disabled={!activeSubtitle || subtitleDelay >= 10} onClick={() => adjustSubtitleDelay(.1)}>+</button>
-            <button className="subtitle-reset" aria-label="重置字幕延迟" disabled={!activeSubtitle || subtitleDelay === 0} onClick={() => setSubtitleDelay(0)}>重置</button>
+            <button className="subtitle-reset" aria-label="重置字幕延迟" disabled={!activeSubtitle || subtitleDelay === 0} onClick={() => {subtitleUserChanged.current=true;setSubtitleDelay(0);}}>重置</button>
           </div>
           <div className="subtitle-appearance" aria-label="字幕外观">
             <label>字号<select aria-label="字幕字号" value={subtitleAppearance.size} onChange={event => setSubtitleAppearance(value => ({ ...value, size: Number(event.target.value) }))}>
@@ -1292,10 +1330,10 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
         aria-label={favoriteBusy ? '正在保存收藏' : media.favorite ? '★ 已收藏' : '☆ 收藏'}>
         <Icon name="favorite" size={17} filled={Boolean(media.favorite)}/>{favoriteBusy ? '正在保存…' : media.favorite ? '已收藏' : '收藏'}</button>
       <MediaActions media={media} update={update} notify={notify} pauseForPreparation={()=>video.current?.pause()} playPrepared={()=>{
-        originalFailed.current=false;setQuality('auto');startAt(positionRef.current,false,'auto',audioTrack?Number(audioTrack):undefined,!audioTrack,true);
+        originalFailed.current=false;setQuality('auto');setLosslessDelivery(false);startAt(positionRef.current,false,'auto',audioTrack?Number(audioTrack):undefined,!audioTrack,true,true,false);
       }}/></div>
     {saveError && <div className="notice" role="alert">{saveError} <button onClick={() => void save().catch(() => {})}>重试保存</button><button onClick={close}>直接返回</button></div>}
-    <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}${cursorVisible?'':' cursor-hidden'}`} ref={videoWrap}
+    <div className={`video-wrap${controlsVisible ? '' : ' controls-hidden'}${cursorVisible?'':' cursor-hidden'}`} ref={videoWrap} data-phase={phase}
       style={{ '--player-height': `${videoWrapSize.height}px` } as CSSProperties}
       onMouseMove={trackControlsMouse} onMouseLeave={hideControlsSoon}
       onPointerDownCapture={event=>{
@@ -1351,6 +1389,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
       {feedback.preparing && <div className="resume" role="status"><b>正在准备播放…</b><span>{quality==='auto'?'原片直放或无损封装，不自动降低画质':'正在按已确认的有损兼容模式准备'}</span></div>}
       {feedback.buffering && <div className="buffering" role="status"><i />正在缓冲…</div>}
       {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button>
+        {losslessDelivery&&<button className="ghost" onClick={()=>void changeQuality('auto')}>返回原片播放</button>}
         <button className="ghost" onClick={()=>changeQuality('compat')}>兼容播放（有损，需确认）</button>
         {media.video_codec==='h264'&&<button className="ghost" onClick={allowAudioCompatibility}>仅兼容音轨（视频原画）</button>}</div>}
       {phase === 'ended' && <div className="resume"><b>{nextEpisode ? (queue || media.kind!=='episode' ? '本条播放结束' : '本集播放结束') : '播放结束'}</b>
@@ -1403,14 +1442,14 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
           </div>
           <div className="player-settings">
             <div className="player-setting">
-              <button aria-label="画质" title={quality === 'auto' ? `播放：原片优先 · ${playbackModeLabel}` : `画质：${quality}`} aria-expanded={openSetting === 'quality'} onClick={() => setOpenSetting(openSetting === 'quality' ? null : 'quality')}>
+              <button aria-label="画质" title={quality === 'auto' ? `播放：${losslessDelivery?'本次无损封装':'原片优先'} · ${playbackModeLabel}` : `画质：${quality}`} aria-expanded={openSetting === 'quality'} onClick={() => setOpenSetting(openSetting === 'quality' ? null : 'quality')}>
                 <Icon name="quality" size={19} /><small>{quality === 'auto'
                   ? playbackMode === 'direct' ? '原画' : playbackMode === 'remux' ? '封装' : playbackMode === 'hls' ? '转码' : '优先'
                   : quality}</small>
               </button>
-              {openSetting === 'quality' && <Popover label="画质设置" close={() => setOpenSetting(null)}><label>画质<select aria-label="画质" value={quality} disabled={phase !== 'ready'} onChange={e => changeQuality(e.target.value as Quality)}>
-                <option value="auto">原画（不自动转码）</option><option value="compat">兼容原分辨率（有损）</option><option value="1080p">1080p（有损）</option><option value="720p">720p（有损）</option><option value="480p">480p（有损）</option>
-              </select></label></Popover>}
+              {openSetting === 'quality' && <Popover label="画质设置" close={() => setOpenSetting(null)}><label>画质<select aria-label="画质" value={losslessDelivery?'lossless':quality} disabled={phase !== 'ready'} onChange={e => e.target.value==='lossless'?chooseLosslessDelivery():void changeQuality(e.target.value as Quality)}>
+                <option value="auto">原画（原片优先）</option>{losslessContainer&&<option value="lossless" disabled={!losslessAudio}>原画 · 无损封装（本次）</option>}<option value="compat">兼容原分辨率（有损）</option><option value="1080p">1080p（有损）</option><option value="720p">720p（有损）</option><option value="480p">480p（有损）</option>
+              </select></label>{losslessContainer&&<small className="quality-delivery-hint">无损封装适合部分直放不流畅的 MP4；不改原文件、不重编码，首次需建立索引。仅本次生效。{!losslessAudio&&' 当前音轨不支持无损封装。'}</small>}</Popover>}
             </div>
             {media.audio_tracks.length > 1 && <div className="player-setting">
               <button aria-label="音轨" title="音轨" aria-expanded={openSetting === 'audio'} onClick={() => setOpenSetting(openSetting === 'audio' ? null : 'audio')}><Icon name="audio" size={19} /><small>音轨</small></button>
@@ -1451,8 +1490,8 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
     </div>
     <PlaybackQueue media={media} queue={queue} busy={nextStarting || closing || phase === 'preparing'}
       siblings={siblings} setSiblings={setSiblings} play={item => void switchMedia(item)} mode={queueMode} setMode={mode=>queue?changePlaylistPlayback({mode,autoNext}):changeAutoplay({mode})} autoNext={autoNext} setAutoNext={enabled=>queue?changePlaylistPlayback({mode:queueMode,autoNext:enabled}):changeAutoplay({enabled})} scope={queueScope} setScope={scope=>changeAutoplay({scope})}/>
-    <aside className="player-info"><h2>{media.title}</h2><p>{formatLabel(media.ext)} · {duration(media.duration)} · {resolutionLabel(media.width, media.height)}</p>
-      <details className="shortcut-help"><summary><Icon name="info" size={16}/>快捷键帮助</summary><p>空格 / K：播放暂停 · J / L：±10 秒 · ← / →：±5 秒 · ↑ / ↓：音量 · M：静音 · F：视频全屏 · W：纯净播放 · Esc：退出纯净播放（视频全屏时先退出全屏） · P：画中画 · {screenshotShortcutLabel()}：截图 · N：下一条 · R：旋转 · 滚轮：按指针缩放（Shift+滚轮调音量）</p><small>输入文字或选择菜单时不触发播放快捷键；桌面端纯净播放时，顶部区域可拖动窗口，窗口置顶可独立开关。</small></details>
+    <aside className="player-info"><div className="player-info-heading"><h2>{media.title}</h2><div className="player-info-meta" aria-label="视频概况"><span><Icon name="film" size={14}/>{formatLabel(media.ext)}</span><span><Icon name="continue" size={14}/>{duration(media.duration)}</span><span><Icon name="resolution" size={14}/>{resolutionLabel(media.width, media.height)}</span></div></div>
+      <details className="shortcut-help"><summary><Icon name="keyboard" size={16}/>快捷键帮助</summary><dl className="player-shortcut-grid">{[['空格 / K','播放 / 暂停'],['J / L','后退 / 前进 10 秒'],['← / →','后退 / 前进 5 秒'],['↑ / ↓','调节音量'],['M','静音'],['F','视频全屏'],['W','纯净播放'],['P','画中画'],[screenshotShortcutLabel(),'截图'],['N','下一条'],['R','旋转'],['滚轮','按指针缩放'],['Shift + 滚轮','调节音量'],['Esc','退出纯净播放；视频全屏时先退出全屏']].map(([keys,action])=><div key={keys}><dt><kbd>{keys}</kbd></dt><dd>{action}</dd></div>)}</dl><small>输入文字或选择菜单时不触发播放快捷键；桌面端纯净播放时，顶部区域可拖动窗口，窗口置顶可独立开关。</small></details>
       <details className="playback-diagnostics">
         <summary><Icon name="quality" size={16}/>播放信息 · {phase === 'choice' ? '待播放' : playbackModeLabel}</summary>
         <p>{playbackReason || '优先交由浏览器解码原文件，不兼容时仅尝试无损封装；有损兼容播放必须主动确认。'}</p>
@@ -1470,6 +1509,7 @@ export function Player({ media, automatic=false, close, playNext, queue, changeP
         </dl>
         {playbackColor?.warning && <p className="color-warning">{playbackColor.warning}</p>}
         <small>耗时包含本机处理、读取与解码；分辨率不代表转码无损。</small>
+        <PlaybackDiagnosticsExport/>
       </details>
       {openSetting !== 'subtitles' && subtitlePanel}
       <details className="track-information"><summary><Icon name="audio" size={16}/>音轨与字幕信息</summary>

@@ -1,4 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');await request.post('/test/indexed-remux-fixture?gop=2');});
 async function open(page:Page) {
@@ -59,6 +60,7 @@ test('batched MKV preserves selected second AAC track after switching while paus
   page.on('response',async r=>{if(new URL(r.url()).pathname==='/api/media/3/playback'){token=(await r.json()).token;}});
   page.on('request',r=>{if(new URL(r.url()).pathname==='/api/media/3/playback')bodies.push(r.postDataJSON());});
   await open(page);await page.locator('video').evaluate((v:HTMLVideoElement)=>v.pause());
+  await revealPlayerControls(page);
   await page.getByRole('button',{name:'音轨',exact:true}).click();await page.getByRole('combobox',{name:'音轨',exact:true}).selectOption('2');
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.paused)).toBe(true);
   await seek(page,61.3);await expect(page.getByLabel('跳播耗时')).toHaveText(/已有分段复用 · [\d.]+ (ms|秒)/);

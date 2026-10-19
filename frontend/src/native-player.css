@@ -1,0 +1,53 @@
+html.native-player-overlay,html.native-player-overlay body,html.native-player-overlay #root{margin:0!important;width:100%;height:100%;overflow:hidden!important;background:transparent!important;color:#fff;}
+.native-stage{position:fixed;inset:0;margin:0;padding:0;border:0;max-width:none;background:transparent!important;color:#fff;font:14px system-ui,sans-serif;user-select:none;color-scheme:dark;}
+.native-stage.cursor-hidden,.native-stage.cursor-hidden *{cursor:none!important;}
+.native-stage button{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0;flex-shrink:0;border:0!important;border-radius:50%;background:rgba(10,15,22,.7);color:#fff;box-shadow:0 1px 5px #0005;cursor:pointer;}
+.native-stage .ui-icon{flex:none;pointer-events:none;}
+.native-stage button:disabled{cursor:default;opacity:.65;}
+.native-capture-spinner{animation:native-capture-spin 1s linear infinite;}
+@keyframes native-capture-spin{to{transform:rotate(360deg)}}
+.native-stage button:hover,.native-stage button[aria-pressed=true]{background:rgba(37,45,58,.95);color:var(--ui-overlay-accent);}
+.native-stage button:focus-visible,.native-stage select:focus-visible{outline:2px solid var(--ui-overlay-accent);outline-offset:2px;}
+.native-stage input[type=range]{accent-color:var(--ui-overlay-accent);min-width:0;outline:0;box-shadow:none;height:18px;cursor:pointer;padding:0;background:transparent;border:0;}
+.native-stage input[type=range]:focus,.native-stage input[type=range]:focus-visible{outline:0!important;box-shadow:none!important;}
+.native-top{position:absolute;inset:0 0 auto;display:flex;align-items:center;justify-content:space-between;height:40px;min-height:0;padding:3px 8px 3px 14px;border:0;background:transparent;opacity:0;pointer-events:none;-webkit-app-region:drag;}
+.native-title{display:flex;align-items:center;gap:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;text-shadow:0 1px 3px #000,0 0 5px #000;}
+.native-top>div{display:flex;gap:3px;flex-shrink:0;-webkit-app-region:no-drag;}
+.native-embedded-overlay .native-top{-webkit-app-region:no-drag;touch-action:none;}
+.native-top button{height:30px;width:34px;border-radius:8px;}
+.native-controls{position:absolute;bottom:12px;left:16px;right:16px;opacity:0;pointer-events:none;background:transparent!important;border:0!important;}
+.controls-visible .native-controls,.controls-visible .native-top{opacity:1;pointer-events:auto;}
+.native-timeline{display:flex;gap:10px;align-items:center;margin-bottom:9px;}
+.native-timeline>input{flex:1;}
+.native-timeline time{font-size:12px;background:#0a0f16b3;border-radius:5px;padding:4px 6px;font-variant-numeric:tabular-nums;}
+.native-buttons{display:flex;gap:7px;align-items:center;flex-wrap:wrap;}
+.native-spacer{flex:1;}
+.native-volume{width:84px;}
+.native-status,.native-notice{position:absolute;left:50%;transform:translateX(-50%);padding:10px 16px;background:#101722e8;border-radius:10px;max-width:80%;overflow-wrap:anywhere;pointer-events:none;text-align:center;box-shadow:0 2px 14px #0005;}
+.native-status{top:45%;}.native-notice{top:65px;}
+.native-notice.has-retry{display:flex;align-items:center;gap:12px;pointer-events:auto;}
+.native-notice.has-retry>button{flex-shrink:0;}
+.native-panel{position:absolute;right:16px;bottom:115px;max-height:calc(100% - 170px);overflow:auto;overscroll-behavior:contain;width:min(360px,calc(100% - 32px));padding:16px;background:#101722f5;color:#eef3fa;border:1px solid #ffffff20;border-radius:14px;box-shadow:0 8px 30px #0005;}
+.native-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;font-size:13px;}
+.native-panel-section{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--ui-overlay-accent);margin:18px 0 12px;padding-top:14px;border-top:1px solid #ffffff18;}
+.native-panel-section:first-of-type{border-top:0;margin-top:4px;padding-top:0;}
+.native-panel label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px 0;}
+.native-panel select,.native-panel input[type=number]{min-width:0;max-width:min(220px,65%);min-height:34px;background:#262629;color:#fff;border:1px solid #ffffff20;border-radius:var(--ui-radius);padding:7px;font:inherit;}
+.native-panel dl{display:grid;grid-template-columns:auto 1fr;gap:8px;font-size:12px;border-top:1px solid #ffffff20;padding-top:12px;}
+.native-panel dt{color:#a9b8cd;}.native-panel dd{margin:0;overflow-wrap:anywhere;text-align:right;}
+.native-panel small{color:#a9b8cd;line-height:1.7;}
+.native-panel .native-subtitle-import{width:auto;border-radius:8px;padding:0 12px;gap:8px;}
+.native-launch{max-width:900px;margin:8vh auto;padding:32px;}.native-launch .button-row{display:flex;gap:12px;justify-content:center;margin:20px 0;}.native-launch small{display:block;color:var(--ui-muted);line-height:1.8;}
+.native-embedded-viewport{border:0!important;}
+.native-embedded-viewport.native-independent-card{height:auto;min-height:280px;aspect-ratio:auto;background:var(--ui-surface);color:var(--ui-text);box-shadow:none;border:1px solid var(--ui-border)!important;}
+.native-independent-card .native-embedded-placeholder{color:var(--ui-text);}
+.native-independent-card h2{font-size:20px;font-weight:600;}
+.native-independent-card p{color:var(--ui-muted);font-size:13px;line-height:1.7;}
+.native-embedded-placeholder{text-align:center;padding:24px;color:#eef3fa;max-width:100%;}
+.native-embedded-caption{display:flex;align-items:center;justify-content:space-between;gap:12px;width:min(calc(100% - 48px),1600px);margin:12px auto 0;color:var(--ui-muted);font-size:12px;}
+.native-caption-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;}
+.native-embedded-page.is-pure-playback>.native-embedded-caption,.native-embedded-fullscreen>.player-top,.native-embedded-fullscreen>.playback-queue,.native-embedded-fullscreen>.native-embedded-caption{display:none;}
+.native-embedded-fullscreen>.native-embedded-viewport{position:fixed;inset:0;width:100%;height:100dvh;min-height:0;margin:0;z-index:25;}
+.desktop-shell.native-video-fullscreen #app-scroll-area{inset:0;overflow:hidden;}
+.player-shell.native-embedded-page.native-embedded-fullscreen>.native-embedded-viewport{position:fixed;inset:0;width:100vw;height:100dvh;min-height:0;max-height:none;margin:0;border:0;border-radius:0;box-shadow:none;z-index:25;}
+@media(max-width:600px){.native-volume{display:none;}.native-buttons{gap:5px;}.native-stage button{width:33px;height:33px;}.native-controls{left:10px;right:10px;}.native-panel{bottom:155px;}}

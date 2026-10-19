@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef,useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { useModalDialog } from './useModalDialog';
 
@@ -37,16 +37,18 @@ export function EmptyState({ icon, title, description, children }: { icon: IconN
   return <div className="empty"><div className="empty-icon"><Icon name={icon} size={27}/></div><h2>{title}</h2><p>{description}</p>{children}</div>;
 }
 
-export function Toast({ message, close, autoDismissMs = 0, children }: { message: string; close: () => void; autoDismissMs?: number; children?: ReactNode }) {
+export function Toast({ message, close, autoDismissMs = 0, pauseAutoDismiss=false,pauseOnInteraction=false,closeDisabled=false, children }: { message: string; close: () => void; autoDismissMs?: number; pauseAutoDismiss?:boolean;pauseOnInteraction?:boolean;closeDisabled?:boolean; children?: ReactNode }) {
+  const [hovered,setHovered]=useState(false),[focused,setFocused]=useState(false);
+  const held=pauseAutoDismiss||pauseOnInteraction&&(hovered||focused);
   const latestClose = useRef(close);
   latestClose.current = close;
   useEffect(() => {
-    if (autoDismissMs <= 0) return;
+    if (autoDismissMs <= 0||held) return;
     const timer = window.setTimeout(() => latestClose.current(), autoDismissMs);
     return () => window.clearTimeout(timer);
-  }, [message, autoDismissMs]);
+  }, [message, autoDismissMs,held]);
   const success=autoDismissMs>0;
-  return <div className="toast" data-kind={success?'success':'info'} role={success?'status':'alert'} aria-live={success?'polite':'assertive'}><Icon name={success?'check':'info'}/><span className="toast-message">{message}</span>{children}<IconButton icon="close" label="关闭提示" onClick={close}/></div>;
+  return <div className="toast" data-kind={success?'success':'info'} role={success?'status':'alert'} aria-live={success?'polite':'assertive'} onPointerEnter={()=>{if(pauseOnInteraction)setHovered(true);}} onPointerLeave={()=>setHovered(false)} onFocusCapture={()=>{if(pauseOnInteraction)setFocused(true);}} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget))setFocused(false);}}><Icon name={success?'check':'info'}/><span className="toast-message">{message}</span>{children}<IconButton icon="close" label="关闭提示" disabled={closeDisabled} onClick={close}/></div>;
 }
 
 // Player popovers stay inside the fullscreen element and keep focus local without

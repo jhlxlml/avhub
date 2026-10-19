@@ -64,7 +64,7 @@ test('lazy multi-level expansion selects real folder scopes and keeps the origin
   await expect(page.getByRole('navigation',{name:'目录路径'})).toContainText('Season 1');
   await expect(tree.getByRole('button',{name:'展开目录 Season 1',exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
-  await expect(page.locator('.video-title').first()).toHaveCSS('color','rgb(29, 43, 61)');
+  await expect(page.locator('.video-title').first()).toHaveCSS('color','rgb(37, 37, 39)');
   await page.screenshot({path:'test-results/directory-tree-light.png'});
   await tree.getByRole('button',{name:'全部目录',exact:true}).click();await expect(page).not.toHaveURL(/root=|folder=/);
   await page.getByRole('button',{name:'隐藏目录树',exact:true}).click();await expect(tree).toHaveCount(0);

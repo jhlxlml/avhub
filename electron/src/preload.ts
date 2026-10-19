@@ -3,7 +3,24 @@ import { contextBridge, ipcRenderer } from 'electron';
 ipcRenderer.on('avhub:quit-cancelled', () => window.dispatchEvent(new Event('avhub-quit-cancelled')));
 
 contextBridge.exposeInMainWorld('avhubDesktop', {
-  saveExport:(request:{kind:'backup';jobId:string}|{kind:'diagnostics'})=>ipcRenderer.invoke('avhub:save-export',request),
+  nativePlayer:(action:string,input?:unknown)=>ipcRenderer.invoke('avhub:native-player',action,input),
+    onNativeShortcut:(callback:(value:{code:string;shiftKey:boolean;repeat:boolean})=>void)=>{
+      const listener=(_event:Electron.IpcRendererEvent,value:{code:string;shiftKey:boolean;repeat:boolean})=>callback(value);
+      ipcRenderer.on('avhub:native-shortcut',listener);return()=>ipcRenderer.removeListener('avhub:native-shortcut',listener);
+    },
+  onNativeState:(callback:(value:unknown)=>void)=>{
+    const listener=(_event:Electron.IpcRendererEvent,value:unknown)=>callback(value);
+    ipcRenderer.on('avhub:native-state',listener);return()=>ipcRenderer.removeListener('avhub:native-state',listener);
+  },
+  onNativeEvent:(callback:(value:unknown)=>void)=>{
+    const listener=(_event:Electron.IpcRendererEvent,value:unknown)=>callback(value);
+    ipcRenderer.on('avhub:native-event',listener);return()=>ipcRenderer.removeListener('avhub:native-event',listener);
+  },
+  onNativeClosed:(callback:(value:unknown)=>void)=>{
+    const listener=(_event:Electron.IpcRendererEvent,value:unknown)=>callback(value);
+    ipcRenderer.on('avhub:native-closed',listener);return()=>ipcRenderer.removeListener('avhub:native-closed',listener);
+  },
+  saveExport:(request:{kind:'backup';jobId:string}|{kind:'diagnostics'|'playback-diagnostics'})=>ipcRenderer.invoke('avhub:save-export',request),
   cancelExport:()=>ipcRenderer.invoke('avhub:cancel-export'),
   revealExport:(id:string)=>ipcRenderer.invoke('avhub:reveal-export',id),
   openRelease:(tag:string,format?:'folder'|'single')=>ipcRenderer.invoke('avhub:open-release',tag,format),

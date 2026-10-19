@@ -88,8 +88,8 @@ export async function api<T>(url: string, options?: ApiOptions): Promise<T> {
     let parseError: unknown;
     if (isJson) { try { data = await readJson<unknown>(r); } catch (error) { parseError = error; } }
     if (parseError instanceof Error && parseError.message === SERVICE_MISMATCH) throw parseError;
-    throw new Error(typeof data?.detail === 'string' ? data.detail :
-      r.status === 405 || !isJson ? SERVICE_MISMATCH : `请求失败（${r.status}），请稍后重试`);
+    throw Object.assign(new Error(typeof data?.detail === 'string' ? data.detail :
+      r.status === 405 || !isJson ? SERVICE_MISMATCH : `请求失败（${r.status}），请稍后重试`),{status:r.status});
   }
   // A missing FastAPI API route may fall through to the SPA document, sometimes
   // with a misleading JSON content type. Validate both the header and body.

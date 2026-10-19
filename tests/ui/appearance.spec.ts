@@ -12,20 +12,20 @@ async function columns(page:Page) {return page.locator('.media-grid').evaluate(e
 test('light surfaces are consistent across settings, playlists and the player without changing decoded video',async({page,request})=>{
   await ready(page);await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
-  await expect(page.locator('body')).toHaveCSS('background-color','rgb(244, 246, 250)');
+  await expect(page.locator('body')).toHaveCSS('background-color','rgb(245, 245, 247)');
   await page.getByRole('button',{name:'媒体库设置'}).click();
   await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(255, 255, 255)');
   await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
   await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toHaveAttribute('aria-selected','true');
-  await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toHaveCSS('color','rgb(184, 68, 52)');
-  await expect(page.getByRole('textbox',{name:'默认保存目录'})).toHaveCSS('color','rgb(29, 43, 61)');
+  await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toHaveCSS('color','rgb(49, 95, 190)');
+  await expect(page.getByRole('textbox',{name:'默认保存目录'})).toHaveCSS('color','rgb(37, 37, 39)');
   await page.screenshot({path:'test-results/appearance-light-settings.png'});
   await page.getByRole('button',{name:'关闭设置'}).click();
   const list=await(await request.post('/api/playlists',{data:{name:'浅色模式片单'}})).json();
   await request.post(`/api/playlists/${list.id}/items/2`);
   await page.getByRole('button',{name:'播放列表',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(255, 255, 255)');
-  await expect(page.locator('.playlist-item-title')).toHaveCSS('color','rgb(29, 43, 61)');
+  await expect(page.locator('.playlist-item-title')).toHaveCSS('color','rgb(37, 37, 39)');
   await page.screenshot({path:'test-results/appearance-light-playlists.png'});
   await page.getByRole('button',{name:'完成',exact:true}).click();
   await page.getByRole('button',{name:'播放 视频 002',exact:true}).click();
@@ -33,9 +33,9 @@ test('light surfaces are consistent across settings, playlists and the player wi
   await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
   await video.evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.appearanceIdentity='unchanged';});
   await expect(page.locator('.player-info')).toHaveCSS('background-color','rgb(255, 255, 255)');
-  await expect(page.locator('.player-shell')).toHaveCSS('background-color','rgb(244, 246, 250)');
-  await expect(page.locator('.player-info h2')).toHaveCSS('color','rgb(29, 43, 61)');
-  await expect(page.locator('.player-top>span')).toHaveCSS('color','rgb(29, 43, 61)');
+  await expect(page.locator('.player-shell')).toHaveCSS('background-color','rgb(245, 245, 247)');
+  await expect(page.locator('.player-info h2')).toHaveCSS('color','rgb(37, 37, 39)');
+  await expect(page.locator('.player-top>span')).toHaveCSS('color','rgb(37, 37, 39)');
   await expect(page.locator('.player-controls')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
   await expect(page.locator('.player-controls')).toHaveCSS('background-image','none');
   await expect(page.locator('.player-controls button').first()).toHaveCSS('color','rgb(255, 255, 255)');

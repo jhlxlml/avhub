@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "status": "development-preview",
+  "asset": "mpv-v0.41.0-dev-g7c4f662c0-38598545310-x86_64-w64-mingw32-full.zip",
+  "url": "https://github.com/mpv-player/mpv/releases/download/git-release/mpv-v0.41.0-dev-g7c4f662c0-38598545310-x86_64-w64-mingw32-full.zip",
+  "archiveSha256": "0c310aa06b77bbf603ca99b024f0cbd5d85bbceb4c106235373d844dbda941ec",
+  "exeSha256": "b294a778f57b2d706e9a3c65a912130e3f5544a8b34708b67a47b59a6cbb6ff2",
+  "licenseSha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6",
+  "sourceCommit": "7c4f662c0",
+  "buildContext": "https://github.com/mpv-player/mpv/actions/runs/38598545310",
+  "distributionReady": false,
+  "releaseBlockers": [
+    "Pinned rolling asset is not a durable release input",
+    "Complete redistribution notices and corresponding source/build materials not reviewed",
+    "Interactive compositor, mixed-DPI and hardware colour acceptance incomplete"
+  ]
+}

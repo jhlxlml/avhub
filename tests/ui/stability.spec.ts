@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 
 test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
 
@@ -73,8 +74,10 @@ test('browser mode does not expose page fullscreen; video fullscreen remains ava
   await page.getByRole('button', { name: '从头开始', exact: true }).click();
   await expect(page.getByRole('button', { name: '浏览器全屏', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '应用全屏', exact: true })).toHaveCount(0);
+  await revealPlayerControls(page);
   await page.getByRole('button', { name: '全屏', exact: true }).click();
   expect(await page.evaluate(() => document.fullscreenElement?.classList.contains('video-wrap'))).toBeTruthy();
+  await revealPlayerControls(page);
   await page.getByRole('button', { name: '退出视频全屏', exact: true }).click();
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
 });
@@ -115,7 +118,7 @@ test('video stage supports mouse play/pause, wheel volume and double-click fulls
   expect(await page.evaluate(() => document.fullscreenElement?.classList.contains('video-wrap'))).toBeTruthy();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await expect.poll(() => page.locator('.video-wrap').evaluate(el => el.classList.contains('controls-hidden')), { timeout: 2500 }).toBeTruthy();
-  expect(await page.locator('.video-wrap').evaluate(el => getComputedStyle(el).cursor)).toBe('none');
+  await expect.poll(()=>page.locator('.video-canvas').evaluate(el=>getComputedStyle(el).cursor)).toBe('none');
   await page.keyboard.press('Escape');
 });
 
@@ -258,7 +261,7 @@ test('creates a playlist from library cards and plays its queue in both directio
   await page.getByRole('button', { name: '加入播放列表 视频 001', exact: true }).click();
   await page.getByRole('textbox', { name: '新播放列表名称' }).fill('周末片单');
   await page.getByRole('button', { name: '添加到列表', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('已将“视频 001”加入播放列表');
+  await expect(page.getByText('已将“视频 001”加入播放列表',{exact:true})).toBeVisible();
   await page.getByRole('button', { name: '加入播放列表 视频 002', exact: true }).click();
   await page.getByRole('combobox', { name: '选择播放列表' }).selectOption({ label: '周末片单（1）' });
   await page.getByRole('button', { name: '添加到列表', exact: true }).click();
@@ -275,10 +278,12 @@ test('creates a playlist from library cards and plays its queue in both directio
   await page.getByRole('button', { name: '从头播放', exact: true }).click();
   await expect(page.getByRole('button', { name: '播放上一条', exact: true })).toBeDisabled();
   await expect(page.locator('.player-top').getByText('视频 002')).toBeVisible();
+  await revealPlayerControls(page);
   await page.getByRole('button', { name: '播放下一条', exact: true }).click();
   await expect(page.locator('.player-top').getByText('视频 001')).toBeVisible();
   await page.getByRole('button', { name: '从头开始', exact: true }).click();
   await expect(page.getByRole('button', { name: '播放上一条', exact: true })).toBeEnabled();
+  await revealPlayerControls(page);
   await page.getByRole('button', { name: '播放上一条', exact: true }).click();
   await expect(page.locator('.player-top').getByText('视频 002')).toBeVisible();
   await page.locator('.player-top').getByRole('button', { name: /返回媒体库/ }).click();
@@ -308,7 +313,7 @@ test('missing playlist videos remain visible, reorderable and removable', async 
   await page.getByRole('button', { name: '播放列表', exact: true }).click();
   await page.getByRole('button', { name: /离线测试片单/ }).click();
   await page.getByRole('button', { name: '从播放列表移除 视频 001', exact: true }).click();
-  await expect(page.getByText('1 个视频')).toBeVisible();
+  await expect(page.locator('.playlist-detail-heading small')).toContainText('1 个视频');
 });
 
 test('duplicate playlist names show a clear conflict message', async ({ page }) => {
@@ -416,6 +421,12 @@ test('history view lists played videos and clearing an entry keeps the source vi
 });
 
 test('advanced format, watch-state and duration filters compose and survive reload', async ({ page }) => {
+  // These indexed roots are virtual fixtures. Keep availability deterministic;
+  // separate source-state tests cover the real asynchronous offline probe.
+  await page.route(/\/api\/roots(?:\/status)?(?:\?|$)/,async route=>{
+    const response=await route.fetch();const roots=await response.json();
+    await route.fulfill({response,json:roots.map((root:any)=>({...root,available:true}))});
+  });
   await page.goto('/?root=1');
   await page.getByRole('button', { name: '更多筛选' }).click();
   await page.getByRole('combobox', { name: '视频格式' }).selectOption('mkv');
@@ -428,13 +439,14 @@ test('advanced format, watch-state and duration filters compose and survive relo
   expect(new URL(page.url()).searchParams.get('watch')).toBe('unwatched');
   expect(new URL(page.url()).searchParams.get('duration')).toBe('short');
   await page.reload();
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   await expect(page.getByRole('combobox', { name: '视频格式' })).toHaveValue('mkv');
   await expect(page.getByRole('combobox', { name: '观看状态' })).toHaveValue('unwatched');
   await expect(page.getByRole('combobox', { name: '视频时长范围' })).toHaveValue('short');
   await page.getByRole('combobox', { name: '观看状态' }).selectOption('watched');
   await expect(page.getByRole('heading', { name: '暂无匹配的视频', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '清除筛选', exact: true }).click();
-  await expect(page.getByText('共 346 个结果 · 本页 48 个', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '清除全部筛选', exact: true }).click();
+  await expect(page.getByText('共 347 个结果 · 本页 48 个', { exact: true })).toBeVisible();
 });
 
 test('media editor persists title, series classification, rating and tags', async ({ page, request }) => {
@@ -693,6 +705,7 @@ test('wheel zoom anchors to the pointer and the control-bar button restores the 
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused)).toBeTruthy();
   const restore = page.getByRole('button', { name: '还原画面缩放' });
   await expect(restore).toBeEnabled();
+  await revealPlayerControls(page);
   await restore.click();
   await expect(restore).toBeDisabled();
   await expect.poll(() => page.locator('.video-canvas').evaluate((canvas: HTMLElement) => getComputedStyle(canvas).transform))

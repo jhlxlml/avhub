@@ -1,7 +1,22 @@
-.settings-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;padding:4px;background:var(--ui-field);border:1px solid var(--ui-divider);border-radius:10px;margin:18px 0}
-.settings-tabs>button{display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;padding:9px 5px;background:transparent;color:var(--ui-muted);border-radius:7px;white-space:nowrap}
-.settings-tabs>button[aria-selected=true]{background:var(--ui-accent-soft);color:var(--ui-accent)}
-.settings-panel[hidden]{display:none}.settings-panel>.settings-section:first-child,.settings-panel>.backup-tools:first-child{margin-top:0;border-top:0;padding-top:0}
+.modal.settings-dialog{max-width:1040px}
+.settings-workspace{display:grid;grid-template-columns:148px minmax(0,1fr);gap:24px;margin-top:20px;align-items:start}
+.settings-content{min-width:0}
+.modal.settings-dialog .settings-tabs{display:flex;flex-direction:column;gap:4px;margin:0;padding:0 16px 0 0;border:0;border-right:1px solid var(--ui-divider);border-radius:0;background:transparent;position:sticky;top:0}
+.modal.settings-dialog .settings-tabs>button{display:flex;align-items:center;justify-content:flex-start;gap:10px;min-height:40px;padding:10px;font-size:12px;border-radius:var(--ui-radius);color:var(--ui-secondary);background:transparent;white-space:nowrap}
+.modal.settings-dialog .settings-tabs>button:hover:not(:disabled){background:var(--ui-hover);color:var(--ui-text)}
+.modal.settings-dialog .settings-tabs>button[aria-selected=true],.modal.settings-dialog .settings-tabs>button[aria-selected=true]:hover{background:var(--ui-accent-soft);box-shadow:none;color:var(--ui-accent);font-weight:600}
+.modal.settings-dialog .settings-panel>:is(.settings-section,.backup-tools,.preview-preference){margin:0 0 14px;padding:18px;border:1px solid var(--ui-divider);border-radius:var(--ui-panel-radius);background:var(--ui-bg)}
+.modal.settings-dialog .settings-panel .settings-section h3{color:var(--ui-text)}
+.settings-dialog .settings-section>label:has(select){display:flex;flex-direction:column;align-items:stretch;gap:8px;font-size:12px;color:var(--ui-secondary)}
+.settings-dialog .settings-section>label>select{width:100%;min-height:36px;padding:9px 11px;font-size:12px;border-radius:var(--ui-radius)}
+.settings-dialog .settings-panel .dialog-description{margin-bottom:14px}
+.settings-dialog .root-list>div{flex-wrap:wrap;padding:12px;gap:10px}
+.settings-dialog .root-info{flex:1 1 calc(100% - 42px)}
+.settings-dialog .root-list button{min-height:32px}
+.settings-dialog .settings-advanced{margin-top:0;background:var(--ui-bg);border-color:var(--ui-divider);border-radius:var(--ui-panel-radius)}
+@media(max-width:819px){.settings-workspace{display:block;margin-top:16px}.modal.settings-dialog .settings-tabs{position:static;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border:1px solid var(--ui-divider);border-radius:var(--ui-radius);padding:4px;margin-bottom:16px;background:var(--ui-field)}.modal.settings-dialog .settings-tabs>button{justify-content:center;gap:6px;min-height:36px;padding:8px 4px;font-size:12px}.modal.settings-dialog .settings-panel>:is(.settings-section,.backup-tools,.preview-preference){padding:14px}}
+@media(max-width:420px){.modal.settings-dialog .settings-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.modal.settings-dialog .settings-panel>:is(.settings-section,.backup-tools,.preview-preference){padding:12px}}
+.settings-panel[hidden]{display:none}
 .settings-panel{min-height:200px}.settings-panel .settings-section h3,.settings-panel .backup-tools h3{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ui-secondary);margin:0 0 12px}
 .export-result {display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex-basis:100%;min-width:0;margin:8px 0;font-size:12px}.export-result code {overflow-wrap:anywhere;min-width:0;flex:1}
 .storage-sizes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}.storage-sizes>div{background:var(--ui-field);border:1px solid var(--ui-divider);border-radius:9px;padding:10px 12px;min-width:0}

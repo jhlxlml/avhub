@@ -25,7 +25,7 @@ export function AppConfirmHost(){
     return()=>{document.removeEventListener('fullscreenchange',fullscreen);window.removeEventListener('avhub-confirm',receive);window.removeEventListener('avhub-before-quit',quit);pending?.resolve(false);pending=null;};
   },[]);
   function finish(accepted:boolean){const value=pending;pending=null;setRequest(null);value?.resolve(accepted);}
-  return <><span hidden data-app-confirm-host/>{request&&createPortal(<Dialog label={request.title} closeLabel="取消确认" busy={false} close={()=>finish(false)} className="modal app-confirm-dialog" backdropClassName="app-confirm-backdrop">
+  return <><span hidden data-app-confirm-host/>{request&&createPortal(<Dialog label={request.title} closeLabel="取消确认" busy={false} close={()=>finish(false)} className={`modal app-confirm-dialog${request.danger?' is-destructive':''}`} backdropClassName="app-confirm-backdrop">
     <h2 className="dialog-title"><Icon name={request.danger?'warning':'shield'} size={22}/>{request.title}</h2>
     <p className="app-confirm-details">{request.details}</p><p className="dialog-description">{request.consequence}</p>
     <div className="tool-footer"><Button onClick={()=>finish(false)}>取消</Button><Button variant={request.danger?'danger':'primary'} onClick={()=>finish(true)}>{request.accept}</Button></div>

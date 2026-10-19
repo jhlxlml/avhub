@@ -72,7 +72,8 @@ class PlaybackManager:
 
     def create(self, source: Path, ffmpeg: str, offset: float = 0, max_height: int | None = None,
                audio_track_index: int | None = None, copy_video: bool = False,
-               copy_audio: bool = False, video_color: dict | None = None, client_token: str | None = None) -> dict:
+               copy_audio: bool = False, video_color: dict | None = None, client_token: str | None = None,
+               video_copy_args: list[str] | None = None) -> dict:
         with self.lock:
             self.cancelled_creations = {key: expiry for key, expiry in self.cancelled_creations.items() if expiry > time.monotonic()}
             if client_token and client_token in self.cancelled_creations:
@@ -100,6 +101,7 @@ class PlaybackManager:
                        "-ss", str(offset), "-i", str(source), "-map", "0:v:0", "-map", audio_map]
             if copy_video:
                 command.extend(["-c:v", "copy"])
+                command.extend(video_copy_args or [])
             else:
                 # Auto transcodes are quality-first: keep the source dimensions (only trim
                 # an odd trailing row/column required by 8-bit 4:2:0 H.264). Explicit

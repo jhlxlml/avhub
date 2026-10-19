@@ -5,6 +5,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import random
@@ -36,6 +37,7 @@ from .playlist_mutations import PlaylistBatchInput,PlaylistRestoreInput,Playlist
 from .subtitle_conversion import convert_ass, decode_text, MAX_SUBTITLE_BYTES
 from .video_color import color_metadata
 from .preferences import GLOBAL_KEYS, validate as validate_preference
+from . import media_playback_state
 from . import media_order
 from .local_security import local_request_error, SECURITY_HEADERS
 from .build_info import BUILD
@@ -57,6 +59,7 @@ from .data_jobs import DataJobs, summary as backup_summary
 from . import screenshots
 from . import file_operations
 from . import media_identity
+from .read_budget import ReadBudget,ReadCancelled
 from starlette.concurrency import run_in_threadpool
 
 FROZEN = bool(getattr(sys, "frozen", False))
@@ -83,6 +86,7 @@ HLS = DATA / "hls"
 DB = DATA / "library.db"
 DB_LOCK = threading.RLock()
 DB_READ_GATE = ReadGate()  # Restore exclusion, not the indexing write lock.
+background_reads = ReadBudget()
 screenshot_store = screenshots.ScreenshotStore()
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".wmv", ".flv", ".ts", ".mts", ".m2ts"}
 SUB_EXTENSIONS = {".srt", ".ass", ".ssa", ".vtt"}
@@ -103,6 +107,12 @@ def executable(name: str) -> str:
 
 class ScanCancelled(Exception):
     pass
+
+@contextmanager
+def background_read(path,cancelled=None):
+    try:
+        with background_reads.slot(path,cancelled):yield
+    except ReadCancelled:raise ScanCancelled()
 
 
 def stop_scan_process(process, force=False):
@@ -293,13 +303,13 @@ def thumbnail(path: Path, media_id: int, duration: float, force: bool = False, c
         for seek in dict.fromkeys([point] if frame_time is not None else [point, 0]):
             try:
                 command=[executable("ffmpeg"), "-v", "error", "-nostdin", "-y", "-ss", str(seek), "-i", str(path), "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", str(temporary)]
-                code,_,error=scan_process(command, 20, cancelled)
+                with background_read(path,cancelled):code,_,error=scan_process(command, 20, cancelled)
                 if not valid_thumbnail(temporary) and b'csp:bt709 prim:reserved trc:reserved' in error and b'Unsupported input' in error:
                     # Invalid SDR tags, not a decode failure. Repair tags only
                     # in this temporary JPEG pipeline; never alter source or
                     # force BT.709 on valid HDR / wide-gamut playback.
                     command[command.index('-vf')+1]='setparams=color_primaries=bt709:color_trc=bt709,scale=480:-2'
-                    code,_,error=scan_process(command,20,cancelled)
+                    with background_read(path,cancelled):code,_,error=scan_process(command,20,cancelled)
                 if valid_thumbnail(temporary):
                     with publish_gate or suppress():
                         if cancelled and cancelled.is_set():raise ScanCancelled()
@@ -376,7 +386,7 @@ def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_
                     with connection() as db:
                         db.execute("UPDATE media SET thumbnail=?,updated_at=? WHERE id=?", (thumb,time.time(),old["id"]))
         return False
-    metadata = probe(path, cancelled)
+    with background_read(path,cancelled):metadata = probe(path, cancelled)
     if not metadata["video_codec"]:
         raise ValueError("无法读取视频信息，请检查文件或 FFprobe")
     if media_identity.encoded(path.stat())!=media_identity.encoded(stat):raise ValueError('探测期间源文件变化，请重新扫描')
@@ -641,6 +651,7 @@ class PlaybackActivityInput(BaseModel):
     media_id:int|None=Field(default=None,ge=1)
     present:bool=True
     prepared:bool=False
+    preparing:bool=False
 class WatchedInput(BaseModel): watched: bool
 class PreferencesInput(BaseModel):
     values: dict[str,Any] = Field(max_length=100)
@@ -657,6 +668,7 @@ def playback_activity(value:PlaybackActivityInput):
             row=db.execute('SELECT path FROM media WHERE id=?',(value.media_id,)).fetchone()
         if row:source=Path(row['path'])
     native_prepare.activity(value.owner,source,value.playing,value.present,value.prepared)
+    background_reads.activity(value.owner,value.present and value.preparing)
     return {'ok':True}
 
 class StorageCleanupInput(BaseModel):
@@ -799,6 +811,7 @@ def diagnostics():
     with connection() as db:
         result['thumbnail_jobs']={row['state']:row['count'] for row in db.execute('SELECT state,COUNT(*) AS count FROM thumbnail_jobs GROUP BY state')}
     result['database_timing']=database_timing.report()
+    result['background_reads']=background_reads.snapshot()
     result['thumbnail_service']=thumbnail_service.snapshot()
     result['runtime_evidence']=runtime_evidence.report()
     result['recycle_bridge']={**getattr(recycle_service.bridge,'stats',{}),'active':bool(getattr(recycle_service.bridge,'process',None))}
@@ -1578,6 +1591,36 @@ def media_record(media_id: int):
     if not row: raise HTTPException(404, "视频不存在")
     return row_dict(row)
 
+
+@app.get('/api/media/{media_id}/playback-state')
+def get_media_playback_state(media_id:int):
+    item=one_media(media_id)
+    with read_connection() as db:return media_playback_state.read(db,item,item['external_subtitles'])
+
+
+class MediaPlaybackStateInput(BaseModel):
+    source:str=Field(pattern=r'^[a-f0-9]{64}$')
+    changes:dict[str,Any]
+    updated_at:float=Field(default_factory=lambda:time.time()*1000,ge=0,allow_inf_nan=False)
+
+
+@app.patch('/api/media/{media_id}/playback-state')
+def set_media_playback_state(media_id:int,body:MediaPlaybackStateInput):
+    with connection() as db:
+        row=db.execute('SELECT * FROM media WHERE id=?',(media_id,)).fetchone()
+        if not row:raise HTTPException(404,'视频不存在')
+        item=row_dict(row)
+        if item.get('missing') or item.get('file_state','normal')!='normal':raise HTTPException(409,'源视频尚未就绪，未保存播放记忆')
+        external=sidecar_subtitles(Path(item['path']))+file_service.linked_subtitles(media_id,Path(item['path']),db)
+        state=media_playback_state.read(db,item,external)
+        if state['source']!=body.source:raise HTTPException(409,'源视频或轨道已变化，未覆盖播放记忆')
+        changes=media_playback_state.validate_changes(item,external,body.changes)
+        state.update(changes)
+        db.execute('''INSERT INTO preferences VALUES(?,?,?) ON CONFLICT(key) DO UPDATE
+            SET value=excluded.value,updated_at=excluded.updated_at WHERE preferences.updated_at<=excluded.updated_at''',
+            (f'playback.{media_id}',json.dumps(state),body.updated_at))
+    return {'ok':True}
+
 @app.get("/api/media/{media_id}/next")
 def next_episode(media_id: int, scope: Literal['series', 'directory'] | None = None):
     if scope is not None:
@@ -1692,7 +1735,7 @@ def automatic_watched(media_id:int):
     return one_media(media_id)
 
 def native_media_path(media_id:int)->Path:
-    item=one_media(media_id)
+    item=media_record(media_id)
     if item.get('missing'):raise HTTPException(404,'视频文件已离线')
     source=Path(item['path']).resolve()
     if source.suffix.lower() not in VIDEO_EXTENSIONS or not source.is_file():raise HTTPException(404,'视频文件不存在或格式不受支持')
@@ -1702,6 +1745,89 @@ def native_media_path(media_id:int)->Path:
 def indexed_native_path(media_id:int):
     # Resolve an indexed ID only. OS actions belong to trusted Electron IPC.
     return {'path':str(native_media_path(media_id))}
+
+from .native_playback import NativeReadLeases,verify_original_color,probe_original_color
+native_read_leases = NativeReadLeases(file_service)
+
+class NativeReadInput(BaseModel):
+    owner:str=Field(pattern=r'^[a-f0-9]{32}$')
+
+@app.post('/api/media/{media_id}/native-read')
+def acquire_native_read(media_id:int,body:NativeReadInput,request:Request):
+    file_bridge(request)
+    resolved={}
+    def resolve(value):
+        item=media_record(value)
+        resolved['title']=item['title']
+        color=item.get('video_color') or {}
+        source=native_media_path(value)
+        actual=source.stat()
+        if (item.get('size') is not None and item['size']!=actual.st_size) or (item.get('modified') is not None and abs(item['modified']-actual.st_mtime)>.000001):
+            raise HTTPException(409,'源视频已变化，请刷新索引后再启动原生播放')
+        # Old indexes need only a bounded colour/header probe, not a full index
+        # rebuild. Persist verified metadata once; never guess unknown as SDR.
+        if color.get('verified') is not True or not color.get('pix_fmt') or type(color.get('bit_depth')) is not int:
+            color=probe_original_color(source,scan_process,executable('ffprobe'))
+            if media_identity.encoded(source.stat())!=media_identity.encoded(actual):raise HTTPException(409,'色彩探测期间源文件变化，请刷新后重试')
+            color.update(source_size=actual.st_size,source_modified=actual.st_mtime)
+            with connection() as db:db.execute('UPDATE media SET video_color=? WHERE id=? AND path=?',(json.dumps(color),value,item['path']))
+        # Do not silently enable mpv's default HDR-to-SDR mapping. The native
+        # HDR display pipeline needs separate hardware acceptance first.
+        verify_original_color(color)
+        return source
+    source=native_read_leases.acquire(body.owner,media_id,resolve)
+    try:
+        thumbnail_service.playback_activity(body.owner,True)
+        background_reads.activity(body.owner,True)
+        native_prepare.activity(body.owner,source,True,True,False)
+    except BaseException:
+        native_read_leases.release(body.owner)
+        raise
+    return {'path':str(source),'title':resolved['title']}
+
+@app.delete('/api/native-read/{owner}')
+def release_native_read(owner:str,request:Request):
+    file_bridge(request)
+    native_read_leases.release(owner)
+    background_reads.activity(owner,False)
+    thumbnail_service.playback_activity(owner,False)
+    native_prepare.activity(owner,None,False,False)
+    return {'ok':True}
+
+class NativeSurfaceInput(BaseModel):
+    host:int=Field(strict=True,gt=0,le=0xffffffff)
+    host_pid:int=Field(strict=True,gt=0,le=0xffffffff)
+    decoder_pid:int=Field(strict=True,gt=0,le=0xffffffff)
+
+@app.post('/api/native-read/{owner}/surface')
+def raise_native_surface(owner:str,body:NativeSurfaceInput,request:Request):
+    file_bridge(request)
+    from .native_window import windows_surface,raise_owned_surface
+    with file_service.lock:
+        if owner not in native_read_leases.leases:
+            raise HTTPException(409,'原生播放会话已关闭')
+        return raise_owned_surface(windows_surface(),body.host,body.host_pid,body.decoder_pid)
+
+class NativeEmbedInput(BaseModel):
+    parent:int=Field(strict=True,gt=0,le=0xffffffff)
+    host:int=Field(strict=True,gt=0,le=0xffffffff)
+    overlay:int=Field(strict=True,gt=0,le=0xffffffff)
+    pid:int=Field(strict=True,gt=0,le=0xffffffff)
+    rect:dict
+
+@app.post('/api/native-read/{owner}/embed')
+def embed_native_surface(owner:str,body:NativeEmbedInput,request:Request):
+    file_bridge(request)
+    from .native_window import windows_surface
+    with file_service.lock:
+        if owner not in native_read_leases.leases:raise HTTPException(409,'原生播放会话已关闭')
+        rect=body.rect;clip=rect.get('clip')
+        numbers=[rect.get(k) for k in ('x','y','width','height')]+([clip.get(k) for k in ('x','y','width','height')] if isinstance(clip,dict) else [])
+        if len(numbers)!=8 or any(type(n) not in (int,float) or not math.isfinite(n) or abs(n)>32768 for n in numbers) or type(rect.get('visible')) is not bool or rect['width']<1 or rect['height']<1 or any(clip[k]<0 for k in ('x','y','width','height')) or clip['x']+clip['width']>rect['width']+1 or clip['y']+clip['height']>rect['height']+1:
+            raise HTTPException(422,'原生播放区域无效')
+        radius=rect.get('radius',0)
+        if type(radius) not in (int,float) or not math.isfinite(radius) or not 0<=radius<=128:raise HTTPException(422,'原生播放圆角无效')
+        return windows_surface().embed(body.parent,body.host,body.overlay,body.pid,rect)
 
 @app.put("/api/media/{media_id}/progress")
 def save_progress(media_id: int, body: ProgressInput):
@@ -1848,12 +1974,35 @@ def playlist_queue(playlist_id: int, media_id: int | None = None, page: int | No
             media_id = first['id']
         return playlist_page_query(db,playlist_id,row_dict,page,page_size,q,media_id)
 
+def thumbnail_cache_policy(version, updated_at):
+    try:
+        value=float(version) if version is not None else None
+        if value is not None and math.isfinite(value) and value==float(updated_at or 0):return 'private, max-age=300'
+    except (ValueError,TypeError,OverflowError):pass
+    return 'no-cache'
+
+
+def thumbnail_headers(policy, info):
+    identity=f'{info.st_dev}:{info.st_ino}:{info.st_size}:{info.st_mtime_ns}'
+    return {'Cache-Control':policy,'ETag':'"'+hashlib.sha256(identity.encode()).hexdigest()+'"'}
+
+
+def thumbnail_unchanged(request, headers):
+    # GET validators compare representation identity, not the media source.
+    # Weak validators and * have standard If-None-Match semantics.
+    return request is not None and any(value.strip().removeprefix('W/') in ('*',headers['ETag'])
+        for value in request.headers.get('if-none-match','').split(','))
+
+
 @app.get("/thumbs/{media_id}")
-def get_thumb(media_id: int):
+def get_thumb(media_id: int, v: str | None = None, request: Request = None):
     # Open while holding the DB lock so a simultaneous reset cannot remove the
     # selected cache file before the response gets its own reader handle.
     with connection() as db:
-        custom=db.execute('SELECT custom_cover FROM media WHERE id=?',(media_id,)).fetchone()
+        custom=db.execute('SELECT custom_cover,updated_at FROM media WHERE id=?',(media_id,)).fetchone()
+        # Only current, version-addressed application artwork may be reused.
+        # Missing/stale/invalid versions still revalidate; errors never cache.
+        cache=thumbnail_cache_policy(v,custom['updated_at']) if custom else 'no-cache'
         source=None
         if custom and custom['custom_cover']:
             path=covers.owned_path(DATA,custom['custom_cover'])
@@ -1868,18 +2017,28 @@ def get_thumb(media_id: int):
             try:
                 while block:=source.read(65536):yield block
             finally:release()
-        return StreamingResponse(chunks(),media_type='image/jpeg',headers={'Cache-Control':'no-cache'},background=BackgroundTask(release))
+        headers=thumbnail_headers(cache,os.fstat(source.fileno()))
+        if thumbnail_unchanged(request,headers):
+            release();return Response(status_code=304,headers=headers)
+        return StreamingResponse(chunks(),media_type='image/jpeg',headers=headers,background=BackgroundTask(release))
     with connection() as db:
-        row = db.execute("SELECT thumbnail FROM media WHERE id=?", (media_id,)).fetchone()
+        row = db.execute("SELECT thumbnail,updated_at FROM media WHERE id=?", (media_id,)).fetchone()
     if not row or not row['thumbnail']:
         raise HTTPException(404, '预览图缓存已失效，请刷新媒体库', headers={'Cache-Control':'no-store'})
     path = THUMBS / f"{media_id}.jpg"
     if not valid_thumbnail(path): raise HTTPException(404, '预览图尚未生成或缓存已失效，请刷新媒体库',headers={'Cache-Control':'no-store'})
-    return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control':'no-cache'})
+    try:info=path.stat()
+    except OSError:raise HTTPException(404,'预览图缓存已失效，请刷新媒体库',headers={'Cache-Control':'no-store'})
+    headers=thumbnail_headers(thumbnail_cache_policy(v,row['updated_at']),info)
+    if thumbnail_unchanged(request,headers):return Response(status_code=304,headers=headers)
+    return FileResponse(path, media_type='image/jpeg', headers=headers,stat_result=info)
 
 @app.api_route("/media/{media_id}/file", methods=["GET", "HEAD"])
 def media_file(media_id: int):
-    with connection() as db: row = db.execute("SELECT path FROM media WHERE id=? AND missing=0",(media_id,)).fetchone()
+    # A new Range must not wait on the scanner/editor's Python write mutex.
+    # Retain the restore/read gate and a query-only WAL snapshot; the response
+    # still validates/opens the current source and cancels obsolete readers.
+    with read_connection() as db: row = db.execute("SELECT path FROM media WHERE id=? AND missing=0",(media_id,)).fetchone()
     if not row: raise HTTPException(404)
     return original_file_response(row["path"])
 
@@ -2060,12 +2219,19 @@ def start_playback(media_id: int, body: PlaybackInput):
                 'reason':'关键帧索引按需封装，跳播不重建视频源；保留原视频编码',**result})
         reason = ("切换音轨，保留原视频编码" if body.audio_track_index is not None else
                   "浏览器原片播放失败，保留原视频编码重新封装" if body.skip_direct else "保留原视频编码转换封装")
+        video_copy_args=[]
+        if source.suffix.lower() in {'.mp4','.m4v','.mov'}:
+            from .mp4_timeline import container_copy_color
+            from .video_color import h264_copy_color_args
+            try:video_copy_args=h264_copy_color_args(container_copy_color(source,threading.Event()))
+            except (ValueError,OSError,KeyError,IndexError) as exc:
+                raise HTTPException(422,'无法确认容器色彩可无损保留，请使用原片播放：'+str(exc)[:160]) from exc
         started=time.perf_counter()
         # Copy-mode output may begin at the next keyframe. Include a short
         # decode lead-in, then let the browser seek to the requested position.
         # Older clients retain the original zero-preroll contract.
         result=playback.create(source, executable("ffmpeg"), max(0,start-body.seek_preroll),
-                        audio_track_index=body.audio_track_index, copy_video=True, copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token)
+                        audio_track_index=body.audio_track_index, copy_video=True, copy_audio=copy_audio,video_color=item.get('video_color'),client_token=body.client_token,video_copy_args=video_copy_args)
         stages['task_ms']=round((time.perf_counter()-started)*1000,2)
         return measured({'mode':'remux','reason':reason,'start':start,**result})
     if not body.allow_video_transcode:

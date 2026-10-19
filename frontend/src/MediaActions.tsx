@@ -80,6 +80,6 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
     </div></div>,document.body)}
     {prepareEnabled&&prepareOpen&&<NativePrepareDialog media={media} close={()=>setPrepareOpen(false)} play={playPrepared}/>}
     {editOpen&&<MediaEditDialog media={media} update={value=>{update(value);changed?.();}} close={()=>setEditOpen(false)}/>}
-    {fileAction&&<FileActionDialog media={media} action={fileAction} close={()=>setFileAction(null)} changed={()=>{void api<Media>(`/api/media/${media.id}`).then(value=>update(value)).catch(error=>notify(errorText(error)));changed?.();notify(fileAction==='rename'?'文件名和视频标题已同步更新':'视频已移入系统回收站，可在系统回收站恢复',4000);}}/>}
+    {fileAction&&<FileActionDialog media={media} action={fileAction} close={()=>setFileAction(null)} changed={recoverable=>{void api<Media>(`/api/media/${media.id}`).then(value=>update(value)).catch(error=>notify(errorText(error)));changed?.();if(!recoverable)notify(fileAction==='rename'?'文件名和视频标题已同步更新':'视频已移入系统回收站，可在回收记录中恢复',4000);}}/>}
   </div>;
 }

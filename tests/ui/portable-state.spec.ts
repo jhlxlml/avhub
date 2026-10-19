@@ -63,8 +63,9 @@ test('refresh and browser history preserve watch filters, scroll, current video 
   await expect(page).toHaveURL(/video=3/);
   await page.evaluate(()=>history.back());
   await expect(page.locator('.player-shell')).toHaveCount(0);
-  await expect(page.getByRole('combobox',{name:'观看状态'})).toHaveValue('unwatched');
   await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(750);
+  await page.getByRole('button',{name:/^更多筛选/}).click();
+  await expect(page.getByRole('combobox',{name:'观看状态'})).toHaveValue('unwatched');
   await page.evaluate(()=>history.forward());
   await expect(page.locator('.player-top')).toContainText('视频 003');
   await expect(page.getByText('继续上次观看？')).toBeVisible();
@@ -149,6 +150,7 @@ test('return refreshes watched filters after a manual mark in the player',async(
   await page.locator('.player-top').getByRole('button',{name:/返回媒体库/}).click();
   await expect(page.getByRole('heading',{name:'暂无匹配的视频'})).toBeVisible();
   await expect(page.locator('.card')).toHaveCount(0);
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   await expect(page.getByRole('combobox',{name:'观看状态'})).toHaveValue('unwatched');
 });
 

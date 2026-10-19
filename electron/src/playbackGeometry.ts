@@ -14,7 +14,17 @@ export function fitPlaybackBounds(current:Rectangle, work:Rectangle, ratio:numbe
   // above that boundary so measured client-area correction is not clamped.
   const minHeight=Math.max(minimum[1]+4,(minimum[0]+4)/ratio);
   const height=Math.min(maxHeight,Math.max(minHeight,largest?maxHeight:Math.sqrt(current.width*current.height/ratio)));
-  const width=Math.min(work.width,Math.round(height*ratio)), roundedHeight=Math.min(work.height,Math.round(height));
+  // Round one axis, derive the other from that rounded value. Independently
+  // rounding height and height*ratio compounds error after rotations, most
+  // visibly in short ultrawide windows at fractional Windows DPI.
+  let roundedHeight=Math.min(Math.floor(work.height),Math.round(height));
+  let width=Math.round(roundedHeight*ratio);
+  if(ratio<1){width=Math.round(height*ratio);roundedHeight=Math.round(width/ratio);}
+  if(width>work.width){width=Math.floor(work.width);roundedHeight=Math.round(width/ratio);}
+  if(roundedHeight>work.height){roundedHeight=Math.floor(work.height);width=Math.round(roundedHeight*ratio);}
+  // Extremely thin videos may have no integer-DIP pair satisfying both the
+  // work-area bound and OS minimum. Preserve the feasible minimum in that case.
+  if(width<minimum[0]-1||roundedHeight<minimum[1]-1){width=Math.min(work.width,Math.round(height*ratio));roundedHeight=Math.min(work.height,Math.round(height));}
   return {width,height:roundedHeight,
     x:Math.round(Math.max(work.x,Math.min(work.x+work.width-width,current.x+(current.width-width)/2))),
     y:Math.round(Math.max(work.y,Math.min(work.y+work.height-roundedHeight,current.y+(current.height-roundedHeight)/2)))};

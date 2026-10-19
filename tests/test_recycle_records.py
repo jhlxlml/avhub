@@ -174,6 +174,16 @@ class RecycleRecordTests(unittest.TestCase):
         with patch.object(self.bridge,'items',wraps=self.bridge.items) as items:
             self.records.list();self.records.list(q='视频');self.records.list();self.assertEqual(items.call_count,1)
             self.records.list(refresh=True);self.assertEqual(items.call_count,2)
+    def test_expired_preview_requires_fresh_preview_without_native_replay(self):
+        token=self.records.preview([self.op],'restore')['preview_token']
+        self.records.previews[token]['expires']=0
+        with patch.object(self.bridge,'restore',wraps=self.bridge.restore) as restore:
+            with self.assertRaises(HTTPException):self.records.execute(self.op,'restore',preview_token=token)
+            restore.assert_not_called();self.assertTrue(self.bin.exists())
+            fresh=self.records.preview([self.op],'restore')['preview_token']
+            self.assertNotEqual(token,fresh)
+            self.records.execute(self.op,'restore',preview_token=fresh)
+            self.assertEqual(restore.call_count,1);self.assertTrue(self.source.exists())
     def test_unresolved_action_fences_scan_and_reader_after_restart(self):
         with self.fixture.connection() as db:op=self.records.operation(db,self.op)
         attempt=self.records.prepare(op,'delete',str(self.bin));self.bin.unlink();fresh=self.restart()
@@ -216,9 +226,19 @@ class RecycleRecordTests(unittest.TestCase):
                 db.execute("INSERT INTO file_operations(id,media_id,action,source,stamp,state,created_at,old_title) VALUES(?,?,'recycle',?,?,'completed',?,?)",(op_id,index+2,str(source),json.dumps(identity(sample)),time.time()+index,f'scale-{index}'))
         started=time.perf_counter()
         with patch.object(self.bridge,'items',return_value=paths+[str(self.bin)]) as items:
+            # This assertion measures batching inside a live cache window, not
+            # whether a loaded CI machine completes 120 reads within five seconds.
+            self.records.snapshot();self.records.cached_until=float('inf')
             for page in range(1,5):self.assertEqual(len(self.records.list(page)['items']),30)
             preview=self.records.preview(ids[:500],'restore');self.assertEqual(sum(item['eligible'] for item in preview['records']),500);self.assertEqual(items.call_count,2)
         print(f'Metadata harness: 2000 isolated records, 120 browsed + 500 previewed in {round((time.perf_counter()-started)*1000)} ms; 2 bin snapshot reads, no native mutations.')
+        self.assertEqual(self.bridge.deleted,[])
+
+    def test_expired_snapshot_is_refreshed_without_native_mutations(self):
+        with patch.object(self.bridge,'items',return_value=[str(self.bin)]) as items:
+            first=self.records.snapshot();self.assertIs(self.records.snapshot(),first);self.assertEqual(items.call_count,1)
+            self.records.cached_until=0
+            self.assertIsNot(self.records.snapshot(),first);self.assertEqual(items.call_count,2)
         self.assertEqual(self.bridge.deleted,[])
 
 

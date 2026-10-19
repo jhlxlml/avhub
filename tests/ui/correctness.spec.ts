@@ -16,6 +16,7 @@ test('empty-state action resets all restricting filters but preserves display pr
   await page.goto('/?view=favorites&q=not-found&format=wmv&watch=watched&duration=long&pageSize=24&layout=list');
   await page.getByRole('button', { name: '清除全部条件', exact: true }).click();
   await expect(page.locator('.media-list .card')).toHaveCount(24);
+  await page.getByRole('button',{name:/^更多筛选/}).click();
   await expect(page.getByRole('combobox', { name: '视频格式' })).toHaveValue('');
   await expect(page.getByRole('combobox', { name: '观看状态' })).toHaveValue('all');
   await expect(page.getByRole('combobox', { name: '视频时长范围' })).toHaveValue('');

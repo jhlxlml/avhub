@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
@@ -31,6 +32,7 @@ for(const kind of ['native','indexed-ts','indexed-remux']) {
     const state=await page.locator('video').evaluate((v:HTMLVideoElement)=>({paused:v.paused,time:v.currentTime,src:v.currentSrc}));
     expect(state.paused).toBeTruthy();expect(state.time).toBeCloseTo(12.3,0);expect(state.src).toBe(original);
     expect(starts).toBe(1);
+    await revealPlayerControls(page);
     await page.getByRole('button',{name:'播放',exact:true}).click();
     await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.paused&&v.currentTime>12.5)).toBeTruthy();
     await page.locator('.player-top').getByRole('button',{name:/返回媒体库/}).click();

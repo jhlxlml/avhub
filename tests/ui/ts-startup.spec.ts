@@ -8,6 +8,11 @@ test.beforeEach(async({request})=>{
 
 async function openHead(page:Page,request:APIRequestContext) {
   await page.goto('/?video=5');
+  // A late final progress beacon from the previous fixture may legitimately
+  // produce a resume choice. These cases explicitly exercise the file HEAD.
+  const restart=page.getByRole('button',{name:'从头开始',exact:true});
+  await expect.poll(async()=>await restart.isVisible()||await page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=3&&!v.paused)).toBeTruthy();
+  if(await restart.isVisible())await restart.click();
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=3&&!v.paused)).toBeTruthy();
   expect(await (await request.get('/test/ts-index-state')).json()).toEqual({head:1,full:1});
   await page.locator('.playback-diagnostics summary').click();

@@ -15,3 +15,12 @@ for(const theme of ['dark','light'])test(`${theme}: source decisions and permane
   await expect.poll(()=>page.evaluate(()=>(window as any).sourceCalls.filter((value:any)=>value.action==='resolve-source'))).toEqual([{action:'resolve-source',id:'a'.repeat(32),decision:'keep',signature:'f'.repeat(64)}]);
   await page.screenshot({path:`build/source-changes-${theme}.png`});await page.setViewportSize({width:760,height:700});expect(await page.getByRole('dialog',{name:'媒体库设置'}).evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
 });
+
+test('open source panel follows state events and clears stale failures on recovery',async({page,request})=>{
+  await request.post('/test/reset');let failed=true;
+  await page.route('**/api/source-changes?**',route=>failed?route.fulfill({status:503,json:{detail:'来源状态暂不可用'}}):route.fulfill({json:{items:[],total:0,page:1,pages:1}}));
+  await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();
+  const panel=page.locator('.source-change-panel');await panel.locator('summary').click();await expect(panel).toContainText('来源状态暂不可用');await expect(panel).not.toContainText('暂无待确认');
+  failed=false;await page.evaluate(()=>window.dispatchEvent(new Event('avhub-file-states-changed')));
+  await expect(panel).toContainText('暂无待确认');await expect(panel).not.toContainText('来源状态暂不可用');
+});

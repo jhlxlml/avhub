@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, duration, errorText, type Media, type QueuePage, type PlaylistSource } from './api';
 import { preference, savePreference } from './preferences';
 import { Icon } from './Icon';
@@ -7,13 +7,16 @@ import { type QueueMode, type QueueScope } from './autoplay';
 
 function savedOpen() { return preference('queueOpen',false); }
 
-export function PlaybackQueue({ media, queue, busy, play, siblings, setSiblings,mode,setMode,autoNext,setAutoNext,scope,setScope }: {
+export function PlaybackQueue({ media, queue, busy, play, siblings, setSiblings,mode,setMode,autoNext,setAutoNext,scope,setScope,reveal=0 }: {
   media: Media; queue?: PlaylistSource; busy: boolean; play: (media: Media) => void;
   siblings: QueuePage | null; setSiblings: (value: QueuePage|null) => void;
   mode:QueueMode;setMode:(value:QueueMode)=>void;autoNext:boolean;setAutoNext:(value:boolean)=>void;
   scope:QueueScope;setScope:(value:QueueScope)=>void;
+  reveal?:number;
 }) {
+  const section=useRef<HTMLElement|null>(null);
   const [open, setOpen] = useState(savedOpen);
+  useEffect(()=>{if(reveal){setOpen(true);section.current?.scrollIntoView({block:'nearest'});}},[reveal]);
   const [page, setPage] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -42,9 +45,9 @@ export function PlaybackQueue({ media, queue, busy, play, siblings, setSiblings,
   const currentPage = siblings?.page ?? 1;
   const shown = siblings?.items ?? [];
   const total = siblings?.count ?? siblings?.total;
-  return <section className="playback-queue" aria-label="待播队列">
+  return <section ref={section} className="playback-queue" aria-label="待播队列">
     <button className="queue-heading" aria-label={open ? '收起待播队列' : '展开待播队列'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      <span><Icon name={open?'chevronDown':'chevronRight'} size={14}/><Icon name={queue||siblings?.scope==='series'?'playlist':'folder'} size={16}/>{queue ? siblings?.name || queue.name : siblings?.scope==='series' ? `同剧集 · ${siblings.name}` : '同目录视频'}</span><small>{error?'加载失败':total ? `${(siblings?.index??0)+1} / ${total}` : loading?'正在加载…':'0 个视频'}</small>
+      <span><Icon name={open?'chevronDown':'chevronRight'} size={14}/><Icon name={queue||siblings?.scope==='series'?'playlist':'folder'} size={16}/><span className="queue-heading-copy">{queue ? siblings?.name || queue.name : siblings?.scope==='series' ? `同剧集 · ${siblings.name}` : '同目录视频'}</span></span><small>{error?'加载失败':total ? `${(siblings?.index??0)+1} / ${total}` : loading?'正在加载…':'0 个视频'}</small>
     </button>
     {open && <div className="queue-content">
       <div className="queue-options"><label>播放模式<select aria-label="播放模式" value={mode} onChange={event=>setMode(event.target.value as QueueMode)}>

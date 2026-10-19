@@ -3,7 +3,7 @@ import {open,rename,unlink,lstat,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 
-export type ExportRequest={kind:'backup';jobId:string}|{kind:'diagnostics'};
+export type ExportRequest={kind:'backup';jobId:string}|{kind:'diagnostics'}|{kind:'playback-diagnostics'};
 type Source={filename:string;response:Response;maximum:number};
 // Renderer selects only a known export kind/job. Paths are chosen by the native
 // dialog and reveal operations use only exports successfully written here.
@@ -19,7 +19,7 @@ export class LocalExports {
   async save(owner:BrowserWindow,value:unknown){
     if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('导出参数无效');
     const request=value as ExportRequest;
-    if(request.kind==='backup'?Object.keys(value).length!==2||typeof request.jobId!=='string'||!/^([a-f0-9]{32})$/.test(request.jobId):request.kind!=='diagnostics'||Object.keys(value).length!==1)throw new Error('导出参数无效');
+    if(request.kind==='backup'?Object.keys(value).length!==2||typeof request.jobId!=='string'||!/^([a-f0-9]{32})$/.test(request.jobId):!['diagnostics','playback-diagnostics'].includes(request.kind)||Object.keys(value).length!==1)throw new Error('导出参数无效');
     if(this.active)throw new Error('请先完成当前导出');
     const controller=new AbortController();this.active=controller;
     let temporary='';let response:Response|undefined;
@@ -30,7 +30,7 @@ export class LocalExports {
       if(!response.ok||!response.body)throw new Error('导出内容不可读取，请重试');
       const extension=path.extname(source.filename).toLowerCase();
       if(!['.zip','.db','.json'].includes(extension)||path.basename(source.filename)!==source.filename)throw new Error('导出格式无效');
-      const chosen=await dialog.showSaveDialog(owner,{title:request.kind==='backup'?'保存媒体库备份':'保存运行诊断',defaultPath:source.filename,filters:[{name:extension==='.zip'?'完整备份':extension==='.db'?'数据库备份':'运行诊断',extensions:[extension.slice(1)]}]});
+      const chosen=await dialog.showSaveDialog(owner,{title:request.kind==='backup'?'保存媒体库备份':request.kind==='playback-diagnostics'?'保存播放诊断':'保存运行诊断',defaultPath:source.filename,filters:[{name:extension==='.zip'?'完整备份':extension==='.db'?'数据库备份':'诊断报告',extensions:[extension.slice(1)]}]});
       if(chosen.canceled||!chosen.filePath||controller.signal.aborted)return {cancelled:true} as const;
       const destination=path.resolve(chosen.filePath);
       if(path.extname(destination).toLowerCase()!==extension)throw new Error(`请使用 ${extension} 文件扩展名`);

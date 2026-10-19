@@ -58,6 +58,14 @@ class ScreenshotTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(),b'read-only original video')
         self.assertEqual(self.source.stat().st_mtime_ns,self.original_stat.st_mtime_ns)
 
+    def test_native_cicp_tag_is_preserved_and_bounded(self):
+        original=png()
+        tagged=original[:33]+chunk(b'cICP',bytes([1,1,0,1]))+original[33:]
+        result=self.upload(tagged)
+        self.assertEqual(Path(result['path']).read_bytes(),tagged)
+        for metadata in (b'',b'123',b'12345'):
+            with self.assertRaises(HTTPException):self.upload(original[:33]+chunk(b'cICP',metadata)+original[33:])
+
     def test_custom_directory_and_shortcut_persist_with_fresh_store(self):
         directory=self.folder/'custom';directory.mkdir()
         saved=m.save_screenshot_settings(m.ScreenshotSettingsInput(directory=str(directory),shortcut='C'))

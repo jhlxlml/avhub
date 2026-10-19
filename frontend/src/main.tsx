@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {AppConfirmHost} from './AppConfirm';
 import {BatchRecycle} from './BatchRecycle';
 import {RecycleRecords} from './RecycleRecords';
+import {RecycleFeedback,RecentRecycle} from './RecentRecycle';
 import { api, checkServiceBuild, json, duration, errorText, views, type View, type Media, type MediaUpdate, type Root, type MediaPage, type PlaylistSource } from './api';
 import { Settings } from './Settings';
 import {AboutHost} from './AppTools';
@@ -40,6 +41,7 @@ import { AutoScrollbars } from './AutoScrollbars';
 import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
 import {librarySorts,sortField,isAscending,validSort} from './librarySort';
 import {ResolutionBadge} from './ResolutionBadge';
+import {NativePlayerOverlay} from './NativePlayerOverlay';
 import './styles.css';
 import './library-performance.css';
 import './design-system.css';
@@ -132,7 +134,8 @@ function App() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [recycleBatch,setRecycleBatch]=useState<number[]|null>(null);
   const [recycleRecordsOpen,setRecycleRecordsOpen]=useState(false);
-  useEffect(()=>{const show=()=>setRecycleRecordsOpen(true);window.addEventListener('avhub-open-recycle-records',show);return()=>window.removeEventListener('avhub-open-recycle-records',show);},[]);
+  const [recycleTarget,setRecycleTarget]=useState('');
+  useEffect(()=>{const show=(event:Event)=>{const id=(event as CustomEvent<unknown>).detail;setRecycleTarget(typeof id==='string'&&/^[a-f0-9]{32}$/.test(id)?id:'');setRecycleRecordsOpen(true);};window.addEventListener('avhub-open-recycle-records',show);return()=>window.removeEventListener('avhub-open-recycle-records',show);},[]);
   const grouped = filters.view === 'series' && filters.grouped;
   const library=useLibraryQuery<MediaPage>(grouped||!rootsReady||selected?null:mediaQuery(filters),revision,libraryCache,filters.q,libraryRetry);
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
@@ -185,7 +188,7 @@ function App() {
     setRevision(x => x + 1);
   }, []);
   useEffect(() => { void reloadRoots().catch(e => setNotice(errorText(e))).finally(()=>setRootsReady(true)); }, [reloadRoots]);
-  const onScanComplete = useCallback(() => { void reloadRoots().catch(e => setNotice(errorText(e))); }, [reloadRoots]);
+  const onScanComplete = useCallback(() => { window.dispatchEvent(new Event('avhub-file-states-changed'));void reloadRoots().catch(e => setNotice(errorText(e))); }, [reloadRoots]);
   const onScanProgress = useCallback(() => setRevision(value => value + 1), []);
   const scan = useScan(onScanComplete, setNotice, onScanProgress);
 
@@ -337,6 +340,7 @@ function App() {
       <section className="library" aria-busy={loading}>
         <ScanProgress job={scan.job} cancel={scan.cancel} connectionError={scan.connectionError} />
         <div className="toolbar">
+          <div className="library-browse-tools" role="group" aria-label="浏览与筛选">
           <button className="ui-icon-button" aria-label={treeOpen?'隐藏目录树':'显示目录树'} aria-pressed={treeOpen} title={treeOpen?'隐藏目录树':'显示目录树'} onClick={()=>setTreeOpen(open=>!open)}><Icon name="folder"/></button>
           <DirectoryFilter roots={roots} value={filters.root} change={root => setFilters(f => ({ ...f, root, folder: '', show: '', season: '', recursive: true, page: 1 }))} />
           {filters.view === 'series' && <Button icon="series" aria-pressed={grouped} onClick={() => setFilters(f => ({...f, grouped: !grouped, show: '', season: '', folder: '', recursive: true, format: '', resolution: '', watch: 'all', duration: '', page: 1}))}>{grouped ? '按视频浏览' : '按剧集归类'}</Button>}
@@ -354,8 +358,11 @@ function App() {
           <button className={`advanced-toggle toolbar-icon-action${hasConditions?' active':''}`} aria-expanded={advancedOpen} aria-controls="library-advanced-filters"
             aria-label={`更多筛选${hasConditions?' · 已启用':''}`} title={`更多筛选${hasConditions?' · 已启用':''}`}
             onClick={() => setAdvancedOpen(value => !value)}><Icon name="filter" size={16}/><span className="toolbar-action-label">更多筛选{hasConditions?' · 已启用':''}</span></button>
+          </div>
+          <div className="library-organize-tools" role="group" aria-label="媒体整理">
           {!grouped&&<Button icon="edit" className="toolbar-icon-action" aria-label="批量整理" title="批量整理" aria-pressed={bulkMode} onClick={() => { setBulkMode(value => !value); setPicked([]); }}><span className="toolbar-action-label">批量整理</span></Button>}
-          <Button icon="trash" className="recycle-record-entry" aria-label="回收记录" title="回收记录" onClick={()=>setRecycleRecordsOpen(true)}/>
+          <div className="recycle-toolbar-tools"><Button icon="trash" className="recycle-record-entry" aria-label="回收记录" title="回收记录" onClick={()=>setRecycleRecordsOpen(true)}/><RecentRecycle changed={()=>setRevision(value=>value+1)}/></div>
+          </div>
           <div className="library-toolbar-right">
           {!grouped&&<div className="resolution-filter" role="group" aria-label="分辨率筛选">
             <span className="resolution-filter-label" title="分辨率"><Icon name="resolution" size={18}/></span>
@@ -428,7 +435,8 @@ function App() {
       </section></div>
       {bulkOpen && <BulkEditor ids={picked} close={() => setBulkOpen(false)} done={count => { setBulkOpen(false); setPicked([]); setRevision(value => value + 1); setNotice(`已整理 ${count} 个视频，源文件未修改`); }}/ >}
       {recycleBatch&&<BatchRecycle ids={recycleBatch} close={()=>setRecycleBatch(null)} done={ids=>{setPicked(current=>current.filter(id=>!ids.includes(id)));if(ids.length)setRevision(value=>value+1);}}/>}
-      {recycleRecordsOpen&&<RecycleRecords close={()=>setRecycleRecordsOpen(false)} changed={()=>{setRevision(value=>value+1);window.dispatchEvent(new Event('avhub-file-states-changed'));}}/>}
+      <RecycleFeedback changed={()=>setRevision(value=>value+1)}/>
+      {recycleRecordsOpen&&<RecycleRecords targetId={recycleTarget} close={()=>{setRecycleRecordsOpen(false);setRecycleTarget('');}} changed={()=>{setRevision(value=>value+1);window.dispatchEvent(new Event('avhub-file-states-changed'));}}/>}
       {editingMedia&&<MediaEditDialog media={editingMedia} update={updateMedia} close={()=>setEditingMedia(null)}/>}
       {settings && <Settings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
       {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={playlistAdded} />}
@@ -450,4 +458,5 @@ function Startup() {
   if(ready)return <App/>;
   return <div className="empty" role={error?'alert':'status'}>{error||'正在载入本地设置…'}{error&&<><button onClick={()=>setAttempt(value=>value+1)}>重试启动</button><Diagnostics/></>}</div>;
 }
-createRoot(document.getElementById('root')!).render(<><AppConfirmHost/><AutoScrollbars/><WindowChrome/><AboutHost/><div id="app-scroll-area"><Startup/></div></>);
+const nativeOverlay=new URLSearchParams(location.search).has('nativePlayer')&&Boolean(window.avhubDesktop?.nativePlayer);
+createRoot(document.getElementById('root')!).render(nativeOverlay?<NativePlayerOverlay/>:<><AppConfirmHost/><AutoScrollbars/><WindowChrome/><AboutHost/><div id="app-scroll-area"><Startup/></div></>);

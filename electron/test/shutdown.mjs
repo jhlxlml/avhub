@@ -25,15 +25,23 @@ async function launch() {
   const page = await desktop.firstWindow(); await page.getByRole('button', { name: '媒体库设置' }).waitFor();
   return page;
 }
+async function revealControls(page){
+  const controls=page.locator('.player-controls');await controls.scrollIntoViewIfNeeded();
+  const box=await controls.boundingBox();assert.ok(box);
+  await page.mouse.move(box.x+4,box.y+4);
+  await page.mouse.move(box.x+box.width/2,box.y+box.height-6);
+  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
+}
 async function closeWindow(page, name) {
   const origin = new URL(page.url()).origin;
-  const rendererClosed = page.waitForEvent('close', { timeout: 4000 });
+  // Click actionability/scheduling is not shutdown work. Keep the 4-second
+  // application budget below, measured from the trusted main-process event.
+  const rendererClosed = page.waitForEvent('close', { timeout: 8000 });
   const applicationClosed = desktop.waitForEvent('close', { timeout: 16000 }).then(() => true, () => false);
   const started = Date.now();
   await page.getByRole('button', { name: '关闭窗口', exact: true }).click().catch(error => { if (!page.isClosed()) throw error; });
   await rendererClosed;
-  const windowMs = Date.now() - started;
-  assert.ok(windowMs < 4000, `playback window must not wait for the server drain: ${windowMs} ms`);
+  const clickToCloseMs = Date.now() - started;
   assert.equal(await applicationClosed, true, 'backend cleanup must be bounded'); desktop = null;
   const exitMs = Date.now() - started;
   held?.destroy(); held = null;
@@ -41,8 +49,11 @@ async function closeWindow(page, name) {
     try { return !(await fetch(`${origin}/api/health`, { signal: AbortSignal.timeout(500) })).ok; } catch { return true; }
   }).toBe(true);
   const log = readFileSync(path.join(temporary, 'desktop.log'), 'utf8');
+  const timestamp=event=>{const line=log.trim().split(/\r?\n/).filter(line=>line.endsWith(event)).at(-1);assert.ok(line,event);return Date.parse(line.split(' ')[0]);};
+  const windowMs=timestamp('playback-window-released')-timestamp('shutdown-start');
+  assert.ok(windowMs>=0&&windowMs<4000,`playback window must not wait for the server drain: ${windowMs} ms`);
   assert.ok(log.lastIndexOf('playback-window-released') < log.lastIndexOf('shutdown-complete'));
-  results.push({ name, windowMs, exitMs });
+  results.push({ name, windowMs, clickToCloseMs, exitMs });
 }
 
 try {
@@ -74,13 +85,21 @@ try {
   page = await launch();
   const progress = await page.evaluate(async id => (await (await fetch(`/api/media/${id}`)).json()).progress, episodes[0].id);
   assert.ok(progress >= 12, `active episode progress must be saved: ${progress}`);
-  await page.route(`**/api/media/${episodes[1].id}/playback`, async route => {
-    await route.continue({ postData: JSON.stringify({ ...route.request().postDataJSON(), prefer_original: false, force_transcode: true }) });
-  });
   await page.goto(new URL(`/?video=${episodes[1].id}`, page.url()).href);
+  await expect.poll(() => page.locator('video').evaluate(v => v.readyState >= 2 && !v.paused), { timeout: 20000 }).toBe(true);
+  // Exercise the real explicit-consent path on our generated fixture. The old
+  // request rewrite correctly fails now that implicit lossy conversion is banned.
+  await revealControls(page);
+  await page.getByRole('button',{name:'画质',exact:true}).click();
+  await page.getByRole('combobox',{name:'画质',exact:true}).selectOption('compat');
+  const compatibility=page.waitForResponse(response=>new URL(response.url()).pathname===`/api/media/${episodes[1].id}/playback`&&response.request().method()==='POST'&&response.request().postDataJSON()?.quality==='compat');
+  await page.getByRole('dialog',{name:'启用有损兼容播放？',exact:true}).getByRole('button',{name:'接受并继续',exact:true}).click();
+  const converted=await compatibility;assert.ok(converted.ok());assert.equal((await converted.json()).mode,'hls');
+  assert.equal(converted.request().postDataJSON().allow_video_transcode,true);
   await expect.poll(() => page.locator('video').evaluate(v => v.readyState >= 2 && !v.paused && v.currentTime > 0), { timeout: 20000 }).toBe(true);
-  await expect(page.getByRole('button', { name: '画质', exact: true })).toHaveAttribute('title', /兼容转码/);
+  await expect(page.getByRole('button', { name: '画质', exact: true })).toHaveAttribute('title', '画质：compat');
   assert.ok(readdirSync(path.join(temporary, 'hls')).some(name => /^[a-f0-9]{32}$/.test(name)));
+  await revealControls(page);
   await page.getByRole('button', { name: '纯净播放', exact: true }).click();
   await closeWindow(page, 'playing MKV episode in pure mode + HLS/FFmpeg');
   assert.ok(!readdirSync(path.join(temporary, 'hls')).some(name => /^[a-f0-9]{32}$/.test(name)), 'active HLS cache must be retired on graceful exit');

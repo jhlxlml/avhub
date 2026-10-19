@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 import { readFile } from 'node:fs/promises';
 
 test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
@@ -34,13 +35,19 @@ test('a new seek during late task creation retires the stale session before crea
   const starts: Array<{start:number}> = [];
   const counts:number[] = [];
   let staleCreated = false;
+  let staleReplied = false;
   await page.route('**/media/5/file', route => route.fulfill({status:404,body:'force remux'}));
   await page.route('**/api/media/5/playback', async route => {
     const body={...route.request().postDataJSON(),indexed_ts:false};starts.push(body);
     const response = await route.fetch({postData:JSON.stringify(body)});
     counts.push((await (await request.get('/test/sessions')).json()).count);
-    if (starts.length === 2) { staleCreated=true; await new Promise(resolve => setTimeout(resolve,700)); }
-    await route.fulfill({response});
+    const isStale=starts.length===2;
+    // Materialise the intercepted response before the cancellation test retires
+    // its request; an APIResponse handle may already be disposed by then.
+    const reply={status:response.status(),headers:response.headers(),body:await response.body()};
+    if (isStale) { staleCreated=true; await new Promise(resolve => setTimeout(resolve,700)); }
+    await route.fulfill(reply);
+    if(isStale)staleReplied=true;
   });
   await page.goto('/?q=005');
   await page.getByRole('button', {name:'播放 视频 005',exact:true}).click();
@@ -58,6 +65,7 @@ test('a new seek during late task creation retires the stale session before crea
   expect(starts).toHaveLength(3);
   expect(starts[2].start).toBe(40);
   expect(Math.max(...counts)).toBeLessThanOrEqual(1);
+  await expect.poll(()=>staleReplied).toBe(true);
   await page.getByRole('button', {name:'返回媒体库',exact:false}).click();
   await expect.poll(async () => (await (await request.get('/test/sessions')).json())).toEqual({count:0,folders:0});
 });
@@ -67,6 +75,7 @@ test('volume and mute persist across videos and PNG screenshots retain decoded d
   await page.getByRole('button', {name:'播放 视频 003',exact:true}).click();
   await expect.poll(() => page.locator('video').evaluate((v:HTMLVideoElement) => !v.paused && v.readyState>=2)).toBeTruthy();
   await page.locator('video').evaluate((v:HTMLVideoElement) => { v.volume=.35; v.muted=true; });
+  await revealPlayerControls(page);
   await page.getByRole('button', {name:/旋转视频/}).click();
   const pendingSave = page.waitForResponse(response=>response.url().includes('/screenshot?')&&response.request().method()==='POST');
   await page.getByRole('button', {name:'保存视频截图',exact:true}).click();
@@ -80,7 +89,7 @@ test('volume and mute persist across videos and PNG screenshots retain decoded d
   await page.getByRole('button', {name:'返回媒体库',exact:false}).click();
   // Returning uses history.go asynchronously. Starting a new document navigation
   // before that finishes can race the pending popstate back to the old query.
-  await expect(page).toHaveURL(/\?q=003$/);
+  await expect.poll(()=>{const url=new URL(page.url());return url.searchParams.get('q')==='003'&&!url.searchParams.has('video');}).toBe(true);
   await expect(page.locator('video')).toHaveCount(0);
   await page.goto('/?q=002');
   await page.getByRole('button', {name:'播放 视频 002',exact:true}).click();

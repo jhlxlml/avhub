@@ -57,7 +57,10 @@ def validate_png(path):
                 if len(header)!=8:raise ValueError()
                 length,kind=struct.unpack('>I4s',header)
                 if kind==b'IEND' and length:raise ValueError()
-                if length>MAX_BYTES or kind not in (b'IHDR',b'IDAT',b'IEND',b'sRGB',b'gAMA',b'cHRM',b'pHYs'):raise ValueError()
+                if length>MAX_BYTES or kind not in (b'IHDR',b'IDAT',b'IEND',b'sRGB',b'gAMA',b'cHRM',b'pHYs',b'cICP'):raise ValueError()
+                # Native MPV PNGs preserve CICP color metadata. Validate its
+                # fixed size and CRC without stripping tags or re-encoding.
+                if kind==b'cICP' and (length!=4 or seen_idat):raise ValueError()
                 if not width and kind!=b'IHDR':raise ValueError()
                 if kind!=b'IDAT' and seen_idat:ended_idat=True
                 if kind==b'IHDR':

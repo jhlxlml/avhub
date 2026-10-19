@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 
 test.beforeEach(async ({request})=>{await request.post('/test/reset');});
 const ass=`[Script Info]
@@ -91,7 +92,7 @@ test('ten thousand playlist entries use bounded server pages in manager and play
   await expect(page.getByRole('button',{name:'队列播放 大片单 09998'})).toBeVisible();
   // Queue search is outside the video; return the pointer to the player to
   // reveal its intentionally auto-hidden controls before clicking Next.
-  await page.locator('.video-wrap').hover();
+    await revealPlayerControls(page);
   await page.getByRole('button',{name:'播放下一条'}).click();
   await expect(page.getByRole('heading',{name:'视频 002',exact:true})).toBeVisible();
   expect(urls.filter(url=>/\/500\?/.test(url)).every(url=>url.includes('page_size=40'))).toBeTruthy();

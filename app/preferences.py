@@ -3,7 +3,7 @@ import math
 import re
 from fastapi import HTTPException
 
-GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds'}
+GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode'}
 
 
 def validate(key, value):
@@ -12,6 +12,10 @@ def validate(key, value):
         valid = isinstance(value,bool)
     elif key == 'queueMode':
         valid = value in ('sequential','random','repeat-one')
+    elif key == 'playerEngine':
+        valid = isinstance(value,str) and value in ('chromium','mpv')
+    elif key == 'mpvWindowMode':
+        valid = isinstance(value,str) and value in ('embedded','independent')
     elif key == 'queueScope':
         valid = value in ('series','directory')
     elif key == 'resumeBehavior':
@@ -39,6 +43,12 @@ def validate(key, value):
                and isinstance(directory,str) and len(directory)<=4096 and not re.search(r'[\x00-\x1f<>"|?*]',directory)
                and not directory.startswith(('\\\\?\\','\\\\.\\')) and ':' not in directory[len(Path(directory).drive):]
                and (not directory or Path(directory).is_absolute()))
+    elif re.fullmatch(r'playback\.[1-9]\d{0,15}',key) and isinstance(value,dict):
+        valid=(set(value)=={'source','audio','subtitle','delay'} and isinstance(value.get('source'),str)
+               and re.fullmatch(r'[a-f0-9]{64}',value['source']) is not None
+               and (value.get('audio') is None or type(value['audio']) is int and 0<=value['audio']<=65535)
+               and (value.get('subtitle') is None or isinstance(value['subtitle'],str) and len(value['subtitle'])<=4096)
+               and number(value.get('delay'),-10,10))
     elif re.fullmatch(r'subtitle\.[1-9]\d{0,15}',key) and isinstance(value,dict):
         valid = set(value)=={'id','delay'} and isinstance(value.get('id'),str) and len(value['id'])<=4096 and number(value.get('delay'),-10,10)
     if not valid: raise HTTPException(422,'设置名称或值无效')

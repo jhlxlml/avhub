@@ -5,7 +5,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock,patch
 
 from fastapi import HTTPException
 from app.indexed_remux import IndexedRemux,build_remux_index,validate
@@ -84,6 +84,25 @@ class IndexedRemuxTests(unittest.TestCase):
         stream.cancelled.set()
         with self.assertRaises(ValueError):stream.open_fragment(2)
         self.assertFalse(list(self.folder.glob('*.tmp')))
+
+    def test_low_space_rejects_new_work_but_keeps_cached_readers(self):
+        run=Mock(side_effect=self.probe_run)
+        stream=IndexedRemux(self.source,data=self.data(),ffmpeg=FFMPEG,run=run,folder=self.folder)
+        with stream.open_fragment(0) as reader:self.assertTrue(reader.read(188))
+        run.reset_mock()
+        with patch('app.indexed_remux.shutil.disk_usage',return_value=Mock(free=1024)):
+            with stream.open_fragment(0) as reader:self.assertTrue(reader.read(188))
+            with self.assertRaisesRegex(ValueError,'磁盘空间不足'):stream.open_fragment(1)
+        run.assert_not_called();self.assertFalse(list(self.folder.glob('*.tmp')))
+
+    def test_capacity_limit_never_publishes_a_truncated_fragment(self):
+        def oversized(command,timeout,cancelled):
+            self.assertIn('-fs',command)
+            with Path(command[-1]).open('wb') as output:output.truncate(16*1024**2)
+            return 0,b'',b''
+        stream=IndexedRemux(self.source,data=self.data(),ffmpeg=FFMPEG,run=oversized,folder=self.folder,budget=1)
+        with self.assertRaisesRegex(ValueError,'缓存上限'):stream.open_fragment(0)
+        self.assertFalse(list(self.folder.glob('segment_*')))
 
     def test_first_segment_keeps_its_first_frame_and_decoded_resolution(self):
         stream=IndexedRemux(self.source,data=self.data(),ffmpeg=FFMPEG,run=self.probe_run,folder=self.folder)

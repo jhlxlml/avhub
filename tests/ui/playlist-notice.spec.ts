@@ -12,6 +12,9 @@ async function add(page:Page) {
   await page.getByRole('button',{name:'加入播放列表 视频 001',exact:true}).click();
   await page.getByRole('combobox',{name:'选择播放列表'}).selectOption({index:1});
   await page.getByRole('button',{name:'添加到列表',exact:true}).click();
+  // An identical OLD toast can still match while the new write is pending.
+  // Wait for completion before advancing the clock of the NEW notification.
+  await expect(page.getByRole('dialog',{name:'加入播放列表',exact:true})).toHaveCount(0);
   await expect(page.locator('.toast')).toHaveAttribute('role','status');
   await expect(page.locator('.toast')).toHaveText('已将“视频 001”加入播放列表');
 }

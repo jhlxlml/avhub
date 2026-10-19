@@ -59,7 +59,7 @@ for(const theme of ['dark','light']) {
     await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
     for(const name of ['媒体目录','播放偏好','数据管理','运行诊断']) {
       const tab=page.getByRole('tab',{name,exact:true});await tab.click();
-      await expect(tab).toHaveCSS('background-color',await token(page,'--ui-surface'));
+      await expect(tab).toHaveCSS('background-color',await token(page,'--ui-accent-soft'));
       await expect(tab).toHaveCSS('color',await token(page,'--ui-accent'));
       if(name==='数据管理')await expect(page.locator('.storage-sizes>div')).toHaveCount(8);
       if(name==='运行诊断') {
@@ -159,7 +159,7 @@ for(const theme of ['dark','light']) {
     await page.getByRole('button',{name:'列表',exact:true}).click();
     const row=page.locator('.media-list .card').first();
     await row.hover();await expect(row).toHaveCSS('background-color',await token(page,'--ui-field'));
-    await expect(row).toHaveCSS('border-radius','14px');await fits(page.locator('html'));
+    await expect(row).toHaveCSS('border-radius','16px');await fits(page.locator('html'));
     await shot(page,`${theme}-list-rows`);
   });
 }

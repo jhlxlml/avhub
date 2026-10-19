@@ -120,3 +120,28 @@ test('failure outside current page is located by record ID, not by a shared file
   const locate=panel.getByRole('button',{name:'定位失败记录 待恢复.mp4',exact:true});await expect(locate).toBeEnabled();await locate.click({noWaitAfter:true});await expect(panel.locator(`[data-recycle-id="${entries[0].id}"]`)).toBeFocused();
   await expect(panel.getByRole('button',{name:'重试失败项（重新核对）',exact:true})).toBeEnabled();expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
 });
+
+test('file-state deep link opens exact page and focuses its record',async({page})=>{
+  await page.route('**/api/file-states?**',route=>route.fulfill({json:{items:[{id:2,name:entries[0].name,title:entries[0].title,path:entries[0].source,status:'recycled',recycle_id:entries[0].id}],total:1,page:1,pages:1}}));
+  await page.route('**/api/recycle-records/*/location',route=>route.fulfill({json:{page:2}}));
+  await page.route('**/api/recycle-records?**',route=>{const second=new URL(route.request().url()).searchParams.get('page')==='2';return route.fulfill({json:{items:second?[entries[0]]:[entries[1]],total:31,page:second?2:1,pages:2}});});
+  await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();await page.getByRole('button',{name:'查看回收记录',exact:true}).click();
+  const panel=page.getByRole('dialog',{name:'回收记录',exact:true});await expect(panel.locator(`[data-recycle-id="${entries[0].id}"]`)).toBeFocused();await expect(panel).toContainText('2 / 2 页');expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
+});
+
+test('cleared deep-link record reports failure without changing files',async({page})=>{
+  await page.route('**/api/file-states?**',route=>route.fulfill({json:{items:[{id:2,name:entries[0].name,title:entries[0].title,path:entries[0].source,status:'recycled',recycle_id:entries[0].id}],total:1,page:1,pages:1}}));
+  await page.route('**/api/recycle-records/*/location',route=>route.fulfill({status:404,json:{detail:'记录已清除'}}));
+  await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'数据管理',exact:true}).click();await page.getByRole('button',{name:'查看回收记录',exact:true}).click();
+  const panel=page.getByRole('dialog',{name:'回收记录',exact:true});await expect(panel).toContainText('无法定位回收记录');await expect(panel).toContainText('记录已清除');await expect(panel.getByRole('button',{name:'关闭回收记录',exact:true})).toBeEnabled();expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
+});
+
+test('expired batch stops later items and continuation preflights and confirms again',async({page})=>{
+  await page.route('**/api/recycle-records?**',route=>route.fulfill({json:{items:entries.map(item=>item.id===entries[1].id?{...item,status:'available'}:item),total:3,page:1,pages:1}}));
+  await page.goto('/');await page.getByRole('button',{name:'回收记录',exact:true}).click();const panel=page.getByRole('dialog',{name:'回收记录',exact:true});
+  await page.evaluate(()=>{const original=window.avhubDesktop!.fileOperation!;(window as any).freshPreviews=0;window.avhubDesktop!.fileOperation=async value=>{if(value.action==='preview-records'){(window as any).freshPreviews++;const result=await original(value);return {...result,records:result.records!.map(item=>({...item,action:'delete' as const}))};}if(value.action==='delete-record'&&value.id==='a'.repeat(32))throw new Error('操作预览已失效，请重新核对');return original(value);};});
+  await panel.getByRole('button',{name:'全选本页',exact:true}).click();await panel.getByRole('button',{name:'永久删除',exact:true}).click();await page.getByRole('dialog',{name:'永久删除 2 个视频？',exact:true}).getByRole('button',{name:'永久删除',exact:true}).click();
+  await expect(panel.locator('[data-state="stopped"]')).toHaveCount(1);expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
+  await panel.getByRole('button',{name:'继续未执行项（重新核对）',exact:true}).click();const confirm=page.getByRole('dialog',{name:'永久删除 1 个视频？',exact:true});await expect(confirm).toBeVisible();expect(await page.evaluate(()=>(window as any).freshPreviews)).toBe(2);expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
+  await confirm.getByRole('button',{name:'永久删除',exact:true}).click();await expect(panel.locator('[data-state="success"]')).toHaveCount(1);expect(await page.evaluate(()=>(window as any).recordCalls.map((value:any)=>value.id))).toEqual(['b'.repeat(32)]);
+});

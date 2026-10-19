@@ -1,4 +1,5 @@
 import hashlib
+import asyncio
 import subprocess
 import tempfile
 import unittest
@@ -87,3 +88,67 @@ class ThumbnailTests(unittest.TestCase):
             self.assertIsNone(m.thumbnail(self.folder/'source.mp4',1,120,force=True,publish_if=lambda:False))
         self.assertEqual((self.cache/'1.jpg').read_bytes(),old)
         self.assertEqual([p.name for p in self.cache.iterdir()],['1.jpg'])
+
+    def test_only_matching_version_artwork_is_privately_cached(self):
+        (self.cache/'1.jpg').write_bytes(b'\xff\xd8owned\xff\xd9')
+        with m.connection() as db:
+            db.execute("INSERT INTO media(id,path,name,title,thumbnail,updated_at,created_at) VALUES(1,'owned.mp4','owned','owned','thumbnails/1.jpg',12.5,0)")
+        self.assertEqual(m.get_thumb(1,'12.5').headers['cache-control'],'private, max-age=300')
+        for version in (None,'old','nan','inf','-inf','12.4'):
+            self.assertEqual(m.get_thumb(1,version).headers['cache-control'],'no-cache')
+        with m.connection() as db:db.execute('UPDATE media SET updated_at=13 WHERE id=1')
+        self.assertEqual(m.get_thumb(1,'12.5').headers['cache-control'],'no-cache')
+        self.assertEqual(m.get_thumb(1,'13').headers['cache-control'],'private, max-age=300')
+
+    def test_missing_current_version_image_does_not_cache_404(self):
+        with m.connection() as db:
+            db.execute("INSERT INTO media(id,path,name,title,thumbnail,updated_at,created_at) VALUES(1,'owned.mp4','owned','owned','thumbnails/1.jpg',12.5,0)")
+        with self.assertRaises(m.HTTPException) as error:m.get_thumb(1,'12.5')
+        self.assertEqual(error.exception.headers['Cache-Control'],'no-store')
+
+    def test_progress_and_history_updates_do_not_create_new_artwork_versions(self):
+        artwork=self.cache/'1.jpg';artwork.write_bytes(b'\xff\xd8owned-cover\xff\xd9')
+        with m.connection() as db:
+            db.execute("INSERT INTO media(id,path,name,title,duration,thumbnail,updated_at,created_at) VALUES(1,'owned.mp4','owned','owned',120,'thumbnails/1.jpg',12.5,0)")
+        def identity():
+            with m.connection() as db:row=m.row_dict(db.execute('SELECT * FROM media WHERE id=1').fetchone())
+            return row['thumbnail_url'],m.get_thumb(1,'12.5').headers['etag']
+        before=identity()
+        for stamp,position in enumerate((5,10,20),1):
+            result=m.save_progress(1,m.ProgressInput(progress=position,watched=False,updated_at=stamp))
+            self.assertEqual(result['progress'],position);self.assertEqual(identity(),before)
+        m.clear_history(1);self.assertEqual(identity(),before)
+        self.assertEqual(artwork.read_bytes(),b'\xff\xd8owned-cover\xff\xd9')
+
+    def test_conditional_revalidation_returns_no_body_and_changed_art_returns_new_etag(self):
+        file=self.cache/'1.jpg';file.write_bytes(b'\xff\xd8owned\xff\xd9')
+        with m.connection() as db:db.execute("INSERT INTO media(id,path,name,title,thumbnail,updated_at,created_at) VALUES(1,'owned.mp4','owned','owned','thumbnails/1.jpg',12.5,0)")
+        tag=m.get_thumb(1,'12.5').headers['etag']
+        for condition in (tag,'W/'+tag,'"unrelated", '+tag,'*'):
+            request=m.Request({'type':'http','headers':[(b'if-none-match',condition.encode())]})
+            response=m.get_thumb(1,'12.5',request)
+            self.assertEqual(response.status_code,304);self.assertEqual(response.body,b'')
+            self.assertEqual(response.headers['cache-control'],'private, max-age=300')
+        file.write_bytes(b'\xff\xd8different-owned-image\xff\xd9')
+        request=m.Request({'type':'http','headers':[(b'if-none-match',tag.encode())]})
+        response=m.get_thumb(1,'12.5',request);self.assertEqual(response.status_code,200);self.assertNotEqual(response.headers['etag'],tag)
+
+    def test_custom_cover_version_and_reader_cleanup_survive_reset(self):
+        cover=self.folder/'covers'/('a'*32+'.jpg');cover.parent.mkdir();cover.write_bytes(b'\xff\xd8custom\xff\xd9')
+        with m.connection() as db:
+            db.execute("INSERT INTO media(id,path,name,title,custom_cover,updated_at,created_at) VALUES(1,'owned.mp4','owned','owned',?,20,0)",(f'covers/{cover.name}',))
+        response=m.get_thumb(1,'20');self.assertEqual(response.headers['cache-control'],'private, max-age=300')
+        with m.connection() as db:db.execute('UPDATE media SET custom_cover=NULL,updated_at=21 WHERE id=1')
+        async def consume():return b''.join([chunk async for chunk in response.body_iterator])
+        self.assertEqual(asyncio.run(consume()),b'\xff\xd8custom\xff\xd9')
+        self.assertFalse(cover.exists(),'retired custom cover is released after active reader closes')
+
+    def test_custom_cover_conditional_reader_is_closed_without_streaming(self):
+        cover=self.folder/'covers'/('a'*32+'.jpg');cover.parent.mkdir();cover.write_bytes(b'\xff\xd8custom\xff\xd9')
+        with m.connection() as db:db.execute("INSERT INTO media(id,path,name,title,custom_cover,updated_at,created_at) VALUES(1,'owned.mp4','owned','owned',?,20,0)",(f'covers/{cover.name}',))
+        tag=m.thumbnail_headers('private, max-age=300',cover.stat())['ETag']
+        request=m.Request({'type':'http','headers':[(b'if-none-match',tag.encode())]})
+        response=m.get_thumb(1,'20',request);self.assertEqual(response.status_code,304)
+        with m.connection() as db:db.execute('UPDATE media SET custom_cover=NULL WHERE id=1')
+        with m.connection() as db:m.covers.discard(db,self.folder,f'covers/{cover.name}')
+        self.assertFalse(cover.exists(),'conditional response must not retain an open Windows file handle')

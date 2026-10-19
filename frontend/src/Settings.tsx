@@ -20,11 +20,14 @@ import {ThumbnailSummary} from './ThumbnailSummary';
 import {confirmInApp} from './AppConfirm';
 import {desktopFile,FileOperationHistory,FileStatePanel,type FilePermission} from './FileManagement';
 import {SourceChanges} from './SourceChanges';
+import {NativePlayerSettings} from './NativePlayerSettings';
 
 const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'help',label:'帮助',icon:'help'}];
 
 export function Settings({ roots, close, reload, scanning, scan, previewEnabled, changePreview,thumbnailStatus,changeThumbnailStatus }: { roots: Root[]; close: () => void; reload: () => Promise<void>; scanning: boolean; scan: (root?: number) => Promise<void>; previewEnabled:boolean; changePreview:(enabled:boolean)=>void;thumbnailStatus:ThumbnailStatus|null;changeThumbnailStatus:(value:ThumbnailStatus)=>void }) {
   const [tab,setTab]=useState('directories');
+  const [verticalTabs,setVerticalTabs]=useState(()=>window.matchMedia('(min-width:820px)').matches);
+  useEffect(()=>{const media=window.matchMedia('(min-width:820px)');const update=()=>setVerticalTabs(media.matches);update();media.addEventListener('change',update);return()=>media.removeEventListener('change',update);},[]);
   const [path, setPath] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
@@ -107,13 +110,15 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     const quitting=(event:Event)=>{if(busy)(event as CustomEvent<Promise<unknown>[]>).detail.push(Promise.resolve(false));};
     window.addEventListener('avhub-before-quit',quitting);return()=>window.removeEventListener('avhub-before-quit',quitting);
   },[busy]);
-  return <Dialog labelledBy="settings-title" closeLabel="关闭设置" busy={busy} close={requestClose}>
+  return <Dialog labelledBy="settings-title" closeLabel="关闭设置" busy={busy} close={requestClose} className="modal settings-dialog">
       <h2 id="settings-title" className="dialog-title"><Icon name="settings" size={22}/>媒体库设置</h2><p className="dialog-description">目录默认只读，可按目录授权文件重命名和系统回收；不改视频内容。</p>
-      <div className="settings-tabs" role="tablist" aria-label="设置分类">{tabs.map((item,index)=><button key={item.id} id={'settings-tab-'+item.id} role="tab" aria-selected={tab===item.id} aria-controls={'settings-panel-'+item.id} tabIndex={tab===item.id?0:-1} disabled={busy} onClick={()=>setTab(item.id)} onKeyDown={event=>{
-        if(busy||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();
-        const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+      <div className="settings-workspace">
+      <div className="settings-tabs" role="tablist" aria-label="设置分类" aria-orientation={verticalTabs?'vertical':'horizontal'}>{tabs.map((item,index)=><button key={item.id} id={'settings-tab-'+item.id} role="tab" aria-selected={tab===item.id} aria-controls={'settings-panel-'+item.id} tabIndex={tab===item.id?0:-1} disabled={busy} onClick={()=>setTab(item.id)} onKeyDown={event=>{
+        if(busy||!['ArrowLeft','ArrowRight','Home','End',...(verticalTabs?['ArrowUp','ArrowDown']:[])].includes(event.key))return;event.preventDefault();
+        const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)+tabs.length)%tabs.length;
         setTab(tabs[next].id);document.getElementById('settings-tab-'+tabs[next].id)?.focus();
       }}><Icon name={item.icon} size={16}/>{item.label}</button>)}</div>
+      <div className="settings-content">
       <div className="settings-panel" role="tabpanel" id="settings-panel-directories" aria-labelledby="settings-tab-directories" hidden={tab!=='directories'}>
       <section className="settings-section" aria-label="媒体目录">
       <h3><Icon name="folder"/>媒体目录</h3>
@@ -143,6 +148,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
         <small>停留 0.65 秒后静音预览，每次仅播放一个原片片段。不兼容时保留封面，不触发转码；开启会增加读取与解码负载。</small></section>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
       <AutoplaySettings busy={busy}/>
+      <NativePlayerSettings busy={busy} changeBusy={setBusy}/>
       <ResumeBehaviorSettings busy={busy} changeBusy={setBusy}/>
       <MouseSeekSettings busy={busy} changeBusy={setBusy} onDirtyChange={setMouseDirty}/>
       <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'} onDirtyChange={setScreenshotDirty}/>
@@ -152,5 +158,6 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics changeBusy={setBusy}/></div>
       <div className="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" hidden={tab!=='help'}>{tab==='help'&&<HelpPanel changeBusy={setBusy} busy={busy}/>}</div>
       {scanning && <p role="status">后台扫描正在进行，可关闭设置继续观看。扫描结束后可修改目录。</p>}
+      </div></div>
   </Dialog>;
 }

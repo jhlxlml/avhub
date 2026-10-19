@@ -1,8 +1,20 @@
 import {test,expect,type Page} from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 const scale=(page:Page)=>page.locator('.video-canvas').evaluate(el=>new DOMMatrixReadOnly(getComputedStyle(el).transform).a);
 const scrollTop=(page:Page)=>page.evaluate(()=>window.avhubDesktop?document.getElementById('app-scroll-area')!.scrollTop:window.scrollY);
+
+test('long playback errors scroll internally without zooming or moving the page',async({page})=>{
+  await page.setViewportSize({width:640,height:360});
+  await page.route('**/api/media/2/playback',route=>route.fulfill({status:422,json:{detail:'需要核对的播放错误信息。'.repeat(100)}}));
+  await page.goto('/?video=2');const panel=page.locator('.video-wrap>.resume');
+  await expect(panel).toHaveAttribute('role','alert');await panel.scrollIntoViewIfNeeded();
+  expect(await panel.evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true);
+  const before=await scrollTop(page);await panel.hover();await page.mouse.wheel(0,200);
+  await expect.poll(()=>panel.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
+  expect(await scrollTop(page)).toBe(before);expect(await scale(page)).toBe(1);
+});
 
 for(const desktop of [false,true])test(`${desktop?'desktop scroll area':'browser document'}: player wheel zooms without scrolling, outside wheel still scrolls`,async({page})=>{
   await page.setViewportSize({width:1000,height:640});
@@ -77,6 +89,7 @@ test('long player settings scroll locally without zooming or moving the page',as
   await page.goto('/?video=1');
   await page.getByRole('button',{name:'从头开始',exact:true}).click();
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
+  await revealPlayerControls(page);
   await page.getByRole('button',{name:'字幕',exact:true}).click();
   const panel=page.getByRole('region',{name:'字幕设置弹层',exact:true});
   await expect(panel).toBeVisible();

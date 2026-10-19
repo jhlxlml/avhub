@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const {fitPlaybackBounds,playbackMinimum}=createRequire(import.meta.url)('../dist/playbackGeometry.js');
+for(const ratio of [16/9,9/16,4/3,2.4]){
+  const fitted=fitPlaybackBounds({x:360,y:180,width:815,height:457},{x:0,y:0,width:1536,height:816},ratio);
+  const gap=Math.max(fitted.width-fitted.height*ratio,fitted.height-fitted.width/ratio,0)/2;
+  assert.ok(gap<=.5,JSON.stringify({ratio,gap,fitted}));
+}
 for(const work of [{x:0,y:0,width:1920,height:1040},{x:-1280,y:40,width:1280,height:680},{x:2000,y:0,width:800,height:560}]) {
   for(const ratio of [16/9,9/16,4/3,2.4,1,1/64,64]) {
     for(const current of [{x:work.x+30,y:work.y+40,width:1440,height:900},{x:9999,y:-9999,width:320,height:900}]) {

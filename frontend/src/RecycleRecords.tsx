@@ -14,12 +14,13 @@ type RecordAction='restore-record'|'delete-record'|'clear-record';
 type Task={item:Entry;action:'restore'|'delete'|'clear';status:'queued'|'running'|'success'|'failed'|'skipped'|'stopped';reason:string};
 const taskLabels:Record<Task['status'],string>={queued:'待执行',running:'正在处理',success:'已完成',failed:'失败',skipped:'跳过',stopped:'未执行'};
 const labels:Record<Entry['status'],string>={available:'可恢复',restored:'已恢复',missing:'回收站中未找到',offline:'磁盘离线',deleted:'已永久删除',review:'待核对',pending:'操作中'};
-export function RecycleRecords({close,changed}:{close:()=>void;changed:()=>void}){
+export function RecycleRecords({close,changed,targetId=''}:{close:()=>void;changed:()=>void;targetId?:string}){
   const [data,setData]=useState<Page|null>(null),[page,setPage]=useState(1),[query,setQuery]=useState(''),[search,setSearch]=useState('');
   const [revision,setRevision]=useState(0),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [picked,setPicked]=useState<string[]>([]),[result,setResult]=useState<Task[]>([]),[lastAction,setLastAction]=useState<RecordAction>('restore-record');
   const [phase,setPhase]=useState(''),[progress,setProgress]=useState({done:0,total:0,current:''});
   const [focusRecord,setFocusRecord]=useState('');
+  const [locating,setLocating]=useState(false),[locationError,setLocationError]=useState('');
   const locked=useRef(false),stopped=useRef(false),[stopping,setStopping]=useState(false),refreshRequested=useRef(true);
   useDraftGuard(false,busy,'回收记录操作尚未完成，请等待当前项完成');
   useEffect(()=>{const timer=setTimeout(()=>setSearch(query.trim()),250);return()=>clearTimeout(timer);},[query]);
@@ -31,10 +32,12 @@ export function RecycleRecords({close,changed}:{close:()=>void;changed:()=>void}
   },[page,search,revision]);
   const chosen=data?.items.filter(item=>picked.includes(item.id))||[];
   const selectable=data?.items.filter(item=>!['offline','review','pending'].includes(item.status))||[];
-  const selectionDisabled=busy||loading||query.trim()!==search;
+  const selectionDisabled=busy||loading||locating||query.trim()!==search;
   const retries=result.filter(task=>task.status==='failed').map(task=>data?.items.find(item=>item.id===task.item.id)).filter((item):item is Entry=>Boolean(item&&!['offline','review','pending'].includes(item.status)));
   const offPageFailures=result.filter(task=>task.status==='failed'&&!data?.items.some(item=>item.id===task.item.id));
+  const unstarted=result.filter(task=>task.status==='stopped').map(task=>data?.items.find(item=>item.id===task.item.id)).filter((item):item is Entry=>Boolean(item&&!['offline','review','pending'].includes(item.status)));
   function reload(){refreshRequested.current=true;setRevision(value=>value+1);}
+  useEffect(()=>{if(!targetId)return;const controller=new AbortController();setLocating(true);setLocationError('');setPicked([]);void api<{page:number}>(`/api/recycle-records/${targetId}/location`,{signal:controller.signal}).then(location=>{if(!controller.signal.aborted){setQuery('');setSearch('');setPage(location.page);setFocusRecord(targetId);reload();}}).catch(error=>{if(!controller.signal.aborted)setLocationError(`无法定位回收记录：${errorText(error)}`);}).finally(()=>{if(!controller.signal.aborted)setLocating(false);});return()=>controller.abort();},[targetId]);
   useEffect(()=>{if(!loading&&focusRecord&&data?.items.some(item=>item.id===focusRecord)){const target=document.querySelector<HTMLElement>(`[data-recycle-id="${focusRecord}"]`);target?.scrollIntoView({block:'nearest'});target?.focus({preventScroll:true});setFocusRecord('');}},[data,loading,focusRecord]);
   async function locate(item:Entry){
     if(selectionDisabled||locked.current)return;setError('');
@@ -117,8 +120,10 @@ export function RecycleRecords({close,changed}:{close:()=>void;changed:()=>void}
     {result.length>0&&<details className="recycle-record-results" open={busy||result.some(task=>['failed','skipped','stopped'].includes(task.status))}><summary>操作结果 · {result.length} 项 · 成功 {result.filter(task=>task.status==='success').length} · 失败 {result.filter(task=>task.status==='failed').length} · 跳过 {result.filter(task=>task.status==='skipped').length} · 未执行 {result.filter(task=>task.status==='stopped').length}</summary>
       {result.map(task=><div key={task.item.id} className="recycle-result-entry"><p data-state={task.status}><strong>{taskLabels[task.status]}</strong> · {task.item.name}{task.reason&&`：${task.reason}`}</p>{task.status==='failed'&&<Button icon="search" disabled={selectionDisabled||data?.items.some(item=>item.id===task.item.id)} aria-label={`定位失败记录 ${task.item.name}`} onClick={()=>void locate(task.item)}>{data?.items.some(item=>item.id===task.item.id)?'当前页':'定位记录'}</Button>}</div>)}
       {result.some(task=>task.status==='failed')&&<Button icon="refresh" disabled={selectionDisabled||!retries.length} onClick={()=>void run(retries,lastAction)}>重试失败项（重新核对）</Button>}
+      {result.some(task=>task.status==='stopped')&&<Button icon="refresh" disabled={selectionDisabled||!unstarted.length} onClick={()=>void run(unstarted,lastAction)}>继续未执行项（重新核对）</Button>}
       {offPageFailures.length>0&&<p>有 {offPageFailures.length} 条失败记录不在当前页，请先定位记录；重试只处理本页可操作项。</p>}
     </details>}
+    {locationError&&<StatusMessage kind="error">{locationError}。记录可能已清除，可搜索其他记录或关闭此窗口。</StatusMessage>}
     {error&&<StatusMessage kind="error">{error}</StatusMessage>}
     {notice&&<Toast message={notice} autoDismissMs={3500} close={()=>setNotice('')}/>}
   </Dialog>;

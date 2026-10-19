@@ -56,3 +56,19 @@ test(`fullscreen icon and accessible action track mouse, F, Esc and double-click
   await expect(video).toHaveAttribute('data-instance','fullscreen-same-decoder');
   expect(await video.evaluate((v:HTMLVideoElement)=>v.currentSrc)).toBe(source);
 });
+
+for(const theme of ['dark','light'])test(`short ${theme} window keeps resume decisions clickable above controls`,async({page,request})=>{
+  await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
+  await request.put('/api/media/2/progress',{data:{progress:30,watched:false,updated_at:1}});
+  await page.setViewportSize({width:640,height:360});await page.goto('/?video=2');
+  const start=page.getByRole('button',{name:'从头开始',exact:true});
+  await expect(start).toBeVisible();await expect(page.locator('.player-controls')).toBeHidden();
+  const colors=await page.locator('.resume').evaluate(el=>{const css=getComputedStyle(el);return{background:css.backgroundColor,text:css.color};});
+  // Video overlays deliberately use the same dark cinema tokens in both
+  // themes. The fix is explicit readable overlay text, not a white video panel.
+  expect(colors.background).toBe('rgb(18, 25, 35)');expect(colors.text).toBe('rgb(232, 237, 245)');
+  await page.locator('.resume').screenshot({path:`test-results/resume-short-${theme}.png`});
+  await start.click();
+  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=3&&!v.paused)).toBeTruthy();
+  expect(await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime)).toBeLessThan(5);
+});

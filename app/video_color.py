@@ -7,6 +7,20 @@ PRIMARIES = {'bt709','bt470m','bt470bg','smpte170m','smpte240m','film','bt2020',
 MATRICES = {'bt709','fcc','bt470bg','smpte170m','smpte240m','bt2020nc','bt2020c','gbr','ycgco'}
 
 
+def h264_copy_color_args(stream):
+    """Carry container CICP tags into AVC VUI, without decoding or re-encoding.
+
+    MPEG-TS has no MP4 colr atom. Copying slices alone otherwise loses tags that
+    exist only in the container. Unknown tags are not filled with SDR defaults.
+    https://ffmpeg.org/ffmpeg-bitstream-filters.html#h264_005fmetadata
+    """
+    values=[]
+    for option in ('colour_primaries','transfer_characteristics','matrix_coefficients','video_full_range_flag'):
+        value=stream.get(option) if isinstance(stream,dict) else None
+        if type(value) is int and 0<=value<=(1 if option=='video_full_range_flag' else 255):values.append(f'{option}={value}')
+    return ['-bsf:v','h264_metadata='+':'.join(values)+',h264_mp4toannexb'] if values else []
+
+
 def sdr_vui_args(color):
     values=[]
     for option,key,allowed in (('colorprim','primaries',PRIMARIES),('colormatrix','matrix',MATRICES),

@@ -18,15 +18,15 @@ async function revealPlayerControls(page) {
   // Keyboard playback deliberately keeps controls hidden, including after a
   // programmatic pause. Simulate the user's mouse move before hit testing;
   // opacity:0 controls still have boxes but correctly reject pointer events.
-  const stage=await page.locator('.video-wrap').boundingBox();
-  assert.ok(stage);
-  // Use the bottom control area, not the picture centre: a save-error notice
-  // in a short pure window can cover the centre and intercept that mouse move.
-  await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height-20);
-  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
+  await page.locator('.player-controls').scrollIntoViewIfNeeded();
+  // BrowserWindow placement and Chromium's resize commit are separate. Do not
+  // calculate pointer coordinates from the previous video's viewport.
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const bar=await page.locator('.player-controls').boundingBox();
   assert.ok(bar);
+  await page.mouse.move(bar.x+4,bar.y+4);
   await page.mouse.move(bar.x+bar.width/2,bar.y+bar.height-6);
+  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
 }
 async function clickPlayerAction(page,name) {
   await revealPlayerControls(page);
@@ -40,7 +40,14 @@ async function expectRatio(page,ratio) {
   // not an unnormalised width error that grows with ultrawide aspect ratios.
   const edgeGap=(width,height)=>Math.max(width-height*ratio,height-width/ratio,0)/2;
   await expect.poll(async()=>{
-    const {content}=await stats();return edgeGap(content.width,content.height);
+    const handle=await desktop.evaluate(({BrowserWindow})=>{const value=BrowserWindow.getAllWindows()[0].getNativeWindowHandle();return (value.length===8?value.readBigUInt64LE():BigInt(value.readUInt32LE())).toString();});
+    const probe=spawnSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'electron/test/native-window-evidence.ps1'),'-HostHandle',handle],{windowsHide:true,encoding:'utf8',timeout:20000});
+    assert.equal(probe.status,0,probe.stderr);
+    // getContentBounds floors fractional DIPs: at 125% an actual 273.6-DIP
+    // client is reported as 273, overstating ultrawide black bars. Measure the
+    // authoritative physical Win32 client, retaining the same 1-DIP edge limit.
+    const client=JSON.parse(probe.stdout).hostWindow.client,scale=client.dpi/96;
+    return edgeGap(client.width/scale,client.height/scale);
   }).toBeLessThanOrEqual(1);
   await expect.poll(()=>page.evaluate(r=>Math.max(innerWidth-innerHeight*r,innerHeight-innerWidth/r,0)/2,ratio)).toBeLessThanOrEqual(1);
   assert.equal(await desktop.evaluate(({BrowserWindow,screen})=>{
@@ -57,6 +64,7 @@ try {
   desktop=await _electron.launch({args:[root,'--in-process-gpu','--disable-gpu','--no-sandbox','--autoplay-policy=no-user-gesture-required'],cwd:temporary,
     env:{...process.env,AVHUB_DATA_DIR:temporary,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});
   const page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置'}).waitFor();
+  await page.addInitScript(()=>{window.__windowPointer=[];for(const name of ['mousemove','mouseleave','pointerleave'])document.addEventListener(name,event=>{const values=window.__windowPointer;values.push({name,x:event.clientX,y:event.clientY,target:event.target?.className});if(values.length>20)values.shift();},true);});
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
   assert.equal(await page.locator('.desktop-titlebar').count(),1);
@@ -147,7 +155,7 @@ try {
   assert.equal(await page.locator('video').evaluate(v=>v.currentTime),12);
   await page.mouse.move(200,180);
   await expect(titlebar.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveCSS('background-color',
-    await page.getByRole('button',{name:'退出纯净播放',exact:true}).evaluate(button=>getComputedStyle(button).backgroundColor));
+    'rgba(7, 11, 18, 0.855)'); // Active pin intentionally has a stronger contrast surface.
   const floatingStyle=await titlebar.getByRole('button',{name:'取消窗口置顶',exact:true}).evaluate(button=>{
     const style=getComputedStyle(button),rect=button.getBoundingClientRect();
     return {radius:style.borderRadius,width:rect.width,height:rect.height,background:style.backgroundColor,y:rect.y};
@@ -208,6 +216,7 @@ try {
   // crossing, rather than depending on a stationary synthetic hover.
   const hoverStage=await page.locator('.video-wrap').boundingBox();
   await page.mouse.move(hoverStage.x+hoverStage.width/2,hoverStage.y+hoverStage.height/2);
+  await revealPlayerControls(page);
   await page.getByRole('slider',{name:'视频完整进度',exact:true}).hover();
   await page.waitForTimeout(1200);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
@@ -256,8 +265,7 @@ try {
   current=await stats();assert.equal(current.top,false);assert.equal(current.full,false);assert.deepEqual(current.minimum,[760,560]);assert.deepEqual(current.bounds,original.bounds);
   assert.equal((await scroller.boundingBox()).y,32);
   await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveCSS('border-radius','0px');
-  await page.mouse.move(220,240);
-  await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
+  await revealPlayerControls(page);
   await clickPlayerAction(page,'纯净播放');assert.equal((await stats()).top,true);
   await clickPlayerAction(page,'播放下一条');
   await expect.poll(()=>page.locator('video').evaluate(v=>v.currentSrc.includes('/media/2/file') && v.readyState>=2)).toBe(true);
@@ -332,6 +340,7 @@ try {
       video:document.querySelector('video') && {src:document.querySelector('video').currentSrc,ready:document.querySelector('video').readyState,paused:document.querySelector('video').paused,error:document.querySelector('video').error?.message},
       tools:document.querySelector('[aria-label="更多播放工具"]')?.getAttribute('aria-expanded')})));
     console.error(await stats());
+    console.error('Pointer evidence',await page.evaluate(()=>({events:window.__windowPointer,inner:[innerWidth,innerHeight],stage:document.querySelector('.video-wrap')?.getBoundingClientRect().toJSON(),bar:document.querySelector('.player-controls')?.getBoundingClientRect().toJSON()})));
     await page.screenshot({path:path.join(temporary,'failure.png')}).catch(()=>{});
   }
 }

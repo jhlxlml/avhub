@@ -1,21 +1,18 @@
 import {useEffect,useRef,useState} from 'react';
 import {api,errorText,type Media} from './api';
-import {requireDesktop} from './nativeDesktop';
+import {desktopFile} from './desktopFile';
+export {desktopFile} from './desktopFile';
 import {Button,Dialog,StatusMessage} from './ui';
 import {Icon} from './Icon';
 import {useDraftGuard} from './useDraftGuard';
 import {fileSizeLabel} from './mediaLabels';
 import {confirmInApp} from './AppConfirm';
+import {announceRecycled} from './recycleRecovery';
 
 export type FilePermission={root_id:number;supported:boolean;rename:boolean;recycle:boolean;permanentDelete?:boolean;reason:string};
 export type FileActionInfo={rename:boolean;recycle:boolean;name:string;reason:string;rename_reason?:string;recycle_reason?:string};
-export async function desktopFile(value:Parameters<NonNullable<NonNullable<Window['avhubDesktop']>['fileOperation']>>[0]) {
-  const desktop=requireDesktop('fileOperation');
-  if(!desktop.fileOperation)throw new Error('请重启已更新的桌面组件');
-  return desktop.fileOperation(value);
-}
 
-export function FileActionDialog({media,action,close,changed}:{media:Media;action:'rename'|'recycle';close:()=>void;changed:()=>void}){
+export function FileActionDialog({media,action,close,changed}:{media:Media;action:'rename'|'recycle';close:()=>void;changed:(recoveryAvailable?:boolean)=>void}){
   const filename=media.path.split(/[\\/]/).pop()||media.name,dot=filename.lastIndexOf('.');
   const extension=dot>0?filename.slice(dot):'',original=dot>0?filename.slice(0,dot):filename;
   const [stem,setStem]=useState(original),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -26,10 +23,10 @@ export function FileActionDialog({media,action,close,changed}:{media:Media;actio
   const requestClose=async()=>{if(!busy&&(action!=='rename'||stem===original||await confirmInApp('放弃文件名修改？',stem+extension,'尚未执行重命名，原文件不会改变。','放弃修改',true)))close();};
   async function execute(){
     if(executing.current)return;executing.current=true;setBusy(true);setError('');
-    try{await desktopFile({action,id:media.id,...(action==='rename'?{stem}:{})});changed();close();}
+    try{const result=await desktopFile({action,id:media.id,...(action==='rename'?{stem}:{})});if(result.ok!==true)throw new Error('文件操作结果未确认，请核对操作记录，不要重复执行');const recoverable=action==='recycle'&&typeof result.operation_id==='string'&&/^[a-f0-9]{32}$/.test(result.operation_id);if(recoverable)announceRecycled([{id:result.operation_id!,title:filename}]);window.dispatchEvent(new Event('avhub-file-states-changed'));changed(recoverable);close();}
     catch(error){setError(errorText(error));}finally{executing.current=false;setBusy(false);}
   }
-  return <Dialog label={action==='rename'?'重命名视频文件':'移入系统回收站'} closeLabel="关闭文件操作" busy={busy} close={requestClose} className="modal library-tool-dialog">
+  return <Dialog label={action==='rename'?'重命名视频文件':'移入系统回收站'} closeLabel="关闭文件操作" busy={busy} close={requestClose} className={`modal library-tool-dialog file-action-dialog${action==='recycle'?' is-destructive':''}`}>
     <h2 className="dialog-title"><Icon name={action==='rename'?'edit':'trash'} size={22}/>{action==='rename'?'重命名文件':'移入系统回收站'}</h2>
     <div className="file-action-target">
       <div className="file-action-cover">{media.thumbnail_url&&!coverFailed?<img src={media.thumbnail_url} alt="目标视频封面" onError={()=>setCoverFailed(true)}/>:<Icon name="film" size={26}/>}</div>
@@ -37,8 +34,8 @@ export function FileActionDialog({media,action,close,changed}:{media:Media;actio
     </div>
     <code className="app-directory-path">{media.path}</code>
     {action==='rename'?<><label className="app-select-field">文件名（扩展名锁定）<input aria-label="新文件名" value={stem} maxLength={255} disabled={busy} onChange={event=>setStem(event.target.value)}/></label>
-      <p className="dialog-description">修改后：{stem}{extension}<br/>视频标题：{stem}</p><p className="dialog-description">文件名与视频标题同步更新；保留收藏、进度和片单。自动保留同目录外挂字幕关联，不修改字幕文件。字幕被替换或修改后需重新导入。</p>{subtitleNames.length>0&&<p className="dialog-description">检测到 {subtitleNames.length} 个外挂字幕：{subtitleNames.join('、')}</p>}</>:
-      <p className="dialog-description">将此视频交给 Windows 系统回收站，不建立应用回收目录。恢复请使用系统回收站；回收失败不会改为永久删除。收藏、进度和片单记录保留。</p>}
+      <div className="file-name-preview" aria-label="重命名预览"><div><span>修改后文件名</span><strong>{stem}{extension}</strong></div><div><span>同步视频标题</span><strong>{stem||'尚未填写'}</strong></div></div><p className="dialog-description">文件名与视频标题同步更新；保留收藏、进度和片单。自动保留同目录外挂字幕关联，不修改字幕文件。字幕被替换或修改后需重新导入。</p>{subtitleNames.length>0&&<p className="dialog-description">检测到 {subtitleNames.length} 个外挂字幕：{subtitleNames.join('、')}</p>}</>:
+      <p className="dialog-description">将此视频交给 Windows 系统回收站，不建立视频副本。可在媒体库工具栏的回收记录中恢复至原目录，也可使用系统回收站；回收失败不会改为永久删除。收藏、进度和片单记录保留。</p>}
     {error&&<StatusMessage kind="error">{error}</StatusMessage>}
     <div className="tool-footer"><Button disabled={busy} onClick={requestClose}>取消</Button><Button icon={action==='rename'?'edit':'trash'} variant={action==='rename'?'primary':'danger'} busy={busy} disabled={action==='rename'&&(!stem||stem===original)} onClick={()=>void execute()}>{action==='rename'?'确认重命名':'确认移入回收站'}</Button></div>
   </Dialog>;
@@ -63,7 +60,7 @@ export function FileStatePanel({enabled,busy,changeBusy,reload}:{enabled:boolean
     if(busy||running.current)return;running.current=true;changeBusy(true);setNotice('');setError('');
     try{
       if(forget&&!await confirmInApp('仅移除缺失记录？',data?.items.find(item=>item.id===id)?.path||'','只清理此条索引及其收藏、进度和片单引用，不删除磁盘文件。记录不能撤销；视频再次扫描时会作为新记录收录。','移除记录',true))return;
-      const result=await desktopFile({action:forget?'forget':'recheck',id});if(result.restored||forget)await reload();setNotice(result.restored?'已确认原文件恢复，收藏、进度和片单保留':result.message||'已核对文件状态');}
+      const result=await desktopFile({action:forget?'forget':'recheck',id});if(result.restored||forget)await reload();window.dispatchEvent(new Event('avhub-file-states-changed'));setNotice(result.restored?'已确认原文件恢复，收藏、进度和片单保留':result.message||'已核对文件状态');}
     catch(error){setError(errorText(error));}finally{running.current=false;changeBusy(false);setRevision(value=>value+1);}
   }
   return <section className="settings-section" aria-label="文件状态管理"><h3><Icon name="shield"/>文件状态管理</h3>
@@ -76,6 +73,7 @@ export function FileStatePanel({enabled,busy,changeBusy,reload}:{enabled:boolean
 }
 export function FileOperationHistory({enabled,busy,changeBusy}:{enabled:boolean;busy:boolean;changeBusy:(busy:boolean)=>void;reload:()=>Promise<void>}){
   const [page,setPage]=useState(1),[revision,setRevision]=useState(0),[result,setResult]=useState<Operations|null>(null),[working,setWorking]=useState(false),[error,setError]=useState('');
+  useEffect(()=>{const refresh=()=>{setError('');setRevision(value=>value+1);};window.addEventListener('avhub-file-states-changed',refresh);return()=>window.removeEventListener('avhub-file-states-changed',refresh);},[]);
   useEffect(()=>{if(!enabled)return;const controller=new AbortController();void api<Operations>(`/api/file-operations?page=${page}`,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted)setResult(value);}).catch(error=>{if(!controller.signal.aborted)setError(errorText(error));});return()=>controller.abort();},[enabled,page,revision]);
   async function action(){
     if(busy||working)return;setWorking(true);changeBusy(true);setError('');

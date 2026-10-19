@@ -59,6 +59,26 @@ Recent library conveniences are implemented natively for AVHub: Electron-owned f
 - One-click PNG screenshots with a configurable destination, no save dialog, and no interruption of the current playback state.
 - Keyboard actions do not reveal already-hidden controls; text inputs, menus, and settings are protected from playback shortcuts.
 
+### Optional MPV native playback (source preview)
+
+Run `npm run prepare:mpv`, then `npm run electron:dev`. Select MPV under Settings → Playback → Playback engine. It decodes the original file without remux copies or transcoding. The existing player remains the default and is available as an explicit fallback. MPV uses the embedded AVHub view by default, with basic controls, track selection, C-key screenshots, zoom/rotation, progress saving and queue navigation.
+
+The MPV window setting also offers an optional independent window for subsequent videos. MPV owns its native window and AVHub-styled ASS controls without Electron video overlays, with pin/window buttons and a compact speed/audio/subtitle panel. AVHub retains screenshot storage, progress, autoplay and file-read protection. Space pauses, Left / Right seeks five seconds, C captures, F toggles fullscreen, and PageUp / PageDown changes video. The wheel adjusts volume rather than using embedded zoom. Both modes retain original quality and precise seeking; an independent window is not guaranteed to seek faster. See [validation and performance boundaries](docs/MPV-INDEPENDENT-ACCEPTANCE.md).
+
+The native window includes a local subtitle picker and text subtitle size, colour and background settings shared with the existing player; ASS/SSA retain their authored layout. The existing queue UI is reused in the library window, accessible from the native controls with a return-to-player button. The existing player and embedded MPV share keyboard focus policy; the independent window uses native bindings, without forwarding ordinary keys from the library page.
+
+This is an opt-in preview: HDR, greater-than-8-bit and unverifiable colour metadata are blocked pending acceptance; picture-in-picture has not migrated. Window compositing, multiple monitors and mixed DPI require interactive validation. The default release packaging does not yet include the MPV runtime automatically. See [integration design, runtime provenance and limitations](docs/MPV-INTEGRATION.md).
+
+Both engines share per-video audio-track, recognized-subtitle and subtitle-delay memory. Changes to source identity, tracks or associated subtitles invalidate old choices. Global volume, playback speed and subtitle appearance remain separate. Temporarily imported subtitles outside the library are session-only. The MPV settings panel can copy playback diagnostics without video paths or titles for display/layout troubleshooting.
+
+For intermittent borders or multi-display alignment issues, copy playback diagnostics before resetting the window. They retain the last 16 layouts, attached-display scales and viewport geometry to help distinguish stale layout replies, placement and decoder issues. Physical mixed-DPI acceptance is recorded separately from single-display and simulated tests.
+
+Copying playback diagnostics also takes an on-demand snapshot of Electron process working sets and private memory, identifying the library and control renderers without DevTools or background polling. Values use KiB. MPV process memory is excluded, and GPU process working set is not VRAM usage.
+
+For the existing player, open **播放信息 → 采集并导出播放诊断（8 秒）** on the playback page. This manual capture records the actual video decoder, GPU/driver, clock advance, dropped frames, buffering and original-file range requests without changing quality or reloading the source. It does not run in the background or export source paths, titles, pixels or audio device IDs. Keep playback continuous for a comparable rate measurement; pausing or seeking marks that result as unavailable. An occupied debugging connection is left untouched rather than forcing tools closed or guessing the decoder.
+
+For some H.264 MP4 / M4V / MOV files with poor direct-play behavior, the quality menu offers **原画 · 无损封装（本次）** (original quality, lossless remux for this open only). It copies the original video and supported audio without modifying the source or making a full-movie copy. Original-file playback remains the default, and the choice is not remembered after closing the video. Common classic MP4 indexes use bounded header time tables; unsupported structures still require probing, so this is not a universal speed guarantee. AAC / MP3 or no audio is required. Representable container colour tags are retained; ICC or unsupported descriptions are refused. A failed remux offers a return to original playback without silently changing delivery paths, lowering video quality or converting audio.
+
 ### Data and diagnostics
 
 - SQLite persistence for indexes, favorites, tags, playlists, progress, and preferences.
@@ -178,7 +198,7 @@ The default original-quality mode never silently re-encodes video/audio, downsca
 
 Keeping 4K resolution does not mean lossless output. Manually authorized compatibility transcoding is lossy. HDR / high-bit-depth conversion may produce SDR / 8-bit output and cannot retain all original dynamic range or bit depth. Unsupported Dolby Vision conversions are explicitly rejected rather than labeled as original-quality playback.
 
-HEVC direct playback depends on browser, OS, and hardware support. Random seeking in MKV / TS may still require preparation when remuxing or transcoding. AVHub does not integrate MPV or another native playback engine, so native-player decoding and seeking performance cannot be guaranteed for every file.
+HEVC direct playback in the existing player depends on Chromium, OS and hardware support. Random seeking in MKV / TS may still require lossless remux preparation. The optional source-preview MPV engine also cannot guarantee zero waiting for every file, hardware or cache state.
 
 Compatible H.264 / AAC TS files can use **indexed TS playback**: the first playback builds a keyframe index cached in `data/ts-index/`. Later seeks read original-file ranges on demand while reusing the decoder, without copying or re-encoding the whole video. Initial indexing adds startup time; unusual timelines, nonstandard containers, and audio-track changes retain the compatibility fallback. See the [TS seeking and blank-frame validation report](docs/TS-INDEXED-PLAYBACK-2026-10-04.md) (Chinese).
 
@@ -200,9 +220,9 @@ Embedded text subtitles and external SRT / VTT / ASS / SSA are supported. ASS / 
 
 ## Keyboard and mouse controls
 
-Settings → **帮助** (Help) includes usage guidance, shortcuts and About. Version details and manual update checks remain in About; opening Help does not check for updates.
+Settings → **帮助** (Help) includes usage guidance, shortcuts and About, with separate instructions for the existing player, embedded MPV and independent MPV. Reading another mode does not change playback preferences. Version details and manual update checks remain in About; opening Help does not check for updates.
 
-On the playback page:
+This table applies to the existing player. Embedded MPV uses the same keys except that P picture-in-picture is not supported. Independent MPV differences follow the table.
 
 | Action | Key |
 | --- | --- |
@@ -220,6 +240,8 @@ On the playback page:
 | Rotate image | R |
 
 The mouse wheel zooms around the pointer. Drag the image while zoomed, and use the reset icon to restore the default view. Shift + wheel adjusts volume.
+
+**Independent MPV:** PageUp / PageDown selects the previous / next video, Q closes this playback session and saves progress, and Esc only exits window fullscreen. The wheel adjusts volume; N next-video, W Pure Playback, P picture-in-picture, pointer zoom and image dragging are not available. Native shortcuts belong to the MPV window; the library page is not a background remote control.
 
 Editable search, directory, title and tag fields provide a native right-click menu with undo, redo, cut, copy, paste and select all, enabled according to the editing state. Ctrl+V remains available; pasting uses the existing search/edit logic without background clipboard reads.
 
@@ -297,6 +319,12 @@ npm run test:electron:shutdown
 
 Additional desktop checks, seeking benchmarks, and large-library benchmarks are listed in [package.json](package.json) and [scripts/](scripts/). Distinguish synthetic index queries, real disk scans, and real playback measurements; no single benchmark represents every video. Long HEVC playback and real HDR / 10-bit display and conversion have not yet received sufficient real-media validation.
 
+After preparing the optional MPV runtime, use `npm run test:electron:mpv` for native sessions, track memory and shutdown; `npm run test:electron:mpv:embedded` for real Electron embedding; and `npm run test:electron:mpv:soak` for a 30-minute generated-fixture concurrency test. These use isolated data directories and save reports under `build/`; they do not certify all hardware or mixed-DPI displays.
+
+See [large-library sustained-run acceptance](docs/LIBRARY-LONG-RUN-ACCEPTANCE.md) for real-cover scrolling, repeated MPV sessions, and memory / HTTP cache measurements. These tests read original media without changing it and use an isolated index and cache. Reports distinguish short tests, incomplete long runs, and completed long runs.
+
+The manual GitHub Actions input `mpv_validation` checks the optional native runtime without packaging or publishing. Leaving it disabled keeps the existing manual build workflow. A cloud virtual desktop is not a substitute for physical multi-monitor or HDR acceptance.
+
 ## Build a Windows portable app
 
 Packaging is unnecessary for everyday development. For distribution, prepare a Windows x64 environment with Python, Node.js, `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and matching license documentation.
@@ -351,7 +379,7 @@ React / TypeScript implements the UI, with hls.js for HLS playback. FastAPI bind
 - **Videos are missing after restore or migration**: backups do not include source videos. Restore their accessibility or relocate the directory in Settings, then refresh.
 - **Offline operation, platform, and privacy**: everyday functions do not depend on external services, but initial dependency installation and build downloads are not offline. Data and diagnostics can include local paths and video titles; redact reports before sharing them publicly.
 
-MPV integration, online artwork scraping, account sync, casting, and mobile remote control are not provided. macOS / Linux are not current formally supported desktop portable targets. Complete compatibility with HDR, Dolby Vision, complex subtitles, and every browser combination is not guaranteed.
+Online artwork scraping, account sync, casting and mobile remote control are not provided. macOS / Linux are not current formally supported desktop portable targets. Complete compatibility with HDR, Dolby Vision, complex subtitles and every decoder combination is not guaranteed. The optional MPV source preview described above does not mean the runtime is bundled in default releases.
 
 See [docs/](docs/) for historical records. Withdrawn designs in those records are not current features; this README describes the current source.
 

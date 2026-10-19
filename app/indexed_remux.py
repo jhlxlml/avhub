@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import hashlib
 import json
 import math
+import shutil
 from pathlib import Path
 import threading
 import time
@@ -10,6 +11,7 @@ import uuid
 from collections import OrderedDict
 
 from .indexed_ts import IndexedTs, fingerprint
+from .video_color import h264_copy_color_args
 
 VERSION=3
 
@@ -55,18 +57,36 @@ def validate(data,stamp):
 
 def build_remux_index(source,cache,ffprobe,run,cancelled):
     stamp=fingerprint(source)
+    copy_color={}
+    if source.suffix.lower() in {'.mp4','.m4v','.mov'}:
+        from .mp4_timeline import container_copy_color
+        copy_color=container_copy_color(source,cancelled)
     digest=hashlib.sha256(json.dumps(stamp,ensure_ascii=False).encode()).hexdigest()
     destination=cache/f'{digest}.json'
     safe=not cache.is_symlink() and cache.resolve()==cache.parent.resolve()/cache.name
     try:
         if safe and not destination.is_symlink() and destination.stat().st_size<=8*1024**2:
-            return validate(json.loads(destination.read_text(encoding='utf-8')),stamp)
+            data=validate(json.loads(destination.read_text(encoding='utf-8')),stamp)
+            # Old indexes retain their time tables. Re-read only bounded colr
+            # metadata, never a full packet scan or an assumed SDR description.
+            data['copy_color']=copy_color
+            if fingerprint(source)!=stamp:raise ValueError('源视频已变更')
+            return data
     except (OSError,ValueError,KeyError,TypeError):pass
     if cancelled.is_set():raise ValueError('已取消封装索引')
-    code,raw,_=run([ffprobe,'-v','error','-fflags','+genpts','-select_streams','v:0','-show_packets',
-        '-show_entries','packet=pts_time,dts_time,flags:format=start_time,duration','-of','json',str(source)],30,cancelled)
-    if code or len(raw)>64*1024**2:raise ValueError('无法探测关键帧')
-    probe=json.loads(raw);origin=float(probe.get('format',{}).get('start_time',0));duration=float(probe.get('format',{}).get('duration',0))
+    probe=None
+    if source.suffix.lower() in {'.mp4','.m4v','.mov'}:
+        try:
+            from .mp4_timeline import quick_timeline
+            probe=quick_timeline(source,ffprobe,run,cancelled)
+        except (ValueError,OSError,KeyError,TypeError,IndexError):
+            if cancelled.is_set():raise ValueError('已取消封装索引')
+    if probe is None:
+        code,raw,_=run([ffprobe,'-v','error','-fflags','+genpts','-select_streams','v:0','-show_packets',
+            '-show_entries','packet=pts_time,dts_time,flags:format=start_time,duration','-of','json',str(source)],30,cancelled)
+        if code or len(raw)>64*1024**2:raise ValueError('无法探测关键帧')
+        probe=json.loads(raw)
+    origin=float(probe.get('format',{}).get('start_time',0));duration=float(probe.get('format',{}).get('duration',0))
     if not math.isfinite(origin) or not math.isfinite(duration):raise ValueError('无效封装时间轴')
     keys=[p for p in probe.get('packets',[]) if 'K' in p.get('flags','')]
     delays=[float(p['pts_time'])-float(p['dts_time']) for p in keys if 'pts_time' in p and 'dts_time' in p]
@@ -85,7 +105,7 @@ def build_remux_index(source,cache,ffprobe,run,cancelled):
         elif point-points[-1][0]>=1.9 and point<duration:points.append((point,dts))
     if previous==-math.inf:raise ValueError('缺少关键帧')
     if fingerprint(source)!=stamp:raise ValueError('索引期间源文件变更')
-    data=validate({'version':VERSION,'source':stamp,'duration':duration,'first_pts':float(keys[0]['pts_time'])-origin,
+    data=validate({'version':VERSION,'source':stamp,'duration':duration,'copy_color':copy_color,'first_pts':float(keys[0]['pts_time'])-origin,
         'fragments':[[start,dts,origin,(points[i+1][0] if i+1<len(points) else duration)-start] for i,(start,dts) in enumerate(points)]},stamp)
     if cancelled.is_set():raise ValueError('已取消封装索引')
     if not safe or destination.is_symlink():return data
@@ -155,6 +175,13 @@ class IndexedRemux(IndexedTs):
             destination=self.folder/f'segment_{index:06d}.ts'
             cached=destination.is_file();started=time.monotonic()
             if not cached:
+                # A cache target may retain one GOP over its LRU target, but a
+                # pathological GOP must never fill the disk. -fs is a second
+                # bound during generation; outputs near that bound are rejected,
+                # never published as a successfully truncated video fragment.
+                fragment_limit=max(16*1024**2,min(self.budget,256*1024**2))
+                if shutil.disk_usage(self.folder).free<fragment_limit+64*1024**2:
+                    raise ValueError('封装缓存磁盘空间不足，请清理缓存或返回原片播放')
                 if self.scheduler:
                     with self.scheduler.condition:self.scheduler.metrics['processes']+=1
                 start,dts,origin,seconds=self.data['fragments'][index]
@@ -169,13 +196,16 @@ class IndexedRemux(IndexedTs):
                 if index:command.extend(['-ss',str(dts)])
                 command.extend(['-t',str(decode_seconds if index else decode_seconds+dts),'-map','0:v:0','-map',audio,'-c:v','copy',
                     '-c:a','copy' if self.copy_audio else 'aac'])
+                command.extend(h264_copy_color_args(self.data.get('copy_color')))
                 if not self.copy_audio:command.extend(['-ac','2'])
-                command.extend(['-output_ts_offset',str(dts-origin if index else -origin),'-avoid_negative_ts','disabled','-muxdelay','0','-f','mpegts',str(temporary)])
+                command.extend(['-output_ts_offset',str(dts-origin if index else -origin),'-avoid_negative_ts','disabled','-muxdelay','0','-fs',str(fragment_limit+1024**2),'-f','mpegts',str(temporary)])
                 try:
                     code,_,error=self.run(command,30,cancelled)
                     if cancelled.is_set():raise ValueError('分片请求已取消')
                     if code or not temporary.is_file() or temporary.stat().st_size==0:
                         raise ValueError('分片封装失败：'+error.decode('utf-8',errors='replace')[-300:])
+                    if temporary.stat().st_size>=fragment_limit:
+                        raise ValueError('关键帧区间超出封装缓存上限，请返回原片播放')
                     if fingerprint(self.source)!=self.data['source']:raise ValueError('源视频已变更')
                     temporary.replace(destination)
                     if self.scheduler:

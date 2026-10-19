@@ -2,7 +2,12 @@ type WindowPlaybackState = {purePlayback:boolean;alwaysOnTop:boolean;maximized:b
 type DesktopRecordPreview={id:string;eligible:boolean;reason:string;action:'restore'|'delete'|'clear';name?:string;source?:string;size?:number};
 interface Window {
   avhubDesktop?: {
-    saveExport:(request:{kind:'backup';jobId:string}|{kind:'diagnostics'})=>Promise<{cancelled:true}|{id:string;path:string;bytes:number}>;
+    nativePlayer:(action:string,input?:unknown)=>Promise<any>;
+      onNativeShortcut?:(callback:(value:{code:string;shiftKey:boolean;repeat:boolean})=>void)=>()=>void;
+    onNativeState:(callback:(value:any)=>void)=>()=>void;
+    onNativeEvent:(callback:(value:any)=>void)=>()=>void;
+    onNativeClosed:(callback:(value:any)=>void)=>()=>void;
+    saveExport:(request:{kind:'backup';jobId:string}|{kind:'diagnostics'|'playback-diagnostics'})=>Promise<{cancelled:true}|{id:string;path:string;bytes:number}>;
     cancelExport:()=>Promise<{ok:boolean}>;
     revealExport:(id:string)=>Promise<{ok:boolean}>;
     openRelease:(tag:string,format?:'folder'|'single')=>Promise<{ok:boolean}>;
