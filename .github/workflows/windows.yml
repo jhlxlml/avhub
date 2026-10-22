@@ -158,7 +158,10 @@ jobs:
       - name: Native recycle records with isolated owned samples
         run: node electron/test/recycle-records.mjs
       - name: Native recycle toast and recent restoration shortcuts
-        run: node electron/test/recycle-shortcuts.mjs
+        run: |
+          node electron/test/recycle-shortcuts.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/recycle-shortcuts.mjs --read-delay-ms=6000
       - name: Native external file identity and explicit replacement acceptance
         run: node electron/test/media-identity.mjs
       - name: Native text editing menu regression
@@ -197,6 +200,7 @@ jobs:
         with:
           name: windows-acceptance-timings-${{ github.sha }}
           path: |
+            build/recycle-shortcuts-*/acceptance.json
             build/portable-release-test-*/startup-timings.json
             build/folder-release-test-*/startup-timings.json
             build/concurrent-soak-*/soak.json
@@ -223,6 +227,8 @@ jobs:
           path: |
             build/backend-tests/*.log
             build/backend-tests/*.json
+            build/recycle-shortcuts-*/acceptance.json
+            build/recycle-shortcuts-*/failure.png
             test-results/**
             playwright-report/**
             build/electron-*/**/*.log

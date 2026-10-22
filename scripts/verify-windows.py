@@ -30,13 +30,19 @@ def plan(workflow):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true',help='Run source verification; without this flag only list commands')
-    parser.add_argument('--step',help='Run/list exactly one named verification step')
+    selection=parser.add_mutually_exclusive_group()
+    selection.add_argument('--step',help='Run/list exactly one named verification step')
+    selection.add_argument('--from-step',help='Run/list this verification step and every later source verification step')
     args=parser.parse_args()
     workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(encoding='utf-8'),Loader=yaml.BaseLoader)
     commands=plan(workflow)
     if args.step:
         commands=[item for item in commands if item[0]==args.step]
         if not commands:parser.error('Unknown source verification step; packaging/publishing cannot be replayed')
+    if args.from_step:
+        index=next((i for i,item in enumerate(commands) if item[0]==args.from_step),None)
+        if index is None:parser.error('Unknown source verification start step')
+        commands=commands[index:]
     if not args.execute:
         for name,command in commands:print(f'[{name}]\n{command}\n')
         return

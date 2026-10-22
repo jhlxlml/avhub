@@ -44,6 +44,23 @@ class RecycleRecordTests(unittest.TestCase):
         if len(matches)>1:raise HTTPException(409,'ambiguous')
         return matches[0] if matches else None
     def visible(self):return self.records.list()['total']
+    def test_snapshot_stage_metrics_are_bounded_and_cache_hits_do_not_enumerate(self):
+        self.records.snapshot(True);record=self.records.snapshot_metrics['last']
+        self.assertEqual(record['outcome'],'success');self.assertFalse(record['cache_hit'])
+        self.assertIsNone(self.records.snapshot_metrics['active'])
+        for name in ('lock_wait_ms','enumerate_ms','identity_ms','total_ms'):self.assertGreaterEqual(record[name],0)
+        with patch.object(self.bridge,'items',side_effect=AssertionError('cache must not enumerate')):self.records.snapshot()
+        self.assertTrue(self.records.snapshot_metrics['last']['cache_hit'])
+        self.assertNotIn(str(self.bin),json.dumps(self.records.snapshot_metrics))
+    def test_snapshot_failure_keeps_previous_cache_and_clears_active_stage(self):
+        previous=self.records.snapshot(True)
+        def failed():
+            self.assertEqual(self.records.snapshot_metrics['active']['stage'],'enumerate')
+            raise OSError('owned failed enumeration')
+        with patch.object(self.bridge,'items',side_effect=failed):
+            with self.assertRaises(OSError):self.records.snapshot(True)
+        self.assertIs(self.records.cached,previous);self.assertTrue(self.bin.exists())
+        self.assertEqual(self.records.snapshot_metrics['last']['outcome'],'error');self.assertIsNone(self.records.snapshot_metrics['active'])
     def test_restoration_preserves_identity_favorites_progress_and_playlist(self):
         expected=identity(self.bin);self.assertEqual(self.records.list()['items'][0]['status'],'available')
         self.records.execute(self.op,'restore');self.assertEqual(identity(self.source),expected)

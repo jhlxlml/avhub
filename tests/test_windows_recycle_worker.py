@@ -34,3 +34,17 @@ class WorkerTests(unittest.TestCase):
         with patch.object(self.worker,'_reply',return_value={'result':[]}):
             self.worker.items();old_timer=self.worker.timer;self.worker.items();old_timer.function()
         self.assertFalse(self.processes[0].exited);self.worker.timer.function();self.assertTrue(self.processes[0].exited)
+
+    def test_bounded_stage_metrics_report_success_and_failure_without_source_identity(self):
+        def reply():
+            self.assertEqual(self.worker.stats['active_request']['stage'],'ipc')
+            return {'result':True}
+        with patch.object(self.worker,'_reply',side_effect=reply):self.worker.restore('private-source','private-target',[1,2,3,4])
+        record=self.worker.stats['last_request'];self.assertEqual((record['action'],record['outcome']),('restore','success'))
+        self.assertIsNone(self.worker.stats['active_request'])
+        for name in ('lock_wait_ms','startup_ms','ipc_ms','total_ms'):self.assertGreaterEqual(record[name],0)
+        self.assertNotIn('private-',json.dumps(self.worker.stats))
+        with patch.object(self.worker,'_reply',side_effect=OSError('private failure')):
+            with self.assertRaises(OSError):self.worker.items()
+        self.assertEqual(self.worker.stats['last_request']['outcome'],'error');self.assertIsNone(self.worker.stats['active_request'])
+        self.assertNotIn('private failure',json.dumps(self.worker.stats))

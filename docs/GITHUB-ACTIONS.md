@@ -54,6 +54,8 @@ python scripts/verify-windows.py --execute
 # 或只执行与 CI 完全相同的某一步：
 python scripts/verify-windows.py --execute --step 'Backend regression'
 python scripts/verify-windows.py --execute --step 'Windows short-path regression'
+# 从某个失败点起，执行其后所有源码验收步骤（仍不包含打包和发布）：
+python scripts/verify-windows.py --execute --from-step 'Native recycle toast and recent restoration shortcuts'
 ```
 
 不带 `--execute` 只列出计划。命令直接读取工作流的源码验证步骤，不另维护一份
@@ -66,6 +68,13 @@ python scripts/verify-windows.py --execute --step 'Windows short-path regression
 失败时 CI 收集这些报告，含失败测试名与堆栈；不收集数据库或测试视频。
 短路径命令在独立真实 8.3 TEMP 下运行完整后端，而不只运行旧的精选用例。
 CI 要求真实别名存在，缺失即失败，不用 SKIP 冒充验收通过；不改系统 TEMP。
+
+最近回收的真实 Electron 验收等待实际 GET 响应完成，核对精确操作 ID 和可恢复
+状态后再验证界面，不以默认 5 秒文字等待替代接口结果。生产读取仍保持 15 秒
+期限；测试另外注入一次 6 秒读取延迟，明确区别于真实 Shell 性能结果，不自动
+重试回收或恢复。`build/recycle-shortcuts-*/acceptance.json` 保存 HTTP 状态、耗时、
+传输失败、桥接启动/IPC 与枚举/身份核对阶段指标；失败另外保存生成样本的页面
+截图。报告进入失败附件与成功候选的验收附件，不上传原视频或数据库。
 
 ## 流程与安全
 

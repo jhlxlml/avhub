@@ -926,6 +926,7 @@ def diagnostics():
     result['thumbnail_service']=thumbnail_service.snapshot()
     result['runtime_evidence']=runtime_evidence.report()
     result['recycle_bridge']={**getattr(recycle_service.bridge,'stats',{}),'active':bool(getattr(recycle_service.bridge,'process',None))}
+    result['recycle_snapshot']={**recycle_service.snapshot_metrics}
     return result
 
 

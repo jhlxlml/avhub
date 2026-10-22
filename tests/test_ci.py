@@ -43,6 +43,10 @@ class CITests(unittest.TestCase):
         upload=next(step for step in steps if step.get('name')=='Save failure diagnostics')
         self.assertIn('build/backend-tests/*.log',upload['with']['path'])
         self.assertIn('build/backend-tests/*.json',upload['with']['path'])
+        self.assertIn('build/recycle-shortcuts-*/acceptance.json',upload['with']['path'])
+        self.assertIn('build/recycle-shortcuts-*/failure.png',upload['with']['path'])
+        shortcuts=next(step for step in steps if step.get('name')=='Native recycle toast and recent restoration shortcuts')
+        self.assertIn('--read-delay-ms=6000',shortcuts['run'])
     def test_new_ui_regressions_and_downloader_policy_are_in_ci(self):
         workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)
         commands='\n'.join(step.get('run','') for step in workflow['jobs']['verify']['steps'])

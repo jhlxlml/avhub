@@ -23,13 +23,31 @@ class RecycleRecords:
     def __init__(self,files,bridge=None):
         self.files=files;self.bridge=bridge or WindowsRecycle();self.action_lock=threading.RLock();self.snapshot_lock=threading.Lock()
         self.cached=None;self.cached_until=0;self.previews={}
+        self.snapshot_metrics={'active':None,'last':None}
 
     def snapshot(self,force=False):
         # Shell enumeration/compilation NEVER holds playback/scanner/file locks.
+        started=time.monotonic()
         with self.snapshot_lock:
-            if force or self.cached is None or time.monotonic()>=self.cached_until:
-                self.cached=Snapshot(self.bridge.items());self.cached_until=time.monotonic()+5
-            return self.cached
+            entered=time.monotonic();enumerate_ms=0;identity_ms=0;outcome='error';hit=False
+            try:
+                if force or self.cached is None or time.monotonic()>=self.cached_until:
+                    self.snapshot_metrics['active']={'stage':'enumerate','started_monotonic':started}
+                    phase=time.monotonic()
+                    try:items=self.bridge.items()
+                    finally:enumerate_ms=(time.monotonic()-phase)*1000
+                    self.snapshot_metrics['active']={'stage':'identity','started_monotonic':started}
+                    phase=time.monotonic()
+                    try:snapshot=Snapshot(items)
+                    finally:identity_ms=(time.monotonic()-phase)*1000
+                    self.cached=snapshot;self.cached_until=time.monotonic()+5
+                else:hit=True
+                outcome='success';return self.cached
+            finally:
+                self.snapshot_metrics['last']={'outcome':outcome,'cache_hit':hit,
+                    'lock_wait_ms':round((entered-started)*1000,3),'enumerate_ms':round(enumerate_ms,3),
+                    'identity_ms':round(identity_ms,3),'total_ms':round((time.monotonic()-started)*1000,3)}
+                self.snapshot_metrics['active']=None
 
     def invalidate(self):
         with self.snapshot_lock:self.cached_until=0

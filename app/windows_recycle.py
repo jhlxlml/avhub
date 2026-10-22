@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import queue
 import threading
+import time
 
 class UncertainRecycleError(OSError):
     uncertain=True
@@ -157,7 +158,7 @@ class WindowsRecycle:
     decimal strings (not floating point). No helper is started during recovery.
     """
     def __init__(self):
-        self.lock=threading.RLock();self.process=None;self.timer=None;self.generation=0;self.stats={'starts':0,'requests':0,'lists':0,'lease_scans':0}
+        self.lock=threading.RLock();self.process=None;self.timer=None;self.generation=0;self.stats={'starts':0,'requests':0,'lists':0,'lease_scans':0,'active_request':None,'last_request':None}
 
     def _start(self):
         if os.name!='nt':raise OSError('回收记录操作仅支持 Windows 桌面版')
@@ -187,21 +188,37 @@ class WindowsRecycle:
 
     def request(self,action,source='',target='',stamp=None,paths=None):
         if action not in ('list','restore','delete','prime'):raise ValueError('Invalid recycle action')
+        started=time.monotonic()
         with self.lock:
+            entered=time.monotonic();startup_ms=0;ipc_ms=0;outcome='error'
+            self.stats['active_request']={'action':action,'stage':'startup','started_monotonic':started}
             self.generation+=1;generation=self.generation
             if self.timer:self.timer.cancel();self.timer=None
             try:
-                if not self.process or self.process.poll() is not None:self.close();self._start()
+                startup=time.monotonic()
+                try:
+                    if not self.process or self.process.poll() is not None:self.close();self._start()
+                finally:startup_ms=(time.monotonic()-startup)*1000
+                self.stats['active_request']={'action':action,'stage':'ipc','started_monotonic':started}
                 self.stats['requests']+=1
                 if action=='list':self.stats['lists']+=1
-                self.process.stdin.write(json.dumps({'action':action,'source':source,'target':target,'stamp':[str(v) for v in stamp] if stamp else None,'paths':paths},ensure_ascii=False)+'\n');self.process.stdin.flush()
-                result=self._reply()['result']
+                ipc=time.monotonic()
+                try:
+                    self.process.stdin.write(json.dumps({'action':action,'source':source,'target':target,'stamp':[str(v) for v in stamp] if stamp else None,'paths':paths},ensure_ascii=False)+'\n');self.process.stdin.flush()
+                    result=self._reply()['result']
+                finally:ipc_ms=(time.monotonic()-ipc)*1000
                 if action=='prime':self.stats['lease_scans']+=int(result)
+                outcome='success'
             except (BrokenPipeError,UnicodeError,ValueError,KeyError) as error:
                 self.close();raise UncertainRecycleError('桥接传输失败，结果未确认；请核对，不要重复操作') from error
             except Exception:
                 self.close();raise
             finally:
+                # One bounded scalar record, never paths, identities, or error text.
+                self.stats['last_request']={'action':action,'outcome':outcome,
+                    'lock_wait_ms':round((entered-started)*1000,3),'startup_ms':round(startup_ms,3),
+                    'ipc_ms':round(ipc_ms,3),'total_ms':round((time.monotonic()-started)*1000,3)}
+                self.stats['active_request']=None
                 if self.process:
                     def expire():
                         with self.lock:
