@@ -1,0 +1,32 @@
+// Explicit component harness; desktop acceptance runs separately in Electron.
+import {test,expect} from '@playwright/test';
+test.beforeEach(async({request})=>{await request.post('/test/reset');});
+for(const theme of ['dark','light'])for(const width of [390,1440])test(`${theme} ${width}px: management, help and playlists follow the shared control language`,async({page,request})=>{
+  await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
+  const list=await(await request.post('/api/playlists',{data:{name:'统一样式验收片单'}})).json();
+  await request.post(`/api/playlists/${list.id}/items/2`);
+  await page.setViewportSize({width,height:850});await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  await page.getByRole('tab',{name:'数据管理',exact:true}).click();
+  const backup=page.getByRole('checkbox',{name:'备份包含缩略图',exact:true}),old=page.getByRole('checkbox',{name:'包含旧回滚副本',exact:true});
+  await expect(backup).toHaveCSS('width','30px');await expect(old).toHaveCSS('width','30px');
+  await expect(page.locator('.storage-sizes>div').first()).toHaveCSS('border-radius','0px');
+  await backup.focus();await page.keyboard.press('Space');await expect(backup).toBeChecked();
+  const choose=page.getByRole('button',{name:'选择备份文件',exact:true});await choose.focus();
+  const chooser=page.waitForEvent('filechooser');await page.keyboard.press('Enter');await (await chooser).setFiles([]);
+  await expect(page.getByRole('button',{name:'校验并预览备份',exact:true})).toBeDisabled();
+  const dialog=page.getByRole('dialog');expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  const heights=await dialog.locator('.ui-button').evaluateAll(items=>items.filter(el=>el.getClientRects().length).map(el=>el.getBoundingClientRect().height));
+  expect(heights.every(height=>height===32)).toBe(true);
+  await page.screenshot({path:`build/ui-refinement/workspace-data-${theme}-${width}.png`});
+  await page.getByRole('tab',{name:'帮助',exact:true}).click();const help=page.getByRole('region',{name:'帮助中心'});
+  const shortcuts=help.getByRole('tab',{name:'快捷操作',exact:true});await shortcuts.click();
+  await expect(shortcuts).toHaveCSS('height','28px');await expect(shortcuts).toHaveCSS('border-top-width','0px');
+  expect(await help.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await page.screenshot({path:`build/ui-refinement/workspace-help-${theme}-${width}.png`});
+  await page.getByRole('button',{name:'关闭设置',exact:true}).click();await page.getByRole('button',{name:'播放列表',exact:true}).click();
+  const playlist=page.getByRole('dialog',{name:'播放列表',exact:true});
+  await expect(playlist.locator('.playlist-list>button.selected')).toHaveCSS('border-top-color','rgba(0, 0, 0, 0)');
+  await expect(playlist.locator('.playlist-item-actions>button').first()).toHaveCSS('width','28px');
+  expect(await playlist.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await page.screenshot({path:`build/ui-refinement/workspace-playlist-${theme}-${width}.png`});
+});

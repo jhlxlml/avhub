@@ -39,6 +39,7 @@ from .video_color import color_metadata
 from .preferences import GLOBAL_KEYS, validate as validate_preference
 from . import media_playback_state
 from . import media_order
+from . import media_search
 from .local_security import local_request_error, SECURITY_HEADERS
 from .build_info import BUILD
 from .diagnostics import report as diagnostics_report
@@ -46,8 +47,12 @@ from . import series_library
 from .playback_queue import selection as playback_selection
 from .library_metadata import MetadataInput, BulkInput, edit as edit_metadata
 from . import covers
-from .scan_jobs import install as install_scan_jobs, ThumbnailJobs, ThumbnailService
+from .scan_jobs import install as install_scan_jobs, ThumbnailJobs, ThumbnailService, CommittedThumbnail
 from .db_timing import timing as database_timing, ReadGate
+from .db_lifecycle import WalAnchor
+from .db_write_gate import SavePriorityLock
+from .scan_readiness import ScanReadiness
+from .service_lifecycle import ServiceLifecycle
 from .process_owner import own_encoder
 from .packet_probe import stream_packets
 from .remux_window import run_remux_window
@@ -84,7 +89,9 @@ DATA = data_directory()
 THUMBS = DATA / "thumbnails"
 HLS = DATA / "hls"
 DB = DATA / "library.db"
-DB_LOCK = threading.RLock()
+DB_LOCK = SavePriorityLock()
+db_anchor = WalAnchor()
+service_lifecycle = ServiceLifecycle()
 DB_READ_GATE = ReadGate()  # Restore exclusion, not the indexing write lock.
 background_reads = ReadBudget()
 screenshot_store = screenshots.ScreenshotStore()
@@ -107,6 +114,10 @@ def executable(name: str) -> str:
 
 class ScanCancelled(Exception):
     pass
+
+
+# Detailed scan profiling is opt-in, not an always-on product workload.
+scan_readiness = ScanReadiness(ScanCancelled,enabled=os.environ.get('AVHUB_PROFILE_SCAN_READY')=='1')
 
 @contextmanager
 def background_read(path,cancelled=None):
@@ -158,24 +169,32 @@ def scan_process(command: list[str], timeout: float, cancelled=None):
 @contextmanager
 def connection():
     started=time.perf_counter()
-    with DB_LOCK:
+    ticket=database_timing.begin_serialized()
+    gate=DB_LOCK.save() if ticket['operation']=='progress-save' else DB_LOCK
+    with gate,database_timing.writer(ticket):
         acquired=time.perf_counter()
+        db_anchor.ensure(DB)
         db = sqlite3.connect(DB)
         db.row_factory = sqlite3.Row
-        connected=time.perf_counter();body_end=connected;committed=connected
+        connected=time.perf_counter();body_end=connected;committed=connected;committing=False;outcome='failed'
+        changed_rows=0;transaction_open=False
         try:
             yield db
-            body_end=time.perf_counter()
+            changed_rows=db.total_changes;transaction_open=db.in_transaction
+            body_end=time.perf_counter();committing=True
             db.commit()
-            committed=time.perf_counter()
+            committed=time.perf_counter();outcome='committed'
         except BaseException:
-            body_end=committed=time.perf_counter()
+            if committing:committed=time.perf_counter()
+            else:body_end=committed=time.perf_counter()
             raise
         finally:
             db.close()
             ended=time.perf_counter()
             database_timing.record('serialized',{'lock_wait':acquired-started,'connect':connected-acquired,
-                'transaction':body_end-connected,'commit':committed-body_end,'close':ended-committed,'total':ended-started})
+                'transaction':body_end-connected,'commit':committed-body_end,'close':ended-committed,'total':ended-started},
+                {**ticket,'transaction_outcome':outcome,'changed_rows':changed_rows,
+                    'transaction_open_at_commit':transaction_open,'commit_attempted':committing})
 
 
 @contextmanager
@@ -199,7 +218,7 @@ def read_connection():
 
 
 def bootstrap() -> None:
-    with connection() as db:
+    with database_timing.scope('schema-bootstrap'),connection() as db:
         db.executescript("""
         PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS roots (id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, added_at REAL NOT NULL);
@@ -362,62 +381,84 @@ def commit_source_decision(db,row,root_id,path,stat,metadata,decision):
 
 def scan_file(root_id: int, path: Path, cancelled=None, existing=None, resolved_path: str | None = None, thumbnails=None) -> bool:
     """Probe outside write transactions; refreshing technical metadata preserves user edits."""
+    # Only the durable desktop service supports enqueueing inside the metadata
+    # transaction. Legacy synchronous/component queues keep their submit API.
+    atomic_thumbnails=isinstance(thumbnails,ThumbnailService)
+    def scan_write():return thumbnails.scan_write(connection) if atomic_thumbnails else connection()
+    def check_cancelled():
+        if cancelled is not None and cancelled.is_set():raise ScanCancelled()
+    check_cancelled()
     resolved = resolved_path or str(path.resolve())
     stat = path.stat()
     if existing is not None:
         old = existing.get(resolved)
     else:
-        with connection() as db:
+        with read_connection() as db:
             old = db.execute("SELECT * FROM media WHERE path=?", (resolved,)).fetchone()
     old=identity_service.observe(root_id,Path(resolved),stat,dict(old) if old else None)
     if old and old.get('identity_review'):return False
     if not file_service.allow_scan(Path(resolved)):return False
     unchanged = old and old["modified"] == stat.st_mtime and old["size"] == stat.st_size
     if unchanged:
+        needs_cover=not old["thumbnail"] or not valid_thumbnail(THUMBS / f"{old['id']}.jpg")
+        enqueued=False
         if old["missing"] or old["root_id"] != root_id:
-            with connection() as db:
+            with database_timing.scope('scan-media'),scan_write() as db:
+                check_cancelled()
                 db.execute("UPDATE media SET missing=0,root_id=? WHERE id=?", (root_id, old["id"]))
-        if not old["thumbnail"] or not valid_thumbnail(THUMBS / f"{old['id']}.jpg"):
+                if atomic_thumbnails and needs_cover:
+                    thumbnails.jobs.schedule_in(db,old['id']);enqueued=True
+                check_cancelled()
+        if needs_cover:
             if thumbnails:
-                thumbnails.submit(path, old['id'], old['duration'] or 0, True)
+                if not enqueued:thumbnails.submit(path, old['id'], old['duration'] or 0, True)
             else:
                 thumb = thumbnail(path, old["id"], old["duration"] or 0, force=True, cancelled=cancelled)
                 if thumb:
                     with connection() as db:
                         db.execute("UPDATE media SET thumbnail=?,updated_at=? WHERE id=?", (thumb,time.time(),old["id"]))
         return False
-    with background_read(path,cancelled):metadata = probe(path, cancelled)
-    if not metadata["video_codec"]:
-        raise ValueError("无法读取视频信息，请检查文件或 FFprobe")
-    if media_identity.encoded(path.stat())!=media_identity.encoded(stat):raise ValueError('探测期间源文件变化，请重新扫描')
-    title, kind, season, episode = parse_title(path)
-    now = time.time()
-    color = metadata.get('video_color') or {}
-    color.update(source_modified=stat.st_mtime,source_size=stat.st_size)
-    with connection() as db:
-        if old:
-            media_id = old["id"]
-            db.execute("""UPDATE media SET root_id=?,name=?,ext=?,size=?,modified=?,duration=?,width=?,height=?,
-                video_codec=?,audio_tracks=?,subtitles=?,video_color=?,missing=0,updated_at=? WHERE id=?""",
-                (root_id,path.name,path.suffix.lower(),stat.st_size,stat.st_mtime,metadata["duration"],
-                 metadata["width"],metadata["height"],metadata["video_codec"],json.dumps(metadata["audio_tracks"]),
-                 json.dumps(metadata["subtitles"]),json.dumps(color),now,media_id))
-        else:
-            fresh_id=next_media_id(db)
-            cur = db.execute("""INSERT INTO media(id,path,root_id,name,title,kind,season,episode,ext,size,modified,
-                duration,width,height,video_codec,audio_tracks,subtitles,video_color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (fresh_id,resolved,root_id,path.name,title,kind,season,episode,path.suffix.lower(),stat.st_size,stat.st_mtime,
-                 metadata["duration"],metadata["width"],metadata["height"],metadata["video_codec"],
-                 json.dumps(metadata["audio_tracks"]),json.dumps(metadata["subtitles"]),json.dumps(color),now,now))
-            media_id = cur.lastrowid
-        db.execute('UPDATE media SET source_identity=? WHERE id=?',(media_identity.encoded(stat),media_id))
-        series_library.assign(db,media_id)
+    with scan_readiness.item() as observation:
+        with background_read(path,cancelled):metadata = probe(path, cancelled)
+        observation.probed()
+        if not metadata["video_codec"]:
+            raise ValueError("无法读取视频信息，请检查文件或 FFprobe")
+        if media_identity.encoded(path.stat())!=media_identity.encoded(stat):raise ValueError('探测期间源文件变化，请重新扫描')
+        title, kind, season, episode = parse_title(path)
+        now = time.time()
+        color = metadata.get('video_color') or {}
+        color.update(source_modified=stat.st_mtime,source_size=stat.st_size)
+        observation.ready()
+        with database_timing.scope('scan-media') as trace,scan_write() as db:
+            observation.writing(trace['scope_id'])
+            check_cancelled()
+            if media_identity.encoded(path.stat())!=media_identity.encoded(stat):raise ValueError('等待保存期间源文件变化，请重新扫描')
+            if old:
+                media_id = old["id"]
+                db.execute("""UPDATE media SET root_id=?,name=?,ext=?,size=?,modified=?,duration=?,width=?,height=?,
+                    video_codec=?,audio_tracks=?,subtitles=?,video_color=?,missing=0,updated_at=? WHERE id=?""",
+                    (root_id,path.name,path.suffix.lower(),stat.st_size,stat.st_mtime,metadata["duration"],
+                     metadata["width"],metadata["height"],metadata["video_codec"],json.dumps(metadata["audio_tracks"]),
+                     json.dumps(metadata["subtitles"]),json.dumps(color),now,media_id))
+            else:
+                fresh_id=next_media_id(db)
+                cur = db.execute("""INSERT INTO media(id,path,root_id,name,title,kind,season,episode,ext,size,modified,
+                    duration,width,height,video_codec,audio_tracks,subtitles,video_color,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (fresh_id,resolved,root_id,path.name,title,kind,season,episode,path.suffix.lower(),stat.st_size,stat.st_mtime,
+                     metadata["duration"],metadata["width"],metadata["height"],metadata["video_codec"],
+                     json.dumps(metadata["audio_tracks"]),json.dumps(metadata["subtitles"]),json.dumps(color),now,now))
+                media_id = cur.lastrowid
+            db.execute('UPDATE media SET source_identity=? WHERE id=?',(media_identity.encoded(stat),media_id))
+            series_library.assign(db,media_id)
+            if atomic_thumbnails:thumbnails.jobs.schedule_in(db,media_id)
+            check_cancelled()
+        observation.committed()
     if thumbnails:
-        thumbnails.submit(path, media_id, metadata['duration'], True)
+        if not atomic_thumbnails:thumbnails.submit(path, media_id, metadata['duration'], True)
     else:
         thumb = thumbnail(path, media_id, metadata["duration"], force=True, cancelled=cancelled)
         if thumb:
-            with connection() as db:
+            with database_timing.scope('cover-publish'),connection() as db:
                 db.execute("UPDATE media SET thumbnail=?,updated_at=? WHERE id=?", (thumb,time.time(),media_id))
     return True
 
@@ -428,28 +469,59 @@ def process_thumbnail(expected, cancelled, gate):
         try:
             stat=path.stat()
             if stat.st_size!=expected['size'] or stat.st_mtime!=expected['modified']:return False
-            with connection() as db:
-                row=db.execute('''SELECT m.root_id,m.path,m.size,m.modified,m.missing,j.revision
+            with read_connection() as db:
+                row=db.execute('''SELECT m.root_id,m.path,m.size,m.modified,m.missing,m.file_state,j.revision
                     FROM media m JOIN thumbnail_jobs j ON j.media_id=m.id WHERE m.id=?''',(media_id,)).fetchone()
-                return row is not None and not row['missing'] and all(row[key]==expected[key] for key in ['root_id','path','size','modified','revision'])
+                return row is not None and not row['missing'] and row['file_state']=='normal' and all(row[key]==expected[key] for key in ['root_id','path','size','modified','revision'])
         except OSError:return False
     if not unchanged():return False,'源文件已变化或不可读取，请刷新该目录后重试'
     with read_connection() as db:duration=db.execute('SELECT duration FROM media WHERE id=?',(media_id,)).fetchone()[0] or 0
     thumb=thumbnail(path,media_id,duration,force=True,cancelled=cancelled,publish_if=unchanged,
                     frame_time=expected.get('frame_time'),errors=errors,publish_gate=gate)
-    with gate:
+    with database_timing.scope('cover-publish'),gate:
         if cancelled.is_set():raise ScanCancelled()
         if thumb and unchanged():
             with connection() as db:
+                if cancelled.is_set():raise ScanCancelled()  # May have waited for another writer.
+                # The read snapshot may predate waiting for the writer. Reject
+                # a superseded job atomically, not just in the preflight check.
                 success=db.execute('''UPDATE media SET thumbnail=?,updated_at=? WHERE id=?
-                    AND root_id IS ? AND path=? AND size IS ? AND modified IS ? AND missing=0''',
-                    (thumb,time.time(),media_id,expected['root_id'],expected['path'],expected['size'],expected['modified'])).rowcount>0
-            return success,'' if success else '索引已变化，请刷新目录后重试'
+                    AND root_id IS ? AND path=? AND size IS ? AND modified IS ? AND missing=0 AND file_state='normal'
+                    AND EXISTS(SELECT 1 FROM thumbnail_jobs WHERE media_id=? AND revision=? AND state='pending')''',
+                    (thumb,time.time(),media_id,expected['root_id'],expected['path'],expected['size'],expected['modified'],
+                     media_id,expected['revision'])).rowcount>0
+                if success:
+                    deleted=db.execute("DELETE FROM thumbnail_jobs WHERE media_id=? AND revision=? AND state='pending'",
+                        (media_id,expected['revision'])).rowcount
+                    if deleted!=1:raise sqlite3.IntegrityError('封面任务状态已变化，未完成提交')
+                    if cancelled.is_set():raise ScanCancelled()
+            # Only construct the receipt after connection() actually commits.
+            return CommittedThumbnail() if success else (False,'索引已变化，请刷新目录后重试')
     return False,'\n'.join(errors)[-1600:] or '未能生成有效预览图；不代表视频无法播放'
 
 
+def reconcile_scan_presence(root_id,found):
+    """Read the completed root without holding the writer/save queue.
+
+    Recheck every candidate in the write itself: file operations, relocation or
+    another metadata update may have changed a row after the read snapshot.
+    """
+    with database_timing.scope('scan-reconcile'):
+        with read_connection() as db:
+            changes=[(int(row['path'] not in found),row['id'],root_id,row['path'],row['missing'],
+                    row['source_identity'],row['size'],row['modified'])
+                for row in db.execute("SELECT id,path,missing,source_identity,size,modified FROM media WHERE root_id=? AND file_state='normal'",(root_id,))
+                if row['missing']!=int(row['path'] not in found)]
+        if not changes:return 0
+        with connection() as db:
+            result=db.executemany('''UPDATE media SET missing=? WHERE id=? AND root_id=? AND path=?
+                AND missing IS ? AND source_identity IS ? AND size IS ? AND modified IS ?
+                AND file_state='normal' ''',changes)
+            return result.rowcount
+
+
 def run_scan(entries: list[dict], manager: ScanManager):
-    with connection() as db:
+    with read_connection() as db:
         # Registration/relocation already stores canonical absolute paths. Do
         # not re-resolve every offline root before processing the first video.
         all_roots = [(row['id'], Path(row['path'])) for row in db.execute("SELECT id,path FROM roots")]
@@ -522,11 +594,7 @@ def run_scan(entries: list[dict], manager: ScanManager):
                     for future in pending: future.result()
             if manager.cancelled.is_set(): return
             if not walk_failed and root.is_dir():
-                with connection() as db:
-                    changes = [(int(row['path'] not in found), row['id']) for row in db.execute(
-                        "SELECT id,path,missing FROM media WHERE root_id=? AND file_state='normal'", (entry['id'],))
-                        if row['missing'] != int(row['path'] not in found)]
-                    if changes: db.executemany('UPDATE media SET missing=? WHERE id=?', changes)
+                reconcile_scan_presence(entry['id'],found)
         manager.update(discovery_done=True)
 
 
@@ -547,7 +615,7 @@ SERVER_PORT = int(os.environ.get("AVHUB_PORT", "8765"))
 
 
 def persist_scan_checkpoint(root_id, state):
-    with connection() as db:
+    with database_timing.scope('scan-checkpoint'),connection() as db:
         if state == 'active':
             db.execute("INSERT INTO scan_checkpoint(id,root_id,updated_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET root_id=excluded.root_id,updated_at=excluded.updated_at",
                        (root_id, time.time()))
@@ -560,7 +628,13 @@ def persist_scan_checkpoint(root_id, state):
 runtime_evidence=RuntimeEvidence(lambda:DATA)
 database_timing.on_slow=lambda sample:runtime_evidence.capture('database-long-tail',sample)
 scanner = ScanManager(persist_scan_checkpoint,runtime_evidence.capture)
-thumbnail_service = ThumbnailService(connection,process_thumbnail,read_connection,runtime_evidence.capture)
+@contextmanager
+def thumbnail_connection():
+    with database_timing.scope('cover-queue'),connection() as db:yield db
+
+
+thumbnail_service = ThumbnailService(thumbnail_connection,process_thumbnail,read_connection,runtime_evidence.capture,
+    scope=lambda:database_timing.current_scope())
 data_jobs=DataJobs(lambda:DATA)
 def native_sources():
     with read_connection() as db:paths={row['path'] for row in db.execute('SELECT path FROM media')}
@@ -576,29 +650,55 @@ native_prepare=NativePrepare(lambda:DATA,native_sources)
 
 
 @asynccontextmanager
-async def lifespan(app):
-    thumbnail_service.start()
+async def background_lifespan(app):
+    task=None
     async def sweep():
         while True:
             await asyncio.sleep(10)
-            await asyncio.to_thread(playback.sweep)
-            await asyncio.to_thread(data_jobs.sweep)
-    task = asyncio.create_task(sweep())
+            # One transient OS/cache error must not stop the other maintenance
+            # step or permanently retire the ten-second loop. No mutation is
+            # replayed here: these are the existing idempotent sweeps only.
+            await service_lifecycle.attempt('playback-sweep',playback.sweep)
+            await service_lifecycle.attempt('data-sweep',data_jobs.sweep)
     try:
+        error=await service_lifecycle.attempt('covers-start',thumbnail_service.start,threaded=False)
+        if error:raise error
+        task=asyncio.create_task(sweep())
         yield
     finally:
         # Request both cancellations before waiting on any individual cleanup.
-        scanner.pause_for_shutdown()
-        thumbnail_service.request_stop()
-        task.cancel()
-        with suppress(asyncio.CancelledError):
-            await task
-        await asyncio.to_thread(playback.close)
-        await asyncio.to_thread(native_prepare.close)
-        await asyncio.to_thread(scanner.close)
-        await asyncio.to_thread(thumbnail_service.close)
-        await asyncio.to_thread(data_jobs.close)
-        await asyncio.to_thread(recycle_service.close)
+        failures=[]
+        for name,operation in [('scan-pause',scanner.pause_for_shutdown),('covers-stop',thumbnail_service.request_stop)]:
+            error=await service_lifecycle.attempt(name,operation,threaded=False)
+            if error:failures.append((name,error))
+        if task:
+            task.cancel()
+            try:await task
+            except asyncio.CancelledError:pass
+            except Exception as error:
+                service_lifecycle.outcome('maintenance-stop',error);failures.append(('maintenance-stop',error))
+        # Always attempt every independent owner, including after partial start.
+        # Preserve failure evidence and report AFTER cleanup, never claim success
+        # for a worker which explicitly returned False at its own join deadline.
+        for name,operation in [('playback-close',playback.close),('native-close',native_prepare.close),
+            ('scan-close',scanner.close),('covers-close',thumbnail_service.close),
+            ('data-close',data_jobs.close),('recycle-close',recycle_service.close)]:
+            error=await service_lifecycle.attempt(name,operation,require_completed=True)
+            if error:failures.append((name,error))
+        if failures:
+            raise RuntimeError('后台组件清理未全部完成：'+', '.join(name for name,_ in failures)) from failures[0][1]
+
+
+@asynccontextmanager
+async def lifespan(app):
+    with DB_LOCK:db_anchor.start(DB)
+    try:
+        async with background_lifespan(app):yield
+    finally:
+        # Even worker startup/cleanup failures must not retain a library handle.
+        def close_database():
+            with DB_LOCK:db_anchor.close()
+        await asyncio.to_thread(close_database)
 
 
 bootstrap()
@@ -614,6 +714,10 @@ if checkpoint:
     scanner.restore_interrupted(checkpoint['root_id'])
 app = FastAPI(title="AVHub", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(file_operations.FileReadFence,service=file_service)
+PROFILE_PROGRESS = os.environ.get('AVHUB_PROFILE_PROGRESS') == '1'
+if PROFILE_PROGRESS:
+    from .progress_timing import ProgressTiming
+    app.add_middleware(ProgressTiming)
 
 
 @app.middleware("http")
@@ -796,9 +900,12 @@ def app_info():
 
 @app.get("/api/health")
 def health():
+    from .sqlite_runtime import status as sqlite_runtime_status
+    engine=sqlite_runtime_status()
     return {"ok": True, "ffmpeg": Path(executable("ffmpeg")).is_file() or shutil.which(executable("ffmpeg")) is not None,
             "ffprobe": Path(executable("ffprobe")).is_file() or shutil.which(executable("ffprobe")) is not None,
             "data_dir": str(DATA), "frozen": FROZEN, "port": SERVER_PORT, **BUILD,
+            "sqlite_runtime":{key:engine[key] for key in ('version','policy','verified')},
             "desktop_session": bool(SESSION_TOKEN),
             "renderer_test":not FROZEN and getattr(app.state,'renderer_test',False) is True,
             "session_id": hashlib.sha256(SESSION_TOKEN.encode()).hexdigest()[:16] if SESSION_TOKEN else None}
@@ -811,6 +918,10 @@ def diagnostics():
     with connection() as db:
         result['thumbnail_jobs']={row['state']:row['count'] for row in db.execute('SELECT state,COUNT(*) AS count FROM thumbnail_jobs GROUP BY state')}
     result['database_timing']=database_timing.report()
+    result['database_write_queue']=DB_LOCK.status()
+    result['scan_readiness']=scan_readiness.report()
+    result['database_lifecycle']=db_anchor.status()
+    result['service_lifecycle']=service_lifecycle.report()
     result['background_reads']=background_reads.snapshot()
     result['thumbnail_service']=thumbnail_service.snapshot()
     result['runtime_evidence']=runtime_evidence.report()
@@ -1142,7 +1253,7 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
     backup_dir=DATA/'backups'
     rollback = backup_dir / f"before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}.db"
     new_covers=[];old_thumbnails=[]
-    with scanner.lock, playback.lock, thumbnail_service.mutation(), file_service.lock, DB_READ_GATE.write(), DB_LOCK:
+    with scanner.lock, playback.lock, thumbnail_service.mutation(), file_service.lock, DB_READ_GATE.write(), DB_LOCK, db_anchor.suspend():
         scanner.require_idle()
         file_service.require_idle()
         if file_service.readers or any(value[1]>time.monotonic() for value in file_service.activities.values()):raise HTTPException(409,'请先关闭正在打开的视频再恢复媒体库')
@@ -1502,11 +1613,32 @@ def media(q: str = "", view: str = "all", favorite: bool = False, unwatched: boo
         # small result set; broad matches retain indexed order and bounded LIMIT.
         search_scan = bool(q) and view == 'all' and root_id is None and not favorite and not unwatched and watch_status == 'all' and not format_ext and not duration_band and not resolution
         count_sql = sql.replace('FROM media', 'FROM media NOT INDEXED', 1) if search_scan else sql
-        total = db.execute(count_sql.replace('SELECT *', 'SELECT COUNT(*)', 1), args).fetchone()[0]
+        matching_ids = None
+        if search_scan:
+            total, matching_ids = media_search.count_and_ids(db, count_sql, args)
+            singleton_id = matching_ids[0] if total == 1 else None
+        else:
+            # A bare id is unambiguous ONLY for exactly one match. Filtered
+            # searches retain their selective indexes and original count path.
+            count_select = 'SELECT COUNT(*),id' if q else 'SELECT COUNT(*)'
+            counted = db.execute(count_sql.replace('SELECT *', count_select, 1), args).fetchone()
+            total = counted[0]
+            singleton_id = counted[1] if q and total == 1 else None
         pages = max(1, (total + page_size - 1) // page_size)
         page = min(page, pages)
-        page_sql = count_sql if search_scan and total <= page_size else sql
-        rows = db.execute(page_sql + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', [*args,page_size,(page-1)*page_size])
+        if total==0:
+            rows=[]  # Counting already proved empty in this read snapshot.
+        elif q and total==1:
+            rows=db.execute('SELECT * FROM media WHERE id=?',(singleton_id,))
+        elif matching_ids is not None:
+            # A bounded set of IDs avoids evaluating LIKE again. NOT INDEXED
+            # still permits integer primary-key lookups, then the usual sort.
+            placeholders = ','.join('?' for _ in matching_ids)
+            rows = db.execute('SELECT * FROM media NOT INDEXED WHERE id IN (' + placeholders +
+                ') ORDER BY ' + order + ' LIMIT ? OFFSET ?',
+                [*matching_ids, page_size, (page-1)*page_size])
+        else:
+            rows = db.execute(sql + ' ORDER BY ' + order + ' LIMIT ? OFFSET ?', [*args,page_size,(page-1)*page_size])
         return {'items':[row_dict(x) for x in rows], 'total':total, 'page':page, 'page_size':page_size, 'pages':pages}
 
 
@@ -1830,15 +1962,24 @@ def embed_native_surface(owner:str,body:NativeEmbedInput,request:Request):
         return windows_surface().embed(body.parent,body.host,body.overlay,body.pid,rect)
 
 @app.put("/api/media/{media_id}/progress")
-def save_progress(media_id: int, body: ProgressInput):
+def save_progress(media_id: int, body: ProgressInput, response: Response = None, request: Request = None):
+    started = time.perf_counter() if PROFILE_PROGRESS else None
+    if started is not None and request is not None:
+        timing = request.scope.get('avhub_progress_timing')
+        if isinstance(timing, dict):timing['handler_entered'] = started
     stamp = body.updated_at if body.updated_at is not None else time.time() * 1000
-    with connection() as db:
-        row = db.execute("SELECT duration FROM media WHERE id=?", (media_id,)).fetchone()
-        if not row: raise HTTPException(404, "视频不存在")
-        progress = min(body.progress, row["duration"]) if row["duration"] else body.progress
-        db.execute("UPDATE media SET progress=?,watched=COALESCE(manual_watched,?),last_played=?,progress_updated_at=? WHERE id=? AND progress_updated_at<=?",
-                   (progress, int(body.watched), time.time(), stamp, media_id, stamp))
-        return dict(db.execute("SELECT id,progress,watched,last_played FROM media WHERE id=?", (media_id,)).fetchone())
+    with database_timing.scope('progress-save') as trace:
+        with connection() as db:
+            row = db.execute("SELECT duration FROM media WHERE id=?", (media_id,)).fetchone()
+            if not row: raise HTTPException(404, "视频不存在")
+            progress = min(body.progress, row["duration"]) if row["duration"] else body.progress
+            db.execute("UPDATE media SET progress=?,watched=COALESCE(manual_watched,?),last_played=?,progress_updated_at=? WHERE id=? AND progress_updated_at<=?",
+                       (progress, int(body.watched), time.time(), stamp, media_id, stamp))
+            result=dict(db.execute("SELECT id,progress,watched,last_played FROM media WHERE id=?", (media_id,)).fetchone())
+        if response is not None:response.headers['X-AVHub-Save-Trace']=str(trace['scope_id'])
+        if response is not None and started is not None:
+            response.headers['X-AVHub-Progress-Handler-Ms']=f'{(time.perf_counter()-started)*1000:.3f}'
+        return result
 
 @app.delete("/api/media/{media_id}/history")
 def clear_history(media_id: int):

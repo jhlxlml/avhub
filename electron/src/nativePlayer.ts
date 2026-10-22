@@ -118,7 +118,7 @@ export class NativePlayer {
   constructor(private deps:Dependencies){
     this.independent=new IndependentPlayer({...deps,api:(route,method,body)=>this.api(route,method,body),send:(channel,value)=>{try{const main=deps.main();if(main&&!main.isDestroyed())main.webContents.send(channel,value);}catch{deps.log('native-independent-notification-unavailable');}}});
   }
-  status(){return {available:process.platform==='win32'&&existsSync(this.deps.runtime()),active:Boolean(this.active)||this.independent.hasSession,engine:'mpv',experimental:true};}
+  status(){return {available:process.platform==='win32'&&existsSync(this.deps.runtime()),active:Boolean(this.active)||this.independent.hasSession,engine:'mpv',experimental:true,packaged:app.isPackaged};}
   private async api(route:string,method='GET',body?:unknown,timeoutMs=10000){
     const response=await fetch(this.deps.origin()+route,{method,headers:{'X-AVHub-Token':this.deps.token(),...(body!==undefined?{'Content-Type':'application/json'}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs),redirect:'error'});
     const result=await response.json() as Record<string,any>;
@@ -382,7 +382,7 @@ export class NativePlayer {
   }
   private async open(mediaId:number,start:number,viewport?:NativeViewport){
     if(this.opening)throw new Error('原生播放器正在启动');
-    if(!this.status().available)throw new Error('尚未准备 MPV 运行库，请运行 scripts/prepare-mpv.ps1；现有播放器仍可使用');
+    if(!this.status().available)throw new Error(app.isPackaged?'当前桌面包未提供可用的 MPV 运行库，请在播放偏好选择现有播放器；无需执行开发脚本':'尚未准备 MPV 运行库，请运行 scripts/prepare-mpv.ps1；现有播放器仍可使用');
     if(this.active===this.failedStartup&&this.active){try{await this.close(true);}catch(cleanup){throw startupFailure(this.failedStartupError??new Error('原生会话清理未完成'),cleanup);}}
     if(this.active)throw new Error('请先关闭当前原生播放窗口');
     this.opening=true;const owner=randomBytes(16).toString('hex');let active:Active|undefined;const ownedWindows:BaseWindow[]=[];

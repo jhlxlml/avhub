@@ -1,6 +1,8 @@
 import { test,expect } from '@playwright/test';
+import {waitForDecodedPlayback} from './player-readiness';
 
-test.beforeEach(async({request})=>{await request.post('/test/reset');});
+// Cover/draft acceptance does not require a real headless audio device.
+test.beforeEach(async({request})=>{await request.post('/test/reset');await request.patch('/api/preferences',{data:{values:{audio:{volume:0,muted:true}}}});});
 
 test('metadata completes while covers run; directory controls unlock and tasks pause independently',async({page,request})=>{
   const {path}=await(await request.get('/test/scan-source')).json();
@@ -19,7 +21,8 @@ test('metadata completes while covers run; directory controls unlock and tasks p
   await page.getByRole('button',{name:'关闭封面任务',exact:true}).click();
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   await expect(page.getByRole('button',{name:'浏览本地文件夹',exact:true})).toBeEnabled();
-  await expect(page.locator('.root-list>div').filter({hasText:path}).getByRole('button',{name:'移除',exact:true})).toBeEnabled();
+  const rootRow=page.locator('.root-list>div').filter({hasText:path});await rootRow.getByRole('button',{name:/^更多目录操作 /}).click();
+  await expect(rootRow.getByRole('menuitem',{name:/移出媒体库/})).toBeEnabled();await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await page.reload();await icon.click();
   await expect(tasks.getByRole('button',{name:'恢复封面任务',exact:true})).toBeVisible();
@@ -32,7 +35,7 @@ test('timestamp cover regeneration keeps playback and unsaved metadata draft',as
   await request.post('/api/thumbnails/pause');
   await page.goto('/?video=1');await expect(page.locator('video')).toBeVisible();
   await page.getByRole('button',{name:'从头开始',exact:true}).click();
-  await expect.poll(()=>page.locator('video').evaluate((video:HTMLVideoElement)=>!video.paused&&video.currentTime>0)).toBe(true);
+  await waitForDecodedPlayback(page);
   await page.getByText('编辑媒体信息',{exact:true}).click();
   const title=page.getByRole('textbox',{name:'显示标题',exact:true});await title.fill('截图期间保留的草稿');
   await page.getByRole('spinbutton',{name:'封面截图时间',exact:true}).fill('10');

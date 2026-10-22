@@ -23,7 +23,8 @@ concurrency:
 jobs:
   verify:
     runs-on: windows-2025
-    timeout-minutes: 30
+    # Includes the added visual/state suite and packaged acceptance on tags.
+    timeout-minutes: 45
     env:
       PYTHONUTF8: '1'
     steps:
@@ -47,11 +48,19 @@ jobs:
         run: python -c "import runpy,os;runpy.run_path('scripts/ci-prepare.py')['validate_release'](os.environ['RELEASE_TAG'])"
       - name: Prepare pinned FFmpeg
         run: python scripts/ci-prepare.py
+      - name: Prepare and verify pinned private SQLite
+        run: |
+          python scripts/prepare-sqlite.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/python-runtime.py --check
       - name: Install locked/tested dependencies
         run: |
           python -m pip install -r requirements-ci.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm ci
+      - name: Audit locked JavaScript dependencies
+        # Known moderate/high/critical findings must not silently reach a release.
+        run: npm audit --audit-level=moderate
       - name: Install and verify pinned Electron runtime
         run: |
           node node_modules/electron/install.js
@@ -63,7 +72,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build:electron
       - name: Backend regression
-        run: python -m unittest discover -s tests -p test_*.py
+        run: npm run test:backend
       - name: Native playback control queue regression (no runtime download)
         run: |
           node electron/test/mpv-client.mjs
@@ -86,26 +95,43 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/chromium-diagnostics.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test --test-timeout=10000 electron/test/media-memory-barrier.test.mjs electron/test/playback-timeline.test.mjs electron/test/steady-frame-observation.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test --test-timeout=10000 electron/test/file-preview.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/window-bounds.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/process-diagnostics.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/native-embedding.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/check-mpv-readiness.mjs --manifest-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/build-dependency-policy.mjs
       - name: Windows short-path regression
-        run: python tests/check_path_alias.py
+        run: python scripts/python-runtime.py tests/check_path_alias.py
       - name: Shared renderer regression
         run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts tests/ui/mouse-seek.spec.ts tests/ui/chromium-diagnostics.spec.ts
       - name: Windows short-path screenshot regression
         # Shared renderer tests are harnesses, not browser product acceptance.
         run: python tests/check_path_alias.py --ui
+      - name: Read-only route recovery and desktop runtime messages
+        run: npx playwright test tests/ui/route-recovery.spec.ts tests/ui/native-runtime-message.spec.ts tests/ui/progress-save.spec.ts
       - name: Renderer interaction and theme regression harness
         run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts tests/ui/media-menu-position.spec.ts tests/ui/file-management.spec.ts tests/ui/batch-recycle.spec.ts
+      - name: Renderer Mira and interaction convergence harnesses
+        # Component/decoder harnesses; real desktop acceptance remains below.
+        run: npx playwright test tests/ui/borderless-controls.spec.ts tests/ui/content-feedback.spec.ts tests/ui/dialog-layout.spec.ts tests/ui/directory-detail-polish.spec.ts tests/ui/directory-settings.spec.ts tests/ui/form-hints.spec.ts tests/ui/mira-design.spec.ts tests/ui/mira-followup.spec.ts tests/ui/mira-navigation.spec.ts tests/ui/pagination-layout.spec.ts tests/ui/queue-feedback.spec.ts tests/ui/settings-consistency.spec.ts tests/ui/settings-scroll.spec.ts tests/ui/workspace-consistency.spec.ts
       - name: Lossless delivery and playback recovery renderer harnesses
         run: npx playwright test tests/ui/indexed-remux.spec.ts tests/ui/native-quality.spec.ts tests/ui/fullscreen-icon.spec.ts tests/ui/player-wheel.spec.ts tests/ui/playlist-notice.spec.ts tests/ui/ts-startup.spec.ts
       - name: Recycle records and filter containment renderer harnesses
         run: npx playwright test tests/ui/recycle-records.spec.ts tests/ui/library-refinement.spec.ts tests/ui/source-changes.spec.ts tests/ui/thumbnail-viewport.spec.ts tests/ui/recent-recycle.spec.ts tests/ui/native-player-controls.spec.ts tests/ui/native-launch-lifecycle.spec.ts tests/ui/cover-cache.spec.ts tests/ui/media-playback-memory.spec.ts tests/ui/library-polish.spec.ts tests/ui/workspace-polish.spec.ts tests/ui/player-polish.spec.ts
       - name: Real Electron startup/exit
         run: node electron/test/smoke.mjs
+      - name: Real Electron failed startup cleanup (owned backend tree)
+        run: node electron/test/startup-failure.mjs
+      - name: Real Electron read recovery and original diagnostic export
+        run: node electron/test/route-recovery.mjs
       - name: Startup trace unit regression
         run: node electron/test/startup-trace.mjs
       - name: Real Electron pure playback pin regression
@@ -118,6 +144,8 @@ jobs:
         run: node electron/test/owned-temp-workspace-policy.mjs
       - name: Real Electron opt-in file organization with owned TEMP samples
         run: node electron/test/file-management.mjs
+      - name: Real Electron cancellable file preflight and protected writes
+        run: node electron/test/file-preview.mjs
       - name: Native batch recycle safety regression
         run: node electron/test/batch-recycle.mjs
       - name: Native recycle records with isolated owned samples
@@ -190,6 +218,10 @@ jobs:
             playwright-report/**
             build/electron-*/**/*.log
             build/concurrent-soak-*/soak.json
+            build/route-recovery-*/**
+            build/startup-failure-*/acceptance.json
+            build/startup-failure-*/**/child.json
+            build/startup-failure-*/**/*.log
             build/portable-release-test-*/startup-timings.json
             build/folder-release-test-*/startup-timings.json
           if-no-files-found: ignore
@@ -217,6 +249,10 @@ jobs:
       - name: Prepare locked development runtimes (not redistribution approval)
         run: |
           python scripts/ci-prepare.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/prepare-sqlite.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/python-runtime.py --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r requirements-ci.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

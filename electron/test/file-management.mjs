@@ -22,6 +22,7 @@ try{
   await page.locator('.media-more').click();await expect(page.getByRole('menuitem',{name:'重命名文件',exact:true})).toBeDisabled();await page.keyboard.press('Escape');
   const refused=await page.evaluate(async id=>{const response=await fetch('/api/file-operations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media_id:id,action:'rename',stem:'forbidden'})});return response.status;},id);assert.equal(refused,403);
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  await page.getByRole('button',{name:'文件权限 '+media,exact:true}).click();
   for(const name of ['允许重命名','允许系统回收']){const checkbox=page.getByRole('checkbox',{name:name+' '+media,exact:true});await checkbox.click();await page.getByRole('dialog',{name:'开启文件整理权限？',exact:true}).getByRole('button',{name:'开启权限',exact:true}).click();await expect(checkbox).toBeChecked();await expect(page.getByRole('button',{name:'关闭设置',exact:true})).toBeEnabled();}
   console.log('Native directory opt-in confirmed for the owned TEMP media folder.');
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();

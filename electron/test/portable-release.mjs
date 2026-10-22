@@ -8,20 +8,22 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 const root=path.resolve(import.meta.dirname,'../..'),version=JSON.parse(readFileSync(path.join(root,'package.json'),'utf8')).version;
 const folderMode=process.argv.includes('--folder');
+const artifactOption=process.argv.find(value=>value.startsWith('--artifacts-dir='));
+const artifacts=path.resolve(artifactOption?artifactOption.slice('--artifacts-dir='.length):path.join(root,'dist/electron'));
 const folder=mkdtempSync(path.join(root,'build',folderMode?'folder-release-test-':'portable-release-test-'));
 const home=path.join(folder,'app',...(folderMode?[`AVHub-folder-portable-${version}-x64`]:[])),custom=path.join(folder,'custom');mkdirSync(custom);
 let exe;
 if(folderMode) {
-  const extracted=spawnSync(process.env.AVHUB_PYTHON||'python',['scripts/folder-portable.py','--extract-to',path.join(folder,'app')],{cwd:root,windowsHide:true,encoding:'utf8',timeout:120000});
+  const extracted=spawnSync(process.env.AVHUB_PYTHON||'python',['scripts/folder-portable.py','--directory',artifacts,'--extract-to',path.join(folder,'app')],{cwd:root,windowsHide:true,encoding:'utf8',timeout:120000});
   assert.equal(extracted.status,0,`actual folder ZIP must extract safely: ${extracted.stderr}`);
   exe=path.join(home,'AVHub.exe');assert.ok(existsSync(exe));
 } else {
-  mkdirSync(home);exe=path.join(home,`AVHub-portable-${version}-x64.exe`);copyFileSync(path.join(root,'dist/electron',path.basename(exe)),exe);
+  mkdirSync(home);exe=path.join(home,`AVHub-portable-${version}-x64.exe`);copyFileSync(path.join(artifacts,path.basename(exe)),exe);
 }
-// Seed a new isolated empty library so upgrade detection cannot import the
-// user's legacy profile while verifying the actual default sibling directory.
-const seed=spawnSync(process.env.AVHUB_PYTHON||'python',['-c','from app import main as m; m.bootstrap(); m.playback.close()'],{cwd:root,env:{...process.env,AVHUB_DATA_DIR:path.join(home,'AVHub-data')},windowsHide:true,timeout:30000});
-assert.equal(seed.status,0,'isolated portable test database must initialize');
+// Only the frozen backend may migrate this owned old-schema fixture. Seeding
+// with current bootstrap() would silently skip the actual upgrade path.
+const seed=spawnSync(process.env.AVHUB_PYTHON||'python',['scripts/python-runtime.py','electron/test/seed-legacy-library.py',path.join(home,'AVHub-data/library.db'),path.join(folder,'legacy-empty-media')],{cwd:root,windowsHide:true,timeout:30000});
+assert.equal(seed.status,0,`isolated legacy database must initialize: ${seed.stderr?.toString()}`);
 let child,browser,page,port;
 const startupSamples=[];
 let firstFrameSample=null;
@@ -39,6 +41,17 @@ async function launch(){
   await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor({timeout:60000});
   const health=await page.evaluate(async()=> (await(await fetch('/api/health')).json()));assert.equal(health.frozen,true);assert.equal(health.ffmpeg,true);assert.equal(health.ffprobe,true);assert.equal(health.version,version);
   assert.equal(health.build_id,JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')).build_id);
+  const sqlitePin=JSON.parse(readFileSync(path.join(root,'app/sqlite-runtime.json'),'utf8'));
+  assert.equal(health.sqlite_runtime.version,sqlitePin.version);assert.equal(health.sqlite_runtime.verified,true);
+  assert.equal(health.sqlite_runtime.policy,'pinned-private-runtime');
+  const legacy=await page.evaluate(async()=>{
+    const item=await(await fetch('/api/media/1001')).json(),playlist=await(await fetch('/api/playlists/91')).json();
+    return{item,playlist};
+  });
+  assert.equal(legacy.item.title,'Legacy preserved title');assert.equal(legacy.item.progress,42);assert.equal(Boolean(legacy.item.favorite),true);
+  assert.deepEqual(legacy.item.tags,['legacy']);assert.equal(legacy.item.rating,4);
+  assert.equal(legacy.playlist.name,'Legacy preserved playlist');assert.equal(legacy.playlist.revision,0);
+  assert.deepEqual(legacy.playlist.items.map(item=>item.id),[1001]);
   const launchLog=()=>{const text=readFileSync(path.join(health.data_dir,'desktop.log'),'utf8');return text.slice(text.lastIndexOf('startup-begin'));};
   await expect.poll(()=>launchLog().includes('stage=library-ready')).toBe(true);
   const stages=Array.from(launchLog().matchAll(/startup-stage stage=([\w-]+) elapsed_ms=(\d+)/g),match=>({stage:match[1],elapsedMs:Number(match[2])}));
@@ -100,7 +113,7 @@ try {
   assert.ok(existsSync(path.join(home,'AVHub-data/library.db')));assert.ok(existsSync(path.join(custom,'library.db')));
   await close();
   await launch();await close(); // Repeat launch without another migration.
-  assert.ok(!readdirSync(path.join(root,'dist/electron/win-unpacked/resources')).includes('archive'));
-  writeFileSync(path.join(folder,'startup-timings.json'),JSON.stringify({startupSamples,firstFrameSample,limitations:['Initial startup uses an isolated empty library; later runs include one generated sample; no OS cache flush; polling has up to 250 ms granularity; run 2 includes data migration.']},null,2));
-  console.log(JSON.stringify({passed:true,report:folder,startupSamples,limitations:['Isolated empty library; first run is not OS-cache-controlled cold boot. Second run includes explicit data migration.'],checks:[folderMode?'actual extracted folder ZIP':'actual portable EXE','frozen backend/FFmpeg','0 background checks',process.env.CI==='true'?'manual update UI (mock GitHub response)':'manual real GitHub check','default sibling data','packaged migration command','preferences retained','old data retained']}));
+  assert.ok(!readdirSync(path.join(artifacts,'win-unpacked/resources')).includes('archive'));
+  writeFileSync(path.join(folder,'startup-timings.json'),JSON.stringify({startupSamples,firstFrameSample,limitations:['Initial startup upgrades a synthetic old-schema library containing one missing media record and one playlist; later runs add one generated sample; no OS cache flush; polling has up to 250 ms granularity; run 2 relocates the data directory.']},null,2));
+  console.log(JSON.stringify({passed:true,report:folder,startupSamples,limitations:['Synthetic legacy fixture, not a real user backup; first run is not OS-cache-controlled cold boot. Second run includes explicit data relocation.'],checks:[folderMode?'actual extracted folder ZIP':'actual portable EXE','frozen backend/FFmpeg','0 background checks',process.env.CI==='true'?'manual update UI (mock GitHub response)':'manual real GitHub check','default sibling data','old-schema upgrade preserves metadata/progress/playlist','packaged migration command','preferences retained','old data retained']}));
 }finally{if(page)await close();if(browser)await browser.close().catch(()=>{});if(child&&child.exitCode===null)spawnSync('taskkill',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});}

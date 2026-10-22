@@ -1,0 +1,6 @@
+SQLite is in the public domain. AVHub redistributes the official Windows x64
+SQLite library without changes. The Python sqlite3 binding is part of Python
+and remains subject to Python's own distribution license.
+
+Official SQLite copyright and public-domain statement:
+https://sqlite.org/copyright.html

@@ -133,11 +133,16 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 npm ci
 node node_modules/electron/install.js
+npm run prepare:sqlite
 ```
 
 如果虚拟环境激活被 PowerShell 执行策略阻止，可以在当前终端先执行 `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`，再激活。该设置仅作用于当前进程。
 
 使用 `npm ci` 按 `package-lock.json` 安装，避免无意升级依赖。Electron 运行时需显式安装；上述安装命令需要联网。后续的 `python`、测试和打包命令应使用同一个已安装依赖的 Python 环境。
+
+SQLite 使用项目内固定版本，由准备命令校验官方下载的哈希，不替换系统 Python 的数据库 DLL。
+桌面启动不会联网下载或静默回退。可用 `npm run check:sqlite` 核对实际加载结果；
+数据库专项脚本通过 `python scripts/python-runtime.py 脚本路径 参数` 运行，以使用与桌面相同的引擎。
 
 ### 3. 启动桌面版
 

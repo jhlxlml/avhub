@@ -4,6 +4,18 @@ import time
 import uuid
 from pathlib import Path
 from contextlib import contextmanager
+from typing import NamedTuple
+from .publication_gate import PublicationGate
+
+
+class CommittedThumbnail(NamedTuple):
+    """Receipt issued only after cover metadata AND job completion commit.
+
+    Retains the two-value success/error decoder contract. Unlike an ordinary
+    decoder success, the worker must not finish this job in another transaction.
+    """
+    success: bool = True
+    error: str = ''
 
 
 def install(db):
@@ -22,9 +34,17 @@ def install(db):
 
 
 class ThumbnailJobs:
-    def __init__(self,connection,roots):
-        self.connection=connection;self.all_roots=roots is None
+    def __init__(self,connection,roots,read_connection=None):
+        self.connection=connection;self.read_connection=read_connection or connection;self.all_roots=roots is None
         self.roots=list(dict.fromkeys(roots or []));self.root_set=set(self.roots);self.lock=threading.RLock()
+        self.visible={}
+
+    def prioritize(self,ids):
+        # Viewport order is only a bounded scheduling hint, not durable user
+        # data. Keep jobs/revisions/retries in SQLite, but never fsync on scroll
+        # or compete with a progress save merely to change this hint.
+        stamp=time.time()
+        with self.lock:self.visible={value:stamp for value in list(dict.fromkeys(ids))[:120]}
 
     def scope(self):
         if self.all_roots:return '1',[]
@@ -35,35 +55,52 @@ class ThumbnailJobs:
         with self.lock:
             if root_id in self.root_set:return 0
             self.roots.append(root_id);self.root_set.add(root_id)
-        with self.connection() as db:
+        with self.read_connection() as db:
             return db.execute("SELECT COUNT(*) FROM thumbnail_jobs WHERE state='pending' AND root_id=?",(root_id,)).fetchone()[0]
 
     def schedule(self,path,media_id,*_):
         with self.connection() as db:
-            row=db.execute('SELECT root_id,path,size,modified FROM media WHERE id=?',(media_id,)).fetchone()
-            if not row:return False
-            old=db.execute('SELECT * FROM thumbnail_jobs WHERE media_id=?',(media_id,)).fetchone()
-            same=old and all(old[key]==row[key] for key in ['root_id','path','size','modified'])
-            if same and (old['state']=='pending' or time.time()-old['attempted_at']<300):return False
-            db.execute('''INSERT INTO thumbnail_jobs(media_id,root_id,path,size,modified,revision) VALUES(?,?,?,?,?,?)
-                ON CONFLICT(media_id) DO UPDATE SET root_id=excluded.root_id,path=excluded.path,size=excluded.size,
-                modified=excluded.modified,state='pending',attempted_at=0,revision=excluded.revision,
-                frame_time=NULL,priority=0,ready_at=0,last_error='' ''',
-                (media_id,*[row[key] for key in ['root_id','path','size','modified']],uuid.uuid4().hex))
-            with self.lock:already_counted=old and old['state']=='pending' and old['root_id'] in self.root_set
-            return not already_counted
+            return self.schedule_in(db,media_id)
+
+    def schedule_in(self,db,media_id):
+        """Enqueue on the caller's transaction; never commit or wake a worker.
+
+        The caller owns the publication gate and commits before signalling.
+        Standalone scheduling above retains its original durable contract.
+        """
+        row=db.execute('SELECT root_id,path,size,modified FROM media WHERE id=?',(media_id,)).fetchone()
+        if not row:return False
+        old=db.execute('SELECT * FROM thumbnail_jobs WHERE media_id=?',(media_id,)).fetchone()
+        same=old and all(old[key]==row[key] for key in ['root_id','path','size','modified'])
+        if same and (old['state']=='pending' or time.time()-old['attempted_at']<300):return False
+        db.execute('''INSERT INTO thumbnail_jobs(media_id,root_id,path,size,modified,revision) VALUES(?,?,?,?,?,?)
+            ON CONFLICT(media_id) DO UPDATE SET root_id=excluded.root_id,path=excluded.path,size=excluded.size,
+            modified=excluded.modified,state='pending',attempted_at=0,revision=excluded.revision,
+            frame_time=NULL,priority=0,ready_at=0,last_error='' ''',
+            (media_id,*[row[key] for key in ['root_id','path','size','modified']],uuid.uuid4().hex))
+        with self.lock:already_counted=old and old['state']=='pending' and old['root_id'] in self.root_set
+        return not already_counted
 
     def count(self):
         scope,roots=self.scope()
-        with self.connection() as db:return db.execute("SELECT COUNT(*) FROM thumbnail_jobs WHERE state='pending' AND "+scope,roots).fetchone()[0]
+        with self.read_connection() as db:return db.execute("SELECT COUNT(*) FROM thumbnail_jobs WHERE state='pending' AND "+scope,roots).fetchone()[0]
 
     def next(self):
         scope,roots=self.scope()
-        with self.connection() as db:
-            row=db.execute("SELECT * FROM thumbnail_jobs WHERE state='pending' AND ready_at<=? AND "+scope+' ORDER BY priority DESC,media_id LIMIT 1',[time.time(),*roots]).fetchone()
+        with self.lock:visible=self.visible.copy()
+        with self.read_connection() as db:
+            now=time.time()
+            row=db.execute("SELECT * FROM thumbnail_jobs WHERE state='pending' AND ready_at<=? AND "+scope+' ORDER BY priority DESC,media_id LIMIT 1',[now,*roots]).fetchone()
+            if visible:
+                candidates=db.execute("SELECT * FROM thumbnail_jobs WHERE state='pending' AND ready_at<=? AND "+scope+
+                    ' AND media_id IN ('+','.join('?' for _ in visible)+')',[now,*roots,*visible]).fetchall()
+                # An explicit retry's persisted priority still competes with
+                # viewport hints. The primary-key lookup touches <=120 jobs,
+                # never sorts the full library by an in-memory expression.
+                row=max(([row] if row else [])+candidates,key=lambda r:(max(r['priority'],visible.get(r['media_id'],0)),-r['media_id']),default=None)
             if not row:return None
-            current=db.execute('SELECT root_id,path,size,modified,missing,duration FROM media WHERE id=?',(row['media_id'],)).fetchone()
-            valid=current and not current['missing'] and all(row[key]==current[key] for key in ['root_id','path','size','modified'])
+            current=db.execute('SELECT root_id,path,size,modified,missing,duration,file_state FROM media WHERE id=?',(row['media_id'],)).fetchone()
+            valid=current and not current['missing'] and current['file_state']=='normal' and all(row[key]==current[key] for key in ['root_id','path','size','modified'])
             return dict(row), (row['path'],row['media_id'],current['duration'] or 0,True,dict(row)) if valid else None
 
     def finish(self,key,success,error=''):
@@ -81,10 +118,10 @@ class ThumbnailService:
     gate protects publication and source/index mutation, never the decode itself.
     Each decode owns its cancellation event (not the metadata scanner's event).
     """
-    def __init__(self,connection,process,read_connection=None,on_timeout=None):
-        self.connection=connection;self.jobs=ThumbnailJobs(connection,None);self.process=process
+    def __init__(self,connection,process,read_connection=None,on_timeout=None,scope=None):
         self.read_connection=read_connection or connection
-        self.gate=threading.RLock();self.lock=threading.RLock()
+        self.connection=connection;self.jobs=ThumbnailJobs(connection,None,self.read_connection);self.process=process
+        self.gate=PublicationGate(scope);self.lock=threading.RLock()
         self.wake=threading.Event();self.stop=threading.Event();self.cancelled=threading.Event()
         self.thread=None;self.paused=False;self.current=None;self.published=0;self.error=''
         self.on_timeout=on_timeout;self.playback_leases={}
@@ -107,13 +144,16 @@ class ThumbnailService:
     def start(self):
         with self.lock:
             if self.thread and self.thread.is_alive():return
-            with self.connection() as db:
+            with self.read_connection() as db:
                 row=db.execute('SELECT paused FROM thumbnail_control WHERE id=1').fetchone()
             self.paused=bool(row and row[0]);self.stop.clear();self.cancelled=threading.Event()
             self.thread=threading.Thread(target=self.run,name='avhub-cover-worker',daemon=True);self.thread.start()
 
     def reload_control(self):
+        # Restore calls this while owning the exclusive read gate. Use its
+        # reentrant serialized connection, not a snapshot read behind that gate.
         with self.connection() as db:row=db.execute('SELECT paused FROM thumbnail_control WHERE id=1').fetchone()
+        self.jobs.prioritize([])
         with self.lock:self.paused=bool(row and row[0])
         self.wake.set()
 
@@ -121,9 +161,17 @@ class ThumbnailService:
         with self.gate:self.jobs.schedule(*job)
         self.wake.set()
 
+    @contextmanager
+    def scan_write(self,connection):
+        # Same lock order as publication/mutations: gate BEFORE writer. Never
+        # wake on a rolled-back enqueue or hold this gate during FFprobe.
+        with self.gate:
+            with connection() as db:yield db
+        self.wake.set()
+
     def activate(self,root_id):
         with self.connection() as db:
-            db.execute("UPDATE thumbnail_jobs SET ready_at=0 WHERE root_id=? AND state='pending'",(root_id,))
+            db.execute("UPDATE thumbnail_jobs SET ready_at=0 WHERE root_id=? AND state='pending' AND ready_at<>0",(root_id,))
         self.wake.set()
 
     def pause(self,paused=True):
@@ -158,8 +206,7 @@ class ThumbnailService:
         self.wake.set()
 
     def prioritize(self,ids):
-        with self.connection() as db:
-            db.executemany("UPDATE thumbnail_jobs SET priority=? WHERE media_id=? AND state='pending'",[(time.time(),value) for value in ids])
+        self.jobs.prioritize(ids)
         self.wake.set()
 
     def snapshot(self):
@@ -168,7 +215,8 @@ class ThumbnailService:
             blocked=db.execute("SELECT COUNT(*) FROM thumbnail_jobs WHERE state='pending' AND ready_at>?",(time.time(),)).fetchone()[0]
         with self.lock:
             return {'pending':counts.get('pending',0),'failed':counts.get('failed',0),'blocked':blocked,
-                    'paused':self.paused,'yielding':self.yielding(),'current':self.current,'published':self.published,'error':self.error}
+                    'paused':self.paused,'yielding':self.yielding(),'current':self.current,'published':self.published,'error':self.error,
+                    'publication_gate':self.gate.report()}
 
     def run(self):
         while not self.stop.is_set():
@@ -181,19 +229,27 @@ class ThumbnailService:
                 with self.gate,self.lock:
                     if self.paused or self.yielding() or self.stop.is_set():continue
                     cancelled=threading.Event();self.cancelled=cancelled;self.current=key['media_id']
-                error='';success=True
+                error='';success=True;committed=False
                 if job:
-                    with self.connection() as db:root=db.execute('SELECT path FROM roots WHERE id=?',(key['root_id'],)).fetchone()
+                    with self.read_connection() as db:root=db.execute('SELECT path FROM roots WHERE id=?',(key['root_id'],)).fetchone()
                     if root and not Path(root[0]).is_dir():
                         with self.connection() as db:
                             db.execute('UPDATE thumbnail_jobs SET ready_at=? WHERE media_id=? AND revision=?',(time.time()+30,key['media_id'],key['revision']))
                         continue
                     if root:
-                        try:success,error=self.process(key,cancelled,self.gate)
+                        try:
+                            result=self.process(key,cancelled,self.gate)
+                            success,error=result
+                            committed=isinstance(result,CommittedThumbnail) and success
                         except Exception as exc:
                             if not cancelled.is_set():success=False;error=str(exc)
                 with self.gate:
-                    if not cancelled.is_set() and not self.stop.is_set():
+                    if committed:
+                        # A stop/retry may arrive AFTER the durable commit.
+                        # Count that publication, but never finish/delete a
+                        # newer revision or falsely leave this one pending.
+                        with self.lock:self.published+=1
+                    elif not cancelled.is_set() and not self.stop.is_set():
                         if self.jobs.finish(key,success,error) and success and job:
                             with self.lock:self.published+=1
                 with self.lock:self.error=''

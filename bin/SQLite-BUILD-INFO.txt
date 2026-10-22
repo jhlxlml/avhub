@@ -1,0 +1,7 @@
+Official SQLite Windows x64 runtime, version 3.54.1.
+Source: https://sqlite.org/2026/sqlite-dll-win-x64-3540100.zip
+Archive SHA3-256: c2d09c8babb9399277055c057c97a53f1ffd7c5f11d0c1f2118ffdfa39f2daa4
+sqlite3.dll SHA-256: 4b59d3cded9dc1608544160f3b4b10ac974c6ac0d6ffc23064e5f4c8dbd05aea
+SQLite source ID: 2026-10-16 14:45:20 555e07ef33f69a0957d24d8e555b702464a131d6f1607f4c3c1e4551e8e6ca76
+Preparation and manifest: scripts/prepare-sqlite.py, app/sqlite-runtime.json.
+Unmodified upstream DLL; never installed into system Python or Windows folders.

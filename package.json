@@ -1,7 +1,7 @@
 {
   "name": "avhub",
   "private": true,
-  "version": "0.2.14",
+  "version": "0.2.15",
   "main": "electron/dist/main.js",
   "scripts": {
     "prebuild": "node scripts/write-build-info.mjs",
@@ -11,10 +11,12 @@
     "electron:dev": "npm run build && npm run build:electron && electron .",
     "package:windows": "electron-builder --win portable --x64",
     "test:ui": "playwright test",
-    "test:backend": "python -m unittest discover -s tests -p test_*.py",
+    "test:backend": "python scripts/python-runtime.py -m unittest discover -s tests -p test_*.py",
+    "prepare:sqlite": "python scripts/prepare-sqlite.py",
+    "check:sqlite": "python scripts/prepare-sqlite.py --verify-only && python scripts/python-runtime.py --check",
     "benchmark:seek": "npm run build && node scripts/benchmark-seek.mjs",
-    "benchmark:library": "python scripts/benchmark-library.py",
-    "benchmark:scan": "python scripts/benchmark-scan.py",
+    "benchmark:library": "python scripts/python-runtime.py scripts/benchmark-library.py",
+    "benchmark:scan": "python scripts/python-runtime.py scripts/benchmark-scan.py",
     "test:electron": "npm run build && npm run build:electron && node electron/test/smoke.mjs",
     "prepare:mpv": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-mpv.ps1",
     "check:mpv": "node scripts/check-mpv-readiness.mjs",
@@ -40,38 +42,71 @@
     "test:electron:data-location": "npm run build && npm run build:electron && node electron/test/data-location.mjs",
     "test:electron:shutdown": "npm run build && npm run build:electron && node electron/test/shutdown-policy.mjs && node electron/test/shutdown.mjs"
   },
-  "dependencies": {},
   "devDependencies": {
-    "@vitejs/plugin-react": "latest",
-    "hls.js": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "typescript": "latest",
-    "vite": "latest",
-    "electron": "44.4.3",
-    "electron-builder": "26.16.1",
     "@playwright/test": "^1.63.0",
+    "@radix-ui/react-slot": "1.5.0",
+    "@tailwindcss/vite": "4.3.3",
     "@types/node": "latest",
     "@types/react": "latest",
-    "@types/react-dom": "latest"
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "electron": "44.4.3",
+    "electron-builder": "26.16.1",
+    "hls.js": "latest",
+    "lucide-react": "1.61.0",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3",
+    "typescript": "latest",
+    "vite": "8.3.5"
+  },
+  "overrides": {
+    "@electron/get": {
+      "global-agent": "4.1.3"
+    }
   },
   "build": {
     "appId": "local.avhub.desktop",
     "productName": "AVHub",
-    "directories": { "output": "dist/electron" },
-    "files": ["electron/dist/**/*", "package.json", "app/build-info.json"],
-    "extraResources": [{
-      "from": "build/backend-dist/AVHubServer",
-      "to": "backend",
-      "filter": ["**/*", "!**/.*", "!**/.*/**"]
-    }, {
-      "from": "electron/assets",
-      "to": "icons",
-      "filter": ["avhub.png"]
-    }],
+    "directories": {
+      "output": "dist/electron"
+    },
+    "files": [
+      "electron/dist/**/*",
+      "package.json",
+      "app/build-info.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/backend-dist/AVHubServer",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/.*",
+          "!**/.*/**"
+        ]
+      },
+      {
+        "from": "electron/assets",
+        "to": "icons",
+        "filter": [
+          "avhub.png"
+        ]
+      }
+    ],
     "win": {
       "icon": "electron/assets/avhub.ico",
-      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "artifactName": "AVHub-portable-${version}-${arch}.${ext}"
     }
   }

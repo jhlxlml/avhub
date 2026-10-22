@@ -1,10 +1,14 @@
-.media-editor{margin-top:22px;border-top:1px solid #2a3852;padding-top:14px}
-.media-editor summary{cursor:pointer;color:#dce6fa;font-weight:600}
+.media-editor{margin-top:22px;border-top:1px solid var(--ui-divider);padding-top:14px}
+.media-editor summary{cursor:pointer;color:var(--ui-text);font-weight:600}
 .media-editor form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
-.media-editor label{display:grid;gap:6px;color:#aebbd1;font-size:13px}
+.media-editor label{display:grid;gap:6px;color:var(--ui-secondary);font-size:13px}
 .media-editor label:first-child,.media-editor label:last-of-type{grid-column:1/-1}
-.media-editor input,.media-editor select{min-width:0;width:100%;background:#0c1322;border:1px solid #35435c;border-radius:7px;padding:9px;color:#eef2ff}
-.media-editor button{justify-self:start;background:#e76f60}
+.media-editor input,.media-editor select{min-width:0;width:100%;border:1px solid transparent;border-radius:var(--ui-radius);color:var(--ui-text)}
+/* Keep form geometry here rather than duplicating it in the theme overlay. */
+:root .media-editor form input,:root .media-editor form select{min-height:32px;padding:6px 10px;border-color:transparent;background:var(--ui-raised);font-size:12px}
+.media-editor .editor-feedback{grid-column:1/-1;min-width:0}
+.media-editor form button[type="submit"]{justify-self:start;min-height:32px;height:32px}
+.media-editor form input[aria-invalid="true"]{box-shadow:inset 0 0 0 1px var(--ui-danger)}
 .episode-fields{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.editor-message{align-self:center;color:#aebbd1;font-size:13px}
+.editor-message{align-self:center;font-size:13px}
 @media(max-width:600px){.media-editor form{grid-template-columns:1fr}.media-editor label:first-child,.media-editor label:last-of-type,.episode-fields{grid-column:1}}

@@ -1,4 +1,5 @@
 import { test,expect,type Page,type Locator } from '@playwright/test';
+import {answerResumeOrWaitForControls} from './player-readiness';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 async function token(page:Page,name:string) {
@@ -93,16 +94,14 @@ for(const theme of ['dark','light']) {
     await hoverToken(page,page.getByRole('button',{name:'从播放列表移除 视频 002',exact:true}),'--ui-danger-soft');
     await expect(page.getByRole('button',{name:'从播放列表移除 视频 002',exact:true})).toHaveCSS('color',await token(page,'--ui-danger'));
     await page.getByRole('button',{name:'重命名列表',exact:true}).click();
-    await expect(page.getByRole('textbox',{name:'重命名播放列表',exact:true})).toHaveCSS('background-color',await token(page,'--ui-field'));
+    await expect(page.getByRole('textbox',{name:'重命名播放列表',exact:true})).toHaveCSS('background-color',await token(page,'--ui-raised'));
     await fits(page.getByRole('dialog'));await shot(page,`${theme}-playlist-rename`);
   });
 
   test(`${theme}: player information is themed while video pixels and overlay contrast stay unchanged`,async({page,request})=>{
     await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
     await page.goto('/?video=2');
-    const start=page.getByRole('button',{name:'从头开始',exact:true}),fullscreen=page.getByRole('button',{name:'全屏',exact:true});
-    await expect.poll(async()=>await start.isVisible()||await fullscreen.isEnabled()).toBeTruthy();
-    if(await start.isVisible())await start.click();
+    await answerResumeOrWaitForControls(page);
     const video=page.locator('video');await expect.poll(()=>video.evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
     await video.evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.polishIdentity='same-decoder';});
     const source=await video.evaluate((v:HTMLVideoElement)=>v.currentSrc);
@@ -152,14 +151,15 @@ for(const theme of ['dark','light']) {
     // The clicked cover's coordinates can coincide with the first episode.
     // Leave it before measuring idle style, then explicitly test its hover.
     await page.mouse.move(20,800);
-    await expect(episode).toHaveCSS('background-color',await token(page,'--ui-surface'));
-    await hoverToken(page,episode,'--ui-field');await fits(page.locator('html'));
+    await expect(episode).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+    await expect(episode).toHaveCSS('border-top-color','rgba(0, 0, 0, 0)');
+    await hoverToken(page,episode);await fits(page.locator('html'));
     await shot(page,`${theme}-series-episodes`);
     await page.getByRole('button',{name:'全部视频',exact:true}).click();
     await page.getByRole('button',{name:'列表',exact:true}).click();
     const row=page.locator('.media-list .card').first();
     await row.hover();await expect(row).toHaveCSS('background-color',await token(page,'--ui-field'));
-    await expect(row).toHaveCSS('border-radius','16px');await fits(page.locator('html'));
+    await expect(row).toHaveCSS('border-radius','12px');await fits(page.locator('html'));
     await shot(page,`${theme}-list-rows`);
   });
 }

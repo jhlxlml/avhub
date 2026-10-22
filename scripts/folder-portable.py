@@ -14,7 +14,8 @@ FORBIDDEN={'archive','.git','node_modules','avhub-data','data','screenshots','hl
 MEDIA={'.mp4','.mkv','.ts','.avi','.mov','.webm','.m4v','.mts','.m2ts','.wmv','.flv'}
 REQUIRED={'AVHub.exe','resources/app.asar','resources/backend/AVHubServer.exe',
           'resources/backend/_internal/bin/ffmpeg.exe','resources/backend/_internal/bin/ffprobe.exe',
-          'resources/backend/_internal/app/build-info.json'}
+          'resources/backend/_internal/app/build-info.json',
+          'resources/backend/_internal/sqlite3.dll','resources/backend/_internal/app/sqlite-runtime.json'}
 
 def folder_name(version):
     if not re.fullmatch(r'\d+\.\d+\.\d+',version):raise ValueError('Invalid stable version')
@@ -74,8 +75,10 @@ def create(source,target,version,build_id):
     return target
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--extract-to',type=Path);args=parser.parse_args()
-    version=json.loads((ROOT/'package.json').read_text())['version'];directory=ROOT/'dist/electron'
+    parser=argparse.ArgumentParser();parser.add_argument('--extract-to',type=Path)
+    parser.add_argument('--directory',type=Path,default=ROOT/'dist/electron',help='Explicit candidate artifact directory; defaults to the release output')
+    args=parser.parse_args()
+    version=json.loads((ROOT/'package.json').read_text())['version'];directory=args.directory.resolve()
     target=directory/(folder_name(version)+'.zip')
     build=json.loads((ROOT/'app/build-info.json').read_text())
     if args.extract_to:

@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useId,useState} from 'react';
 import {createPortal} from 'react-dom';
 import {Button,Dialog} from './ui';
 import {Icon} from './Icon';
@@ -14,6 +14,7 @@ export function confirmInApp(title:string,details:string,consequence:string,acce
   });
 }
 export function AppConfirmHost(){
+  const headingId=useId(),detailsId=useId(),consequenceId=useId();
   const [request,setRequest]=useState<Request|null>(null);
   const [,setFullscreenRevision]=useState(0);
   useEffect(()=>{if(request)document.querySelector<HTMLButtonElement>('.app-confirm-dialog .close')?.focus({preventScroll:true});},[request]);
@@ -25,9 +26,9 @@ export function AppConfirmHost(){
     return()=>{document.removeEventListener('fullscreenchange',fullscreen);window.removeEventListener('avhub-confirm',receive);window.removeEventListener('avhub-before-quit',quit);pending?.resolve(false);pending=null;};
   },[]);
   function finish(accepted:boolean){const value=pending;pending=null;setRequest(null);value?.resolve(accepted);}
-  return <><span hidden data-app-confirm-host/>{request&&createPortal(<Dialog label={request.title} closeLabel="取消确认" busy={false} close={()=>finish(false)} className={`modal app-confirm-dialog${request.danger?' is-destructive':''}`} backdropClassName="app-confirm-backdrop">
-    <h2 className="dialog-title"><Icon name={request.danger?'warning':'shield'} size={22}/>{request.title}</h2>
-    <p className="app-confirm-details">{request.details}</p><p className="dialog-description">{request.consequence}</p>
+  return <><span hidden data-app-confirm-host/>{request&&createPortal(<Dialog labelledBy={headingId} describedBy={`${detailsId} ${consequenceId}`} closeLabel="取消确认" busy={false} close={()=>finish(false)} className={`modal app-confirm-dialog${request.danger?' is-destructive':''}`} backdropClassName="app-confirm-backdrop">
+    <h2 id={headingId} className="dialog-title"><Icon name={request.danger?'warning':'shield'} size={22}/>{request.title}</h2>
+    <div className="app-confirm-content"><p id={detailsId} className="app-confirm-details">{request.details}</p><p id={consequenceId} className="dialog-description">{request.consequence}</p></div>
     <div className="tool-footer"><Button onClick={()=>finish(false)}>取消</Button><Button variant={request.danger?'danger':'primary'} onClick={()=>finish(true)}>{request.accept}</Button></div>
   </Dialog>,document.fullscreenElement||document.getElementById('root')||document.body)}</>;
 }

@@ -7,7 +7,7 @@ async function noOverflow(page:Page) {
 async function iconsAreConsistent(page:Page) {
   const icons=page.locator('svg.ui-icon:visible');
   expect(await icons.count()).toBeGreaterThan(4);
-  expect(await icons.evaluateAll(elements=>elements.every(e=>e.getAttribute('viewBox')==='0 0 24 24' && e.getAttribute('stroke-width')==='1.7' && e.getAttribute('aria-hidden')==='true'))).toBeTruthy();
+  expect(await icons.evaluateAll(elements=>elements.every(e=>e.classList.contains('lucide') && e.getAttribute('viewBox')==='0 0 24 24' && e.getAttribute('stroke-width')==='1.75' && e.getAttribute('aria-hidden')==='true'))).toBeTruthy();
 }
 
 test('library, settings, playlist and player share icons and surface tokens',async({page,request})=>{
@@ -16,14 +16,14 @@ test('library, settings, playlist and player share icons and surface tokens',asy
   await expect(page.getByRole('button',{name:'全部视频',exact:true})).toHaveAttribute('aria-pressed','true');
   await page.screenshot({path:'test-results/design-library.png'});
   await page.getByRole('button',{name:'媒体库设置'}).click();
-  await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(29, 29, 32)');
+  await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(27, 28, 31)');
   await page.screenshot({path:'test-results/design-settings.png'});await iconsAreConsistent(page);
   await page.getByRole('button',{name:'关闭设置'}).click();
   const list=await(await request.post('/api/playlists',{data:{name:'周末待看'}})).json();
   for(const id of [1,2,3])await request.post(`/api/playlists/${list.id}/items/${id}`);
   await page.getByRole('button',{name:'播放列表',exact:true}).click();
   await expect(page.locator('.playlist-detail ol>li')).toHaveCount(3);
-  await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(29, 29, 32)');
+  await expect(page.getByRole('dialog')).toHaveCSS('background-color','rgb(27, 28, 31)');
   await page.screenshot({path:'test-results/design-playlists.png'});await iconsAreConsistent(page);
   await page.getByRole('button',{name:'完成',exact:true}).click();
   await page.getByRole('button',{name:'播放 视频 001',exact:true}).click();
@@ -35,7 +35,7 @@ test('library, settings, playlist and player share icons and surface tokens',asy
   await expect(page.locator('.player-controls')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
   await expect(page.locator('.player-controls')).toHaveCSS('background-image','none');
   await expect(page.locator('.player-controls')).toHaveCSS('border-top-width','0px');
-  await expect(page.locator('.player-info')).toHaveCSS('background-color','rgb(29, 29, 32)');
+  await expect(page.locator('.player-info')).toHaveCSS('background-color','rgb(27, 28, 31)');
   await iconsAreConsistent(page);await noOverflow(page);
   await page.screenshot({path:'test-results/design-player.png'});
   await page.getByRole('button',{name:'展开待播队列'}).click();
@@ -78,9 +78,9 @@ test('long playlist names and narrow action rows stay inside the dialog',async({
   await expect.poll(()=>dialog.evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBeTruthy();
   await page.getByRole('button',{name:'完成',exact:true}).click();
   await page.getByRole('button',{name:'更多筛选',exact:true}).click();await noOverflow(page);
-  await expect(page.locator('.advanced-filters')).toHaveCSS('background-color','rgb(29, 29, 32)');
+  await expect(page.locator('.advanced-filters')).toHaveCSS('background-color','rgb(27, 28, 31)');
   await page.getByRole('button',{name:'更多操作 视频 001',exact:true}).click();
-  await expect(page.getByRole('menu')).toHaveCSS('background-color','rgb(29, 29, 32)');
+  await expect(page.getByRole('menu')).toHaveCSS('background-color','rgb(27, 28, 31)');
   await iconsAreConsistent(page);await noOverflow(page);
   await page.screenshot({path:'test-results/design-menu-mobile.png'});
 });

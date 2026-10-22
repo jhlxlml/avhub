@@ -265,6 +265,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   const ended = useRef(false);
   const stamp = useRef(0);
   const applied = useRef(0);
+  const progressSave=useRef<{progress:number;watched:boolean;keepalive:boolean;updated_at:number;task:Promise<void>}|null>(null);
 
   useEffect(() => {
     const element = videoWrap.current;
@@ -286,26 +287,50 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   updateRef.current = update;
 
   const save = useCallback(async (keepalive = false) => {
-    if(!keepalive&&!await flushMediaPlaybackState()){setSaveError('播放记忆尚未保存，请重试');throw new Error('播放记忆尚未保存');}
+    // Independent durable writes may run together. Every caller still confirms
+    // its current memory barrier, including when sharing an in-flight progress
+    // write. A slow track preference must not postpone sending the position.
+    const memoryTask=keepalive?Promise.resolve(true):flushMediaPlaybackState();
     const v = video.current;
     // Opening a resume prompt or preparing a stream must never overwrite saved progress.
     if (!v || !Number.isFinite(v.currentTime) ||
-        !played.current && (sourceChanging.current || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA)) return;
+        !played.current && (sourceChanging.current || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA)) {
+      if(!await memoryTask){setSaveError('播放记忆尚未保存，请重试');throw new Error('播放记忆尚未保存');}
+      return;
+    }
     const total = media.duration || (Number.isFinite(v.duration) ? v.duration + offset.current : 0);
     const current = ended.current && total ? total : v.currentTime + offset.current;
-    const updated_at = Math.max(Date.now(), stamp.current + 1);
-    stamp.current = updated_at;
-    const body = { progress: current, watched: ended.current || (total > 0 && current / total >= .92), updated_at };
-    try {
-      const result = await api<MediaUpdate>(`/api/media/${media.id}/progress`, { ...json('PUT', body), keepalive });
-      if (updated_at >= applied.current) {
-        applied.current = updated_at; updateRef.current(result);
-        if(updated_at>=stamp.current)setSaveError('');
-      }
-    } catch (e) {
-      if(updated_at>=stamp.current)setSaveError(`进度未保存：${errorText(e)}`);
-      throw e;
+    const watched=ended.current || (total > 0 && current / total >= .92);
+    const pending=progressSave.current;
+    // pause + explicit back/next/quit can request the same durable snapshot.
+    // Share only the latest identical in-flight write; never debounce a save,
+    // reuse a completed one, or let a normal fetch stand in for unload keepalive.
+    let task:Promise<void>,updated_at:number;
+    if(pending&&pending.progress===current&&pending.watched===watched&&(!keepalive||pending.keepalive)){
+      task=pending.task;updated_at=pending.updated_at;
+    }else{
+      updated_at=Math.max(Date.now(),stamp.current+1);stamp.current=updated_at;
+      const body={progress:current,watched,updated_at};
+      task=(async()=>{
+        const result = await api<MediaUpdate>(`/api/media/${media.id}/progress`, { ...json('PUT', body), keepalive });
+        if (updated_at >= applied.current) {
+          applied.current = updated_at; updateRef.current(result);
+        }
+      })();
+      const entry={progress:current,watched,keepalive,updated_at,task};progressSave.current=entry;
+      const clear=()=>{if(progressSave.current===entry)progressSave.current=null;};
+      void task.then(clear,clear);
     }
+    const [memory,progress]=await Promise.allSettled([memoryTask,task]);
+    if(progress.status==='rejected'){
+      if(updated_at>=stamp.current)setSaveError(`进度未保存：${errorText(progress.reason)}`);
+      throw progress.reason;
+    }
+    if(memory.status==='rejected'||!memory.value){
+      if(updated_at>=stamp.current)setSaveError('进度已保存，但播放记忆尚未保存，请重试');
+      throw new Error('播放记忆尚未保存');
+    }
+    if(updated_at>=stamp.current)setSaveError('');
   }, [media.id, media.duration]);
 
   useEffect(()=>registerNavigationGuard(async()=>{
@@ -475,10 +500,17 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
         // attaching a known unsupported file and waiting for MediaError.
         const containerType=({'.ts':'video/mp2t','.avi':'video/x-msvideo','.flv':'video/x-flv'} as Record<string,string>)[media.ext.toLowerCase()];
         const needsRemux=media.video_codec?.toLowerCase()==='h264'&&!!containerType&&!v.canPlayType(containerType);
+        // Remembering the ONLY audio track (e.g. restored from MPV) is not a
+        // track switch. Preserve that memory, but let Chromium open the original
+        // source. Otherwise AV1/VP9/HEVC can wrongly enter an unsupported remux
+        // path before the original decoder is even tried. Do not guess a default
+        // for multi-track sources, or bypass skip_direct/quality/failure guards.
+        const soleAudio=currentRequest.audio_track_index!=null&&media.audio_tracks.length===1&&media.audio_tracks[0].index===currentRequest.audio_track_index;
         // Stream-copy seeks can discard video up to the next keyframe. Keep a
         // bounded decode lead-in (including common 10s GOPs), not a re-encode.
         let session = await api<Session>(`/api/media/${media.id}/playback`, { ...json('POST', { ...currentRequest,
-          prefer_original:currentRequest.prefer_original&&!needsRemux,skip_direct:currentRequest.skip_direct||needsRemux,
+          audio_track_index:soleAudio?undefined:currentRequest.audio_track_index,
+          prefer_original:(currentRequest.prefer_original||soleAudio)&&!needsRemux,skip_direct:currentRequest.skip_direct||needsRemux,
           indexed_ts:currentRequest.indexed_ts??!indexedTsFailed.current,indexed_remux:currentRequest.indexed_remux??!indexedRemuxFailed.current,
           seek_preroll:10, client_token: sessionToken }), signal: creationController.signal });
         sessionToken = session.token || null;
@@ -1391,7 +1423,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button>
         {losslessDelivery&&<button className="ghost" onClick={()=>void changeQuality('auto')}>返回原片播放</button>}
         <button className="ghost" onClick={()=>changeQuality('compat')}>兼容播放（有损，需确认）</button>
-        {media.video_codec==='h264'&&<button className="ghost" onClick={allowAudioCompatibility}>仅兼容音轨（视频原画）</button>}</div>}
+        {media.video_codec==='h264'&&media.audio_tracks.length>0&&<button className="ghost" onClick={allowAudioCompatibility}>仅兼容音轨（视频原画）</button>}</div>}
       {phase === 'ended' && <div className="resume"><b>{nextEpisode ? (queue || media.kind!=='episode' ? '本条播放结束' : '本集播放结束') : '播放结束'}</b>
         {nextEpisode && <><span>{nextEpisode.id===media.id?'单条循环：':queueMode==='random'?'随机下一条：':queue ? '播放列表下一条：' : queueScope==='series'&&media.kind==='episode'?'下一集：':'下一条：'}{nextEpisode.title}{nextEpisode.season ? ` · 第 ${nextEpisode.season} 季` : ''}{nextEpisode.episode ? ` 第 ${nextEpisode.episode} 集` : ''}</span>
           <span>{nextStarting ? '正在切换…' : !autoNext?'自动连播已关闭':nextCancelled ? '自动连播已取消' : `${nextCountdown} 秒后自动播放`}</span>

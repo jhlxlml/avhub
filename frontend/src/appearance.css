@@ -6,25 +6,25 @@
 :root .media-grid {grid-template-columns:repeat(auto-fill,minmax(min(var(--cover-card-min),100%),1fr))}
 
 :root[data-theme="light"] {
-  --ui-bg:#f5f5f7;
+  --ui-bg:#f6f6f8;
   --ui-surface:#ffffff;
-  --ui-raised:#ededf0;
-  --ui-hover:#e4e4e8;
-  --ui-field:#ffffff;
+  --ui-raised:#eeeef2;
+  --ui-hover:#e9e9ef;
+  --ui-field:#fafafa;
   --ui-chrome:#ffffff;
-  --ui-border:#d7d7dc;
-  --ui-divider:#e7e7eb;
-  --ui-text:#252527;
-  --ui-secondary:#52525b;
-  --ui-muted:#65656f;
-  --ui-accent:#315fbe;
-  --ui-accent-hover:#244c9f;
-  --ui-accent-soft:#315fbe12;
+  --ui-border:#d8d9e0;
+  --ui-divider:#e5e6eb;
+  --ui-text:#202126;
+  --ui-secondary:#51535e;
+  --ui-muted:#686a76;
+  --ui-accent:#4f46c7;
+  --ui-accent-hover:#4338ac;
+  --ui-accent-soft:#4f46c710;
   --ui-danger:#a73042;
   --ui-warning:#91601c;
   --ui-success:#28724c;
   --ui-on-accent:#ffffff;
-  --ui-shadow:0 16px 48px #18181b1f;
+  --ui-shadow:0 12px 40px #18181b1a,0 2px 6px #18181b08;
   --ui-shadow-soft:0 1px 4px #18181b12;
   color-scheme:light;
 }
@@ -91,7 +91,7 @@
 :root[data-theme="light"] .player-shell:not(.is-pure-playback) .video-wrap:not(:fullscreen) {box-shadow:0 8px 28px #25334b24}
 
 /* Contrast over video is independent of the library theme. Never alter pixels. */
-:root .video-wrap {
+:root .video-wrap,:root .native-stage {
   --ui-bg:#0b0f16;--ui-surface:#121923;--ui-raised:#18212e;--ui-hover:#212d3d;
   --ui-field:#0e151f;--ui-border:#283445;--ui-divider:#202c3a;
   --ui-text:#e8edf5;--ui-secondary:#b0bdce;--ui-muted:#8797ad;

@@ -30,6 +30,18 @@ class MediaIdentity:
     def observe(self,root_id,path,stat,old=None):
         current=encoded(stat);path=Path(path)
         if old and old.get('file_state')=='normal' and old.get('source_identity')==current:return old
+        if old is None:
+            # New imports usually have neither a known path nor an identity
+            # candidate. This negative observation changes nothing and must not
+            # join the durable writer queue (or hold files.lock while it waits).
+            # Any possible match still takes the original writer path below,
+            # which re-reads and revalidates before transferring personal data.
+            with self.files.lock,self.files.read_connection() as db:
+                known=db.execute('SELECT 1 FROM media WHERE path=?',(str(path),)).fetchone()
+                if known is None:
+                    eligible=stat.st_ino and stat.st_nlink==1 and self.volume(path)
+                    if not eligible or db.execute("SELECT 1 FROM media WHERE source_identity=? AND file_state='normal' LIMIT 1",(current,)).fetchone() is None:
+                        return None
         with self.files.lock,self.files.connection() as db:
             row=db.execute('SELECT * FROM media WHERE path=?',(str(path),)).fetchone()
             if row:

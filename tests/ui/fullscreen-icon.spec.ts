@@ -1,4 +1,6 @@
-import { test,expect,type Page } from '@playwright/test';
+import {test,expect} from './transport-fixture';
+import type {Page} from '@playwright/test';
+import {answerResumeOrWaitForControls} from './player-readiness';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
@@ -9,7 +11,8 @@ async function fullscreenState(page:Page,active:boolean) {
   await expect(button).toHaveAttribute('title',active?'退出视频全屏 (F / Esc)':'视频全屏 (F)');
   await expect(page.getByRole('button',{name:active?'全屏':'退出视频全屏',exact:true})).toHaveCount(0);
   await expect(button.locator('svg')).toHaveAttribute('viewBox','0 0 24 24');
-  await expect(button.locator('svg')).toHaveAttribute('stroke-width','1.7');
+  await expect(button.locator('svg')).toHaveAttribute('stroke-width','1.75');
+  await expect(button.locator('svg')).toHaveClass(active?/lucide-minimize/:/lucide-maximize/);
   if(active) {
     // All inward corners must be reflected around the 24px grid centre.
     // The old bottom-right path sat at x=14..19 rather than x=15..20.
@@ -18,10 +21,10 @@ async function fullscreenState(page:Page,active:boolean) {
       return {x:box.x,y:box.y,width:box.width,height:box.height};
     }));
     expect(corners).toEqual([
-      {x:4,y:4,width:5,height:5},{x:15,y:4,width:5,height:5},
-      {x:4,y:15,width:5,height:5},{x:15,y:15,width:5,height:5},
+      {x:3,y:3,width:5,height:5},{x:16,y:3,width:5,height:5},
+      {x:3,y:16,width:5,height:5},{x:16,y:16,width:5,height:5},
     ]);
-  } else await expect(button.locator('svg path')).toHaveCount(1);
+  } else await expect(button.locator('svg path')).toHaveCount(4);
   const stage=await page.locator('.video-wrap').boundingBox();
   await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height/2);
   await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-7);
@@ -33,10 +36,7 @@ test(`fullscreen icon and accessible action track mouse, F, Esc and double-click
   await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
   if(mode==='pure')await page.setViewportSize({width:640,height:360});
   await page.goto('/?video=2');
-  const fromStart=page.getByRole('button',{name:'从头开始',exact:true});
-  const enterFullscreen=page.getByRole('button',{name:'全屏',exact:true});
-  await expect.poll(async()=>await fromStart.isVisible() || await enterFullscreen.isEnabled()).toBeTruthy();
-  if(await fromStart.isVisible())await fromStart.click();
+  await answerResumeOrWaitForControls(page);
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
   const video=page.locator('video');
   await video.evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.instance='fullscreen-same-decoder';});

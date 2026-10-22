@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { api, errorText, json, type Media, type MediaUpdate } from './api';
 import { Icon } from './Icon';
 import { CoverEditor } from './CoverEditor';
-import { StatusMessage } from './ui';
+import { Button, StatusMessage } from './ui';
 import './media-editor.css';
 
 export function MediaEditor({ media, update, onDirtyChange,expanded=false,onBusyChange }: { media: Media; update: (value: MediaUpdate) => void; onDirtyChange: (dirty: boolean) => void;expanded?:boolean;onBusyChange?:(busy:boolean)=>void }) {
@@ -18,6 +18,9 @@ export function MediaEditor({ media, update, onDirtyChange,expanded=false,onBusy
   useEffect(()=>{onBusyChange?.(saving||coverBusy);return()=>onBusyChange?.(false);},[saving,coverBusy,onBusyChange]);
   const [message, setMessage] = useState('');
   const [messageError, setMessageError] = useState(false);
+  const errorId=useId();
+  const [invalidField,setInvalidField]=useState('');
+  const titleInput=useRef<HTMLInputElement>(null),seriesInput=useRef<HTMLInputElement>(null);
   const mediaKey = JSON.stringify([media.title, media.kind, String(media.season ?? ''), String(media.episode ?? ''), media.rating == null ? '' : String(media.rating), media.tags.join(', '), media.series_title || media.title]);
   const [baseline, setBaseline] = useState(mediaKey);
   const identity = useRef(media.id);
@@ -39,15 +42,15 @@ export function MediaEditor({ media, update, onDirtyChange,expanded=false,onBusy
   async function save(event: FormEvent) {
     event.preventDefault();
     const cleanTitle = title.trim();
-    if (!cleanTitle) { setMessageError(true); setMessage('标题不能为空'); return; }
+    if (!cleanTitle) { setInvalidField('title');setMessageError(true); setMessage('标题不能为空');titleInput.current?.focus(); return; }
     const seasonNumber = season === '' ? null : Number(season);
     const episodeNumber = episode === '' ? null : Number(episode);
     if (kind === 'episode' && ((seasonNumber !== null && (!Number.isInteger(seasonNumber) || seasonNumber < 0 || seasonNumber > 9999)) || (episodeNumber !== null && (!Number.isInteger(episodeNumber) || episodeNumber < 0 || episodeNumber > 99999)))) {
       setMessageError(true); setMessage('季集号需为非负整数；季 0 表示特别篇，留空表示未设置'); return;
     }
-    if(kind === 'episode' && !seriesTitle.trim()){setMessageError(true);setMessage('剧名不能为空');return;}
+    if(kind === 'episode' && !seriesTitle.trim()){setInvalidField('series');setMessageError(true);setMessage('剧名不能为空');seriesInput.current?.focus();return;}
     const cleanTags = [...new Set(tags.split(/[,，]/).map(tag => tag.trim()).filter(Boolean))];
-    setSaving(true); setMessage(''); setMessageError(false);
+    setSaving(true); setMessage(''); setMessageError(false);setInvalidField('');
     try {
       const value = await api<Media>(`/api/media/${media.id}`, json('PATCH', {
         title: cleanTitle, kind,
@@ -73,12 +76,12 @@ export function MediaEditor({ media, update, onDirtyChange,expanded=false,onBusy
     <CoverEditor media={media} update={update} onBusyChange={setCoverBusy}/>
     <form onSubmit={event => void save(event)}>
       <fieldset disabled={saving} style={{ display: 'contents', border: 0, margin: 0, padding: 0 }}>
-      <label>显示标题<input aria-label="显示标题" value={title} maxLength={300} onChange={event => setTitle(event.target.value)} /></label>
+      <label>显示标题<input ref={titleInput} aria-label="显示标题" aria-invalid={invalidField==='title'||undefined} aria-describedby={invalidField==='title'?errorId:undefined} value={title} maxLength={300} onChange={event => {setTitle(event.target.value);if(invalidField==='title')setInvalidField('');}} /></label>
       <label>媒体类型<select aria-label="媒体类型" value={kind} onChange={event => setKind(event.target.value)}>
         <option value="video">未分类视频</option><option value="movie">电影</option><option value="episode">剧集</option>
       </select></label>
       {kind === 'episode' && <div className="episode-fields">
-        <label>剧名<input aria-label="剧名" value={seriesTitle} maxLength={300} onChange={event=>setSeriesTitle(event.target.value)}/></label>
+        <label>剧名<input ref={seriesInput} aria-label="剧名" aria-invalid={invalidField==='series'||undefined} aria-describedby={invalidField==='series'?errorId:undefined} value={seriesTitle} maxLength={300} onChange={event=>{setSeriesTitle(event.target.value);if(invalidField==='series')setInvalidField('');}}/></label>
         <label>季<input aria-label="季数" type="number" min="0" max="9999" placeholder="未设置" step="1" value={season} onChange={event => setSeason(event.target.value)} /></label>
         <label>集<input aria-label="集数" type="number" min="0" max="99999" placeholder="未设置" step="1" value={episode} onChange={event => setEpisode(event.target.value)} /></label>
       </div>}
@@ -86,9 +89,9 @@ export function MediaEditor({ media, update, onDirtyChange,expanded=false,onBusy
         <option value="">未评分</option>{[0,1,2,3,4,5].map(value => <option key={value} value={value}>{'★'.repeat(value)}（{value} 分）</option>)}
       </select></label>
       <label>标签<input aria-label="标签" value={tags} placeholder="用逗号分隔，例如：科幻, 收藏" onChange={event => setTags(event.target.value)} /></label>
-      <button className="ui-button primary" type="submit" disabled={saving}><Icon name="save" size={16}/>{saving ? '正在保存…' : '保存信息'}</button>
+      <Button variant="primary" icon="save" type="submit" disabled={saving}>{saving ? '正在保存…' : '保存信息'}</Button>
       </fieldset>
-      {message && <StatusMessage className="editor-message" kind={messageError?'error':'success'}>{message}</StatusMessage>}
+      {message && <div id={errorId} className="editor-feedback"><StatusMessage className="editor-message" kind={messageError?'error':'success'}>{message}</StatusMessage></div>}
     </form>
   </Container>;
 }

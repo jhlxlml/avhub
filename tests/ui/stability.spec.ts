@@ -45,7 +45,8 @@ test('resume prompt does not autoplay; pause/back saves progress; favorites upda
   await page.getByRole('button', { name: '播放 视频 001', exact: true }).click();
   await expect(page.getByText('继续上次观看？')).toBeVisible();
   expect(await page.locator('video').evaluate((v: HTMLVideoElement) => v.controls)).toBeFalsy();
-  await expect(page.getByRole('slider', { name: '视频完整进度' })).toHaveCount(1);
+  await expect(page.locator('.player-controls')).toBeHidden();
+  await expect(page.getByRole('slider', { name: '视频完整进度', includeHidden:true })).toHaveCount(1);
   expect(await page.locator('video').evaluate((v: HTMLVideoElement) => v.paused && !v.getAttribute('src'))).toBeTruthy();
   await page.getByRole('button', { name: '继续播放', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.currentTime)).toBeGreaterThan(12);
@@ -482,6 +483,7 @@ test('quality selection starts an HLS stream at the requested preset', async ({ 
   await page.getByRole('button', { name: '播放 视频 001', exact: true }).click();
   await page.getByRole('button', { name: '从头开始', exact: true }).click();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused)).toBeTruthy();
+  await revealPlayerControls(page);
   await page.getByRole('button', { name: '倍速', exact: true }).click();
   await page.getByRole('combobox', { name: '倍速' }).selectOption('1.5');
   await expect(page.getByRole('button', { name: '倍速', exact: true })).toHaveAttribute('title', '倍速：1.5×');
@@ -492,6 +494,7 @@ test('quality selection starts an HLS stream at the requested preset', async ({ 
   await expect.poll(async () => (await (await request.get('/test/sessions')).json()).count).toBe(1);
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => !v.paused)).toBeTruthy();
   expect(playbackRequests.at(-1)?.force_transcode).toBeTruthy();
+  await revealPlayerControls(page);
   await page.getByRole('button', { name: '画质', exact: true }).click();
   await page.getByRole('combobox', { name: '画质' }).selectOption('auto');
   await expect.poll(() => playbackRequests.length).toBeGreaterThanOrEqual(3);

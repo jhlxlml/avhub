@@ -2,6 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {api,json,errorText} from './api';
 import {Button,StatusMessage} from './ui';
 import {Icon} from './Icon';
+import {SettingToggle} from './SettingToggle';
 import {confirmAction} from './confirmAction';
 type Report={total_bytes:number;categories:Record<string,{bytes:number;files:number}>;cleanup:{files:number;bytes:number;rollback_files:number;rollback_days:number|null;token:string;protected_note:string}};
 const labels:Record<string,string>={database:'媒体库数据库',thumbnails:'视频缩略图',covers:'手动封面',subtitles:'临时字幕',hls:'临时播放缓存','native-cache':'无损播放副本（可在视频菜单清理）',backups:'备份与恢复暂存',other:'日志及其他数据'};
@@ -30,7 +31,8 @@ export function StorageTools({busy,changeBusy,scanning,enabled}:{busy:boolean;ch
   return <section className="storage-tools settings-section" aria-label="应用存储">
     <h3><Icon name="database"/>应用存储</h3><p className="dialog-description">仅统计应用数据，不扫描原视频。先预览，再确认清理。</p>
     {report&&<><dl className="storage-sizes">{Object.entries(report.categories).map(([key,item])=><div key={key}><dt>{labels[key]}</dt><dd>{size(item.bytes)}<small>{item.files} 个文件</small></dd></div>)}</dl><p className="storage-total">合计 {size(report.total_bytes)}</p></>}
-    <label className="backup-options"><input type="checkbox" aria-label="包含旧回滚副本" checked={olderBackups} disabled={busy||loading} onChange={e=>{setOlderBackups(e.target.checked);void preview(e.target.checked);}}/>额外清理超过 30 天的回滚数据库（至少保留最近 3 份）</label>
+    <SettingToggle label="包含旧回滚副本" checked={olderBackups} disabled={busy||loading} onChange={value=>{setOlderBackups(value);void preview(value);}}
+      description="额外预览超过 30 天的回滚数据库，至少保留最近 3 份；仍需点击清理并确认。">包含旧回滚数据库</SettingToggle>
     <div className="storage-actions"><Button icon="refresh" busy={loading} disabled={busy} onClick={()=>void preview()}>刷新清理预览</Button><Button icon="trash" variant="danger" disabled={busy||loading||scanning||!report?.cleanup.files} onClick={()=>void clean()}>清理已预览内容</Button></div>
     {report&&<p className="storage-preview" role="status">可清理 {report.cleanup.files} 个文件 · {size(report.cleanup.bytes)}{report.cleanup.rollback_files>0&&` · 含 ${report.cleanup.rollback_files} 个旧回滚副本`}<small>{report.cleanup.protected_note}</small></p>}
     {loading&&<StatusMessage kind="loading">正在统计应用存储…</StatusMessage>}{error&&<StatusMessage kind="error">{error}</StatusMessage>}{notice&&<StatusMessage>{notice}</StatusMessage>}

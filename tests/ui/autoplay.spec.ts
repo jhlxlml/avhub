@@ -1,4 +1,5 @@
-import { test, expect, type Page, type APIRequestContext } from '@playwright/test';
+import {test,expect} from './transport-fixture';
+import type {Page,APIRequestContext} from '@playwright/test';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 async function settings(page:Page) {
@@ -7,10 +8,16 @@ async function settings(page:Page) {
 }
 async function ready(page:Page) {
   const restart=page.getByRole('button',{name:'从头开始',exact:true});
-  await expect.poll(async()=>{
-    if(await restart.isVisible())await restart.click();
-    return page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused);
-  }).toBeTruthy();
+  // The user's resume decision and decoded playback are separate phases.
+  // Never spend the decoding poll's deadline waiting for a later prompt, or
+  // click the same decision repeatedly from inside a polling assertion.
+  await expect.poll(()=>page.evaluate(()=>{
+    const prompt=[...document.querySelectorAll('button')].some(button=>button.getClientRects().length>0&&button.textContent?.trim()==='从头开始');
+    const video=document.querySelector<HTMLVideoElement>('.player-shell video');
+    return prompt||Boolean(video&&video.readyState>=2&&!video.paused);
+  })).toBeTruthy();
+  if(await restart.isVisible())await restart.click();
+  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused)).toBeTruthy();
 }
 async function episodes(request:APIRequestContext) {
   const first=await(await request.patch('/api/media/1',{data:{kind:'episode',title:'第一集',series_title:'连播测试剧',season:0,episode:1}})).json();
@@ -22,6 +29,16 @@ async function episodes(request:APIRequestContext) {
 async function finish(page:Page) {
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.pause();v.dispatchEvent(new Event('ended'));});
 }
+
+test('resume decision and first decoded playback have separate readiness phases',async({page,request})=>{
+  await request.put('/api/media/1/progress',{data:{progress:24,updated_at:Date.now()}});
+  await page.route('**/api/media/1/playback-state',async route=>{await new Promise(resolve=>setTimeout(resolve,2500));await route.continue();});
+  let delayed=false;
+  await page.route('**/media/1/file',async route=>{if(!delayed){delayed=true;await new Promise(resolve=>setTimeout(resolve,3000));}await route.continue();});
+  await page.goto('/?video=1');await ready(page);
+  await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.getVideoPlaybackQuality().totalVideoFrames)).toBeGreaterThan(0);
+  expect(delayed).toBe(true);await expect(page.getByRole('button',{name:'从头开始',exact:true})).toHaveCount(0);
+});
 
 test('settings and queue share portable autoplay preferences across reloads',async({page,request})=>{
   await page.goto('/');await settings(page);

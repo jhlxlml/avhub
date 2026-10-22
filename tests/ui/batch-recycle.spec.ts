@@ -27,3 +27,21 @@ test('stop finishes the current item and never invokes later items',async({page}
   await page.goto('/');await page.evaluate(()=>(window as any).batchMode='slow');await page.getByRole('button',{name:'批量整理',exact:true}).click();for(const id of [1,2,3])await page.getByRole('checkbox',{name:`选择 视频 ${String(id).padStart(3,'0')}`,exact:true}).check();await page.getByRole('button',{name:'所选移入回收站',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'批量移入系统回收站',exact:true});await dialog.getByRole('button',{name:'回收 3 个视频',exact:true}).click();await page.getByRole('button',{name:'确认回收',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).batchActive)).toBe(1);await dialog.getByRole('button',{name:'停止后续任务',exact:true}).click();await expect(dialog).toContainText('已回收 1 · 失败 0 · 跳过 0 · 未执行 2');expect(await page.evaluate(()=>(window as any).batchCalls.filter((value:any)=>value.action==='recycle').map((value:any)=>value.id))).toEqual([1]);
 });
+
+test('closing a stalled preview cancels only its request and never recycles',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(()=>{
+    const w=window as any,original=window.avhubDesktop!.fileOperation!;
+    window.avhubDesktop!.fileOperation=async value=>{
+      if(value.action==='preview'){w.previewRequest=value.requestId;return new Promise((_resolve,reject)=>{w.rejectPreview=reject;});}
+      if(value.action==='cancel-preview'){w.cancelledPreview=value.requestId;w.rejectPreview(new Error('已取消预检，未执行文件修改'));return {ok:true};}
+      return original(value);
+    };
+  });
+  await page.getByRole('button',{name:'批量整理',exact:true}).click();await page.getByRole('checkbox',{name:'选择 视频 001',exact:true}).check();
+  await page.getByRole('button',{name:'所选移入回收站',exact:true}).click();
+  const panel=page.getByRole('dialog',{name:'批量移入系统回收站',exact:true});await expect(panel).toContainText('正在检查');
+  await panel.getByRole('button',{name:'取消',exact:true}).click();await expect(panel).toHaveCount(0);
+  await expect.poll(()=>page.evaluate(()=>(window as any).cancelledPreview)).toBe(await page.evaluate(()=>(window as any).previewRequest));
+  expect(await page.evaluate(()=>(window as any).batchCalls.filter((call:any)=>call.action==='recycle'))).toEqual([]);
+});

@@ -131,11 +131,16 @@ python -m venv .venv
 python -m pip install -r requirements.txt
 npm ci
 node node_modules/electron/install.js
+npm run prepare:sqlite
 ```
 
 If PowerShell blocks activation, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` in the current terminal, then activate again. This changes the policy only for the current process.
 
 Use `npm ci` to install from `package-lock.json` rather than unintentionally upgrading dependencies. Subsequent Python, test, and packaging commands should use the same Python environment.
+
+SQLite is pinned inside the project and verified against the official download hash; system Python DLLs are not replaced.
+Desktop startup never downloads it or silently falls back. Run `npm run check:sqlite` to inspect the actual engine.
+Use `python scripts/python-runtime.py SCRIPT ARGS` for database diagnostics with the same engine as the desktop backend.
 
 ### 3. Start desktop mode
 

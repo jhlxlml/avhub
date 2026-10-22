@@ -28,7 +28,7 @@ try{
   // A same-origin renderer request without the native header cannot preview files.
   assert.equal(await page.evaluate(async ids=>(await fetch('/api/file-operations/preview',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media_ids:ids})})).status,ids),403);
   await selectAll(0);
-  await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('checkbox',{name:'允许系统回收 '+media,exact:true}).click();await page.getByRole('button',{name:'开启权限',exact:true}).click();await page.getByRole('button',{name:'关闭设置',exact:true}).click();
+  await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('button',{name:'文件权限 '+media,exact:true}).click();await page.getByRole('checkbox',{name:'允许系统回收 '+media,exact:true}).click();await page.getByRole('button',{name:'开启权限',exact:true}).click();await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await page.evaluate(async ids=>{for(const id of ids){await fetch('/api/media/'+id+'/favorite',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({favorite:true})});await fetch('/api/media/'+id+'/progress',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({progress:1,updated_at:Date.now()})});}},ids);
   // Hold the current trusted operation before shell execution; stopping must not
   // cancel it or invoke the remaining files after it completes.

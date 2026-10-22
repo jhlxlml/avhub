@@ -31,6 +31,9 @@ async function terminateOwnedTree(child: ChildProcess): Promise<void> {
 }
 
 export async function stopOwnedBackend(child: ChildProcess, origin: string, token: string, log: (message: string) => void): Promise<void> {
+  // spawn(ENOENT/EACCES) has no owned PID. Do not spend shutdown deadlines on
+  // requests to a service that never started, or try to terminate a fake PID.
+  if(!child.pid){log('backend-not-started');return;}
   if (exited(child)) return;
   const request = async (route: string, milliseconds: number) => {
     if (exited(child)) return;

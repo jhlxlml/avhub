@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, json, errorText, duration, type Media, type Playlist, type PlaylistPage, type PlaylistSource, type QueuePage } from './api';
 import { Icon } from './Icon';
-import { Button, Dialog, StatusMessage } from './ui';
+import { Button, ContentState, Dialog, StatusMessage } from './ui';
 import { episodeLabel, formatLabel } from './mediaLabels';
 import {ResolutionBadge} from './ResolutionBadge';
 import { MediaThumbnail } from './MediaThumbnail';
@@ -24,6 +24,8 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
   const [targetId, setTargetId] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [listsLoading,setListsLoading]=useState(true);
+  const listRequests=useRef(0);
   const [error, setError] = useState('');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -32,11 +34,14 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
   const active = useRef(true);
   const autoplay = useAutoplay();
   async function refreshLists(preferred?: number | null) {
+    listRequests.current++;setListsLoading(true);
+    try {
     const result = await api<Playlist[]>('/api/playlists');
     if (!active.current) return;
     setLists(result);
     setSelectedId(current => preferred === null ? result[0]?.id ?? null : preferred ?? (result.some(item => item.id===current) ? current : result[0]?.id ?? null));
     if (adding) setTargetId(current => current || (result[0] ? String(result[0].id) : ''));
+    } finally {listRequests.current--;if(active.current&&listRequests.current===0)setListsLoading(false);}
   }
   useEffect(() => {
     active.current = true;
@@ -129,6 +134,7 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
     finally { if(active.current) setBusy(false); }
   }
   const locked=busy || loading;
+  const feedback=error&&<ContentState kind="error" title="播放列表暂时无法更新" description={error}><Button icon="refresh" disabled={busy||listsLoading||loading} onClick={()=>{setError('');void refreshLists().then(()=>setRevision(value=>value+1)).catch(e=>setError(errorText(e)));}}>刷新列表</Button></ContentState>;
   return <Dialog backdropClassName="playlist-backdrop" className={`playlist-panel${adding?' add-to-playlist':' playlist-workspace'}`} label={adding?'加入播放列表':'播放列表'} closeLabel="关闭" busy={busy} close={close}>
       {adding ? <>
         <h2 className="dialog-title"><Icon name="playlist" size={22}/>加入播放列表</h2><p className="playlist-subtitle">{addMediaIds?`已选择 ${addMediaIds.length} 个视频 · 按选择顺序加入，已有条目不会重复添加`:addMedia!.title}</p>
@@ -144,8 +150,8 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
         <form className="playlist-create" onSubmit={event=>{event.preventDefault();void create();}}>
           <input aria-label="播放列表名称" disabled={busy} value={name} maxLength={80} placeholder="新建片单…" onChange={event=>setName(event.target.value)} /><button className="ui-button" disabled={busy}><Icon name="plus" size={16}/>新建</button>
         </form></div>
-        <nav className="playlist-list" aria-label="播放列表">{lists.length?lists.map(list=><button key={list.id} className={selectedId===list.id?'selected':''} aria-pressed={selectedId===list.id} disabled={busy} title={list.name} onClick={()=>selectList(list.id)}>
-          <Icon name="playlist" size={15}/><span>{list.name}</span><small>{list.count}</small></button>):<span className="playlist-no-lists">还没有播放列表，上方输入名称即可创建</span>}</nav>
+        <nav className="playlist-list" aria-label="播放列表" aria-busy={listsLoading||undefined}>{lists.length?lists.map(list=><button key={list.id} className={selectedId===list.id?'selected':''} aria-pressed={selectedId===list.id} disabled={busy} title={list.name} onClick={()=>selectList(list.id)}>
+          <Icon name="playlist" size={15}/><span>{list.name}</span><small>{list.count}</small></button>):!listsLoading&&!error&&<span className="playlist-no-lists">还没有播放列表，上方输入名称即可创建</span>}</nav>
         <div className="playlist-content">
           <div className="playlist-detail">{detail && detail.id===selectedId ? <>
             <aside className="playlist-summary" aria-label="片单信息">
@@ -164,20 +170,20 @@ export function Playlists({ close, play, addMedia,addMediaIds, added }: {
             <section className="playlist-videos" aria-label="片单视频">
             <div className="playlist-video-toolbar"><span><Icon name="list" size={16}/>{search?`${detail.total} 个搜索结果`:'片单顺序'}</span><label className="playlist-search-wrap"><Icon name="search" size={16}/><input className="playlist-search" type="search" aria-label="搜索播放列表视频" placeholder="搜索此片单" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}} /></label></div>
             <div className="playlist-bulk-controls"><Button icon="check" disabled={locked} aria-pressed={selecting} onClick={()=>{setSelecting(value=>!value);setPicked([]);}}>{selecting?'结束多选':'多选视频'}</Button>{selecting&&<><span>已选 {picked.length} / 500 · 支持跨页</span><Button disabled={locked} onClick={()=>pick(detail.items.map(item=>item.id))}>选择本页片单视频</Button><Button disabled={locked||!picked.length} onClick={()=>setPicked([])}>清空片单选择</Button><Button icon="close" disabled={locked||!picked.length} onClick={()=>void removeItems(picked)}>移除所选片单视频</Button></>}</div>
-            {loading?<StatusMessage kind="loading">正在加载列表…</StatusMessage>:detail.items.length?<ol className="playlist-video-items">{detail.items.map(item=><li key={item.id} className={item.missing?'is-offline':''}>
+            {loading?<ContentState kind="loading" title="正在加载列表…"/>:detail.items.length?<ol className="playlist-video-items">{detail.items.map(item=><li key={item.id} className={item.missing?'is-offline':''}>
               {selecting&&<input type="checkbox" className="playlist-pick" aria-label={`选择片单视频 ${item.title}`} checked={picked.includes(item.id)} disabled={locked} onChange={event=>event.target.checked?pick([item.id]):setPicked(current=>current.filter(id=>id!==item.id))}/>}
               <button className="playlist-item-play" aria-label={item.missing?`不可播放 ${item.title}（文件离线）`:`播放 ${item.title}`} disabled={Boolean(item.missing)||busy} onClick={()=>play({id:detail.id,name:detail.name,mode:autoplay.mode,autoNext:autoplay.enabled},item)}>
                 <span className="playlist-index">{(item.playlist_index??0)+1}</span><span className="playlist-video-cover"><MediaThumbnail url={item.thumbnail_url}/><span className="playlist-video-duration">{duration(item.duration)}</span>{item.progress>0&&!item.watched&&<span className="playlist-video-progress" style={{width:`${Math.min(100,item.progress/Math.max(1,item.duration)*100)}%`}}/>}</span>
                 <span className="playlist-item-copy"><span className="playlist-item-title">{item.title}</span><span className="playlist-video-meta">{item.missing?<span className="playlist-offline-label"><Icon name="warning" size={12}/>文件离线</span>:<><ResolutionBadge width={item.width} height={item.height}/>{item.kind==='episode'?episodeLabel(item):formatLabel(item.ext)}{item.watched?' · 已看完':item.progress>0?` · 看到 ${duration(item.progress)}`:''}</>}</span><span className="playlist-video-filename" title={item.name}>{item.name}</span></span></button>
               <div className="playlist-item-actions"><button aria-label={`上移 ${item.title}`} title="上移" disabled={locked||!item.previous_item_id} onClick={()=>void move(item,-1)}><Icon name="chevronUp" size={16}/></button><button aria-label={`下移 ${item.title}`} title="下移" disabled={locked||!item.next_item_id} onClick={()=>void move(item,1)}><Icon name="chevronDown" size={16}/></button><button className="playlist-remove" aria-label={`从播放列表移除 ${item.title}`} title="从列表移除" disabled={locked} onClick={()=>void remove(item)}><Icon name="close" size={16}/></button></div>
-            </li>)}</ol>:<p className="playlist-empty">{search?'没有匹配的视频':'列表为空，可在视频封面上点击“加入播放列表”。'}</p>}
+            </li>)}</ol>:!error&&<ContentState kind="empty" title={search?'没有匹配的视频':'播放列表暂无视频'} description={search?'试试其他关键词，或清空搜索查看完整片单。':'可在视频封面上点击“加入播放列表”。'}/>}
             {detail.pages>1 && <div className="queue-pager"><span>{detail.page} / {detail.pages} 页 · {detail.total} 个</span><button aria-label="上一页播放列表视频" disabled={locked||page<=1} onClick={()=>setPage(value=>value-1)}>上一页</button><button aria-label="下一页播放列表视频" disabled={locked||page>=detail.pages} onClick={()=>setPage(value=>value+1)}>下一页</button></div>}
             </section>
-          </>:<p className="playlist-empty">{loading?'正在加载列表…':'创建或选择一个列表'}</p>}</div>
+          </>:feedback||(listsLoading||loading||selectedId?<ContentState kind="loading" title="正在加载列表…"/>:<ContentState kind="empty" title="创建或选择一个列表" description="在上方新建片单，或选择已有片单开始整理。"/>)}</div>
         </div>
-        {error && <><StatusMessage className="playlist-error" kind="error">{error}</StatusMessage><Button icon="refresh" onClick={()=>{setError('');void refreshLists().then(()=>setRevision(value=>value+1)).catch(e=>setError(errorText(e)));}}>刷新列表</Button></>}
+        {detail?.id===selectedId&&feedback}
         {notice&&<div className="playlist-operation-result" role="status"><Icon name="check" size={16}/><span>{notice}</span>{undo&&detail?.id===undo.id&&<Button icon="refresh" disabled={locked||detail.revision!==undo.revision} onClick={()=>void undoRemoval()}>撤销上次移除</Button>}{undo&&detail?.id===undo.id&&!locked&&detail.revision!==undo.revision&&<small>列表已变化，无法撤销；新的顺序已保留。</small>}</div>}
-        <div className="playlist-footer"><span><Icon name="shield" size={14}/> 视频文件保持原位，不会被移动或修改</span><button className="ui-button" onClick={close} disabled={busy}><Icon name="check" size={16}/>完成</button></div>
+        <div className="playlist-footer"><span><Icon name="shield" size={14}/> 片单操作仅修改列表，不改变原视频</span><Button icon="check" onClick={close} disabled={busy}>完成</Button></div>
       </>}
   </Dialog>;
 }

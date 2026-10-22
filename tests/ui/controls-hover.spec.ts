@@ -1,13 +1,11 @@
 import { test,expect,type Page } from '@playwright/test';
+import {answerResumeOrWaitForControls} from './player-readiness';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
 async function play(page:Page) {
   await page.goto('/?video=2');
-  const fromStart=page.getByRole('button',{name:'从头开始',exact:true});
-  const fullscreen=page.getByRole('button',{name:'全屏',exact:true});
-  await expect.poll(async()=>await fromStart.isVisible() || await fullscreen.isEnabled()).toBeTruthy();
-  if(await fromStart.isVisible())await fromStart.click();
+  await answerResumeOrWaitForControls(page);
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused)).toBeTruthy();
   const stage=await page.locator('.video-wrap').boundingBox();
   await page.mouse.move(stage!.x+stage!.width/2,stage!.y+stage!.height-8);

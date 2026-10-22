@@ -22,7 +22,10 @@ for(const theme of ['dark','light'])test(`${theme}: Help contains accurate offli
   await expect(help.locator('kbd').filter({hasText:/F8|Shift\+S/})).toHaveCount(0);
   await page.screenshot({path:`test-results/help-shortcuts-${theme}-desktop.png`});
   await page.setViewportSize({width:390,height:820});
-  for(const element of await page.locator('.help-tabs,.help-card,.settings-tabs').all())expect(await element.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  for(const element of await page.locator('.help-tabs,.help-card').all())expect(await element.evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  // Narrow settings intentionally use a contained horizontal category strip.
+  const categories=page.getByRole('tablist',{name:'设置分类',exact:true});await expect(categories).toHaveCSS('overflow-x','auto');
+  expect(await page.getByRole('dialog').evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBe(true);
   await page.screenshot({path:`test-results/help-shortcuts-${theme}-narrow.png`});
   await tabs.getByRole('tab',{name:'关于',exact:true}).click();
   await expect(help.getByRole('region',{name:'关于 AVHub'})).toBeVisible();await expect(help.getByRole('button',{name:'检查更新',exact:true})).toBeEnabled();

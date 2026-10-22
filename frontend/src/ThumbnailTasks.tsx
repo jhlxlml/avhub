@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { api, json, errorText } from './api';
 import { Icon } from './Icon';
-import { Button, Dialog, StatusMessage } from './ui';
+import { Button, Dialog, DialogHeader, StatusMessage } from './ui';
 import './thumbnail-tasks.css';
 import {ThumbnailSummary,thumbnailState} from './ThumbnailSummary';
 
@@ -39,6 +39,7 @@ export function useThumbnails(refresh:()=>void,ids:string) {
 }
 
 export function ThumbnailTasks({status,changed}:{status:ThumbnailStatus|null;changed:(value:ThumbnailStatus)=>void}) {
+  const headingId=useId(),descriptionId=useId();
   const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [page,setPage]=useState(1),[revision,setRevision]=useState(0),[failures,setFailures]=useState<FailurePage|null>(null);
   useEffect(()=>{
@@ -60,9 +61,8 @@ export function ThumbnailTasks({status,changed}:{status:ThumbnailStatus|null;cha
   const label=status?`封面任务 · ${thumbnailState(status).label}${status.pending?` · 待处理 ${status.pending} 张`:''}`:'封面任务';
   return <><button className={`ui-icon-button thumbnail-task-icon${status?.failed||status?.error?' needs-attention':''}`} title={label} aria-label="封面任务" onClick={()=>setOpen(true)}>
     <Icon name={status?.paused?'pause':status?.current?'refresh':'camera'} className={status?.current?'is-spinning':''}/>{(status?.pending||status?.failed||status?.error)?<i aria-hidden="true"/>:null}
-  </button>{open&&<Dialog label="后台封面任务" closeLabel="关闭封面任务" busy={busy} close={()=>setOpen(false)} className="modal thumbnail-task-dialog">
-    <h2 className="dialog-title"><Icon name="camera" size={22}/>后台封面任务</h2>
-    <p className="dialog-description">不占用扫描状态，关闭此面板后仍会运行。暂停不会丢失任务，优先处理当前页视频。</p>
+  </button>{open&&<Dialog labelledBy={headingId} describedBy={descriptionId} closeLabel="关闭封面任务" busy={busy} close={()=>setOpen(false)} className="modal thumbnail-task-dialog">
+    <DialogHeader id={headingId} descriptionId={descriptionId} icon="camera" title="后台封面任务" description="不占用扫描状态，关闭此面板后仍会运行。暂停不会丢失任务，优先处理当前页视频。"/>
     <ThumbnailSummary status={status}/>
     {Boolean(status?.blocked)&&<small>{status?.blocked} 张正在等待目录恢复连接</small>}
     <Button icon={status?.paused?'play':'pause'} busy={busy} onClick={()=>void action()}>{status?.paused?'恢复封面任务':'暂停封面任务'}</Button>

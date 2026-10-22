@@ -72,8 +72,8 @@ export async function request<T>(url: string, options: ApiOptions | undefined, c
   try { return await consume(await fetch(url, { ...init, signal: controller.signal })); }
   catch (error) {
     if (options?.signal?.aborted) throw error;
-    if (timedOut) throw new Error(`本地服务响应超时${init.method && init.method !== 'GET' ? '，操作可能已提交，请刷新确认后再重试' : '，请稍后重试或查看运行诊断'}`);
-    if (error instanceof TypeError) throw new Error('无法连接本地服务，请确认 AVHub 正在运行后重试');
+    if (timedOut) throw Object.assign(new Error(`本地服务响应超时${init.method && init.method !== 'GET' ? '，操作可能已提交，请刷新确认后再重试' : '，请稍后重试或查看运行诊断'}`),{retryableRead:!init.method||init.method==='GET'});
+    if (error instanceof TypeError) throw Object.assign(new Error('无法连接本地服务，请确认 AVHub 正在运行后重试'),{retryableRead:!init.method||init.method==='GET'});
     throw error;
   } finally {
     if (timer !== undefined) globalThis.clearTimeout(timer);

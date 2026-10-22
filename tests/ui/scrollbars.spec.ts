@@ -1,4 +1,5 @@
 import { test,expect,type Page } from '@playwright/test';
+import {answerResumeOrWaitForControls} from './player-readiness';
 import {revealPlayerControls} from './player-pointer';
 
 const visible='data-scrollbar-visible';
@@ -113,10 +114,7 @@ test('nested playlist navigation reveals only its active native scrollbar',async
 
 test('subtitle popover scrolling and edge hover work without changing paused playback',async({page})=>{
   await page.setViewportSize({width:960,height:600});await page.goto('/?video=2');
-  const start=page.getByRole('button',{name:'从头开始',exact:true});
-  const fullscreen=page.getByRole('button',{name:'全屏',exact:true});
-  await expect.poll(async()=>await start.isVisible()||await fullscreen.isEnabled()).toBeTruthy();
-  if(await start.isVisible())await start.click();
+  await answerResumeOrWaitForControls(page);
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2)).toBeTruthy();
   await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.pause();v.dataset.scrollTest='same-decoder';});
   await revealPlayerControls(page);

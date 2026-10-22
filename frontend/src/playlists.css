@@ -7,7 +7,7 @@
 .playlist-workspace .playlist-create{margin:0;width:min(360px,44%);gap:8px}.playlist-workspace .playlist-create input{width:0;padding:9px 12px}.playlist-workspace .playlist-create button{white-space:nowrap;border-radius:var(--ui-radius)}
 .playlist-workspace .playlist-list{flex-direction:row;flex:none;gap:8px;border:0;border-bottom:1px solid var(--ui-divider);border-radius:0;background:transparent;padding:17px 0;margin-bottom:20px;overflow-x:auto;min-height:0;max-height:none}
 .playlist-workspace .playlist-list>button{flex:none;max-width:240px;padding:8px 12px;border:1px solid transparent;border-radius:var(--ui-radius);background:var(--ui-field)}
-.playlist-workspace .playlist-list>button.selected,.playlist-workspace .playlist-list>button.selected:hover{background:var(--ui-accent-soft);border-color:var(--ui-accent-border);color:var(--ui-accent)}
+.playlist-workspace .playlist-list>button.selected,.playlist-workspace .playlist-list>button.selected:hover{background:var(--ui-accent-soft);border-color:transparent;color:var(--ui-accent)}
 .playlist-workspace .playlist-list>button:hover{background:var(--ui-hover)}.playlist-workspace .playlist-list>button small{margin-left:2px;font-variant-numeric:tabular-nums}
 .playlist-no-lists{font-size:12px;color:var(--ui-muted);padding:4px 0}
 .playlist-workspace .playlist-content{display:block;min-height:0;flex:1;overflow:hidden}
@@ -48,7 +48,6 @@
 .playlist-video-meta{font-size:11px;color:var(--ui-secondary);line-height:1.5}.playlist-video-filename{font-size:10px;color:var(--ui-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .playlist-workspace .playlist-item-actions{gap:0;padding-right:2px}.playlist-workspace .playlist-item-actions>button{width:26px;height:30px;padding:5px;border-radius:6px}
 .playlist-offline-label{display:inline-flex;align-items:center;gap:4px;color:var(--ui-warning)}.playlist-workspace li.is-offline .playlist-video-cover{opacity:.65}
-.playlist-workspace .playlist-detail>.playlist-empty{grid-column:1/-1;align-self:center;line-height:1.8}
 .playlist-workspace .playlist-detail .queue-pager{flex:none;margin-top:10px;padding:10px 0 0;border-top:1px solid var(--ui-divider)}
 .playlist-workspace .playlist-footer{flex:none;margin-top:16px;padding-top:12px}.playlist-workspace .playlist-footer>span{display:flex;align-items:center;gap:5px}.playlist-workspace .playlist-footer>.ui-button{border-radius:var(--ui-radius);padding:7px 14px}
 .playlist-workspace>.playlist-error{flex:none;margin:10px 0 0}.playlist-workspace>.playlist-error+.ui-button{align-self:start;margin-top:6px}

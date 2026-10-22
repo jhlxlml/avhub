@@ -11,6 +11,8 @@ import threading
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.sqlite_runtime import initialize
+initialize()
 temp = tempfile.TemporaryDirectory(prefix="avhub-regression-")
 # Hosted Windows TEMP can use RUNNER~1. Match production canonical paths once,
 # before seeding the database or exposing fixture directories to UI assertions.
@@ -191,6 +193,15 @@ def two_audio_fixture():
     metadata = m.probe(path)
     with m.connection() as db:
         db.execute('UPDATE media SET path=?,audio_tracks=? WHERE id=2', (str(path),json.dumps(metadata['audio_tracks'])))
+    return {'ok':True}
+
+@m.app.post('/test/sole-audio-fixture')
+def sole_audio_fixture():
+    # Generic list fixtures intentionally omit technical stream indices. This
+    # playback-memory case needs the real single AAC stream's FFprobe index.
+    metadata=m.probe(second)
+    with m.connection() as db:
+        db.execute('UPDATE media SET audio_tracks=? WHERE id=2', (json.dumps(metadata['audio_tracks']),))
     return {'ok':True}
 
 @m.app.post('/test/indexed-ts-fixture')

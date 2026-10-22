@@ -1,18 +1,28 @@
 import { useEffect, useLayoutEffect, useRef,useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon';
 import { useModalDialog } from './useModalDialog';
+import {Button as PrimitiveButton} from './components/ui/button';
 
 export function Button({ icon, busy = false, variant = 'default', className = '', children, disabled, type = 'button', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { icon?: IconName; busy?: boolean; variant?: 'default' | 'primary' | 'danger' }) {
-  return <button {...props} type={type} disabled={disabled || busy} aria-busy={busy || undefined} className={`ui-button ${variant === 'primary' ? 'primary' : variant === 'danger' ? 'danger-action' : ''} ${className}`}>
+  return <PrimitiveButton {...props} type={type} variant={variant==='primary'?'default':variant==='danger'?'destructive':'outline'} disabled={disabled || busy} aria-busy={busy || undefined} className={`ui-button ${variant === 'primary' ? 'primary' : variant === 'danger' ? 'danger-action' : ''} ${className}`}>
     {(busy || icon) && <Icon name={busy ? 'refresh' : icon!} size={16} className={busy ? 'is-spinning' : undefined}/>} {children}
-  </button>;
+  </PrimitiveButton>;
 }
 
 export function IconButton({ icon, label, className = '', ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { icon: IconName; label: string }) {
-  return <button type="button" title={label} aria-label={label} {...props} className={`ui-icon-button ${className}`}><Icon name={icon}/></button>;
+  return <PrimitiveButton type="button" variant="ghost" size="icon" title={label} aria-label={label} {...props} className={`ui-icon-button ${className}`}><Icon name={icon}/></PrimitiveButton>;
 }
 
-export function Dialog({ label, labelledBy, closeLabel, busy, close, className = 'modal', backdropClassName = '', children }: { label?: string; labelledBy?: string; closeLabel: string; busy: boolean; close: () => void; className?: string; backdropClassName?: string; children: ReactNode }) {
+export function DialogHeader({id,descriptionId,icon,title,description}:{id:string;descriptionId:string;icon:IconName;title:string;description:string}) {
+  return <div className="ui-dialog-header"><h2 id={id} className="dialog-title"><Icon name={icon} size={22}/>{title}</h2>
+    <p id={descriptionId} className="dialog-description">{description}</p></div>;
+}
+
+export function FieldHint({id,children}:{id?:string;children:ReactNode}) {
+  return <small id={id} className="ui-field-hint">{children}</small>;
+}
+
+export function Dialog({ label, labelledBy, describedBy, closeLabel, busy, close, className = 'modal', backdropClassName = '', children }: { label?: string; labelledBy?: string; describedBy?:string; closeLabel: string; busy: boolean; close: () => void; className?: string; backdropClassName?: string; children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
   const pointerStartedOutside = useRef(false);
   useModalDialog(ref, busy, close);
@@ -20,7 +30,7 @@ export function Dialog({ label, labelledBy, closeLabel, busy, close, className =
     if (pointerStartedOutside.current && event.target === event.currentTarget && !busy) close();
     pointerStartedOutside.current = false;
   }}>
-    <section ref={ref} tabIndex={-1} className={className} role="dialog" aria-modal="true" aria-label={label} aria-labelledby={labelledBy} aria-busy={busy || undefined}>
+    <section ref={ref} tabIndex={-1} data-slot="dialog" className={className} role="dialog" aria-modal="true" aria-label={label} aria-labelledby={labelledBy} aria-describedby={describedBy} aria-busy={busy || undefined}>
       <IconButton className="close" icon="close" label={closeLabel} disabled={busy} onClick={close}/>
       {children}
     </section>
@@ -35,6 +45,14 @@ export function StatusMessage({ children, kind = 'info', className = '' }: { chi
 
 export function EmptyState({ icon, title, description, children }: { icon: IconName; title: string; description: string; children?: ReactNode }) {
   return <div className="empty"><div className="empty-icon"><Icon name={icon} size={27}/></div><h2>{title}</h2><p>{description}</p>{children}</div>;
+}
+
+// Content-level feedback; callers retain their own loading delay and retry policy.
+export function ContentState({kind,title,description,children}:{kind:'loading'|'empty'|'error';title:string;description?:string;children?:ReactNode}) {
+  return <div className={`ui-content-state is-${kind}`} role={kind==='error'?'alert':kind==='loading'?'status':undefined} aria-busy={kind==='loading'||undefined}>
+    <Icon name={kind==='loading'?'refresh':kind==='error'?'warning':'library'} size={22} className={kind==='loading'?'is-spinning':undefined}/>
+    <div className="ui-content-state-copy"><h3>{title}</h3>{description&&<p>{description}</p>}{children&&<div className="ui-content-state-actions">{children}</div>}</div>
+  </div>;
 }
 
 export function Toast({ message, close, autoDismissMs = 0, pauseAutoDismiss=false,pauseOnInteraction=false,closeDisabled=false, children }: { message: string; close: () => void; autoDismissMs?: number; pauseAutoDismiss?:boolean;pauseOnInteraction?:boolean;closeDisabled?:boolean; children?: ReactNode }) {

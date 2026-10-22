@@ -31,6 +31,10 @@ function assertHealth(port) {
       assert.equal(health.desktop_session, true);
       assert.equal(health.ffmpeg, true);
       assert.equal(health.ffprobe, true);
+      const pin=JSON.parse(readFileSync(path.join(projectRoot,'app/sqlite-runtime.json'),'utf8'));
+      assert.equal(health.sqlite_runtime.version,pin.version);
+      assert.equal(health.sqlite_runtime.policy,'pinned-private-runtime');
+      assert.equal(health.sqlite_runtime.verified,true);
     });
 }
 

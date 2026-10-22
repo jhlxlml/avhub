@@ -3,11 +3,26 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const files = ['run.py', 'package.json', 'vite.config.ts'];
+const files = ['run.py', 'package.json', 'package-lock.json', 'requirements.txt', 'vite.config.ts', 'app/sqlite-runtime.json'];
 for (const directory of ['app', 'frontend/src', 'electron/src']) {
-  for (const name of readdirSync(path.join(root, directory)))
-    if (/\.(py|ts|tsx|css)$/.test(name)) files.push(`${directory}/${name}`);
+  function collect(folder) {
+    for (const entry of readdirSync(path.join(root, folder), {withFileTypes:true})) {
+      const name=`${folder}/${entry.name}`;
+      if (entry.isDirectory() && directory !== 'app') collect(name);
+      else if (entry.isFile() && /\.(py|ts|tsx|css)$/.test(entry.name)) files.push(name);
+    }
+  }
+  collect(directory);
 }
+// Raw public inputs (fonts/images/licenses), never generated app/static output.
+function publicAssets(folder){
+  for(const entry of readdirSync(path.join(root,folder),{withFileTypes:true})){
+    const name=`${folder}/${entry.name}`;
+    if(entry.isDirectory())publicAssets(name);
+    else if(entry.isFile())files.push(name);
+  }
+}
+publicAssets('frontend/public');
 const hash = createHash('sha256');
 for (const file of files.sort()) hash.update(file + '\0').update(readFileSync(path.join(root, file)));
 const info = { version: JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version,

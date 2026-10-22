@@ -4,6 +4,9 @@ import json
 import tempfile
 import unittest
 import zipfile
+import contextlib
+import io
+from unittest.mock import patch
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('folder_portable',ROOT/'scripts/folder-portable.py')
@@ -17,6 +20,24 @@ def fixture(directory,version='1.2.3'):
     return source
 
 class FolderPortableTests(unittest.TestCase):
+    def test_explicit_candidate_directory_leaves_default_release_output_untouched(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'app').mkdir();(root/'dist/electron').mkdir(parents=True)
+            (root/'package.json').write_text(json.dumps({'version':'1.2.3'}))
+            (root/'app/build-info.json').write_text(json.dumps({'build_id':'test-build'}))
+            sentinel=root/'dist/electron/old-release.zip';sentinel.write_bytes(b'old release')
+            candidate=root/'owned-candidate';candidate.mkdir();fixture(candidate)
+            with patch.object(folder,'ROOT',root),patch('sys.argv',['folder-portable.py','--directory',str(candidate)]),contextlib.redirect_stdout(io.StringIO()):
+                folder.main()
+            target=candidate/(folder.folder_name('1.2.3')+'.zip')
+            folder.verify(target,'1.2.3','test-build')
+            extracted=root/'extracted'
+            with patch.object(folder,'ROOT',root),patch('sys.argv',['folder-portable.py','--directory',str(candidate),'--extract-to',str(extracted)]),contextlib.redirect_stdout(io.StringIO()):
+                folder.main()
+            self.assertTrue((extracted/folder.folder_name('1.2.3')/'AVHub.exe').is_file())
+            self.assertEqual(sentinel.read_bytes(),b'old release')
+            self.assertEqual(list((root/'dist/electron').iterdir()),[sentinel])
+
     def test_clean_zip_preserves_bytes_and_has_one_app_root(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory=Path(temporary);source=fixture(directory);target=directory/'app.zip'

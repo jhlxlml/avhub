@@ -10,10 +10,35 @@ test.beforeEach(async({request,page})=>{
     const state={purePlayback:false,alwaysOnTop:false,maximized:false,fullScreen:false};(window as any).recordCalls=[];
     window.avhubDesktop={getWindowState:async()=>state,onWindowStateChanged:()=>()=>{},setWindowMode:async()=>state,windowAction:async()=>null,fileOperation:async value=>{
       if(value.action==='preview-records')return {ok:true,preview_token:'e'.repeat(32),records:value.recordIds!.map(id=>{const item=fixture.find(item=>item.id===id)!;return {id,eligible:!['review','offline','pending'].includes(item.status),reason:'',action:value.recordAction==='delete'&&item.status!=='available'?'clear':value.recordAction!,name:item.name,source:item.source,size:item.size};})};
-      if(value.action==='release-record-preview')return {ok:true};
+      if(value.action==='release-record-preview'||value.action==='cancel-preview')return {ok:true};
       (window as any).recordCalls.push(value);return {ok:true};}} as any;
   },entries);
   await page.route('**/api/recycle-records?**',route=>route.fulfill({json:{items:entries,total:3,page:1,pages:1}}));
+});
+for(const theme of ['dark','light'])for(const width of [390,1440])test(`${theme} ${width}: compact records and confirmation remain accessible and borderless`,async({page,request})=>{
+  await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
+  await page.setViewportSize({width,height:820});await page.goto('/');
+  await page.getByRole('button',{name:'回收记录',exact:true}).click();
+  const panel=page.getByRole('dialog',{name:'回收记录',exact:true});
+  await expect(panel).toHaveAccessibleDescription(/Windows 系统回收站/);
+  const row=panel.locator('.recycle-record-list>li').first();
+  await expect(row.getByRole('button',{name:'恢复',exact:true})).toHaveCSS('height','28px');
+  await expect(panel.getByRole('button',{name:'全选本页',exact:true})).toHaveCSS('height','32px');
+  await expect(panel.locator('.recycle-record-status').first()).toHaveCSS('border-top-width','0px');
+  await expect(row.getByRole('checkbox')).toHaveCSS('width','16px');
+  const cover=await row.locator('.recycle-record-cover').boundingBox(),name=await row.locator('strong').boundingBox();
+  expect(name!.y).toBeLessThan(cover!.y+cover!.height);
+  await row.getByRole('checkbox').check();await expect(row).toHaveAttribute('data-selected','true');
+  expect(await panel.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBeTruthy();
+  await page.screenshot({path:`build/recycle-polish-${theme}-${width}.png`});
+  await row.getByRole('button',{name:'永久删除 待恢复.mp4',exact:true}).click();
+  const confirmation=page.getByRole('dialog',{name:'永久删除 1 个视频？',exact:true});
+  await expect(confirmation).toHaveAccessibleDescription(/无法通过回收站恢复/);
+  await expect(confirmation.getByRole('button',{name:'取消确认',exact:true})).toBeFocused();
+  await expect(confirmation.locator('.app-confirm-details')).toHaveCSS('border-top-width','0px');
+  expect(await confirmation.evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBeTruthy();
+  await page.keyboard.press('Escape');await expect(confirmation).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
 });
 for(const theme of ['dark','light'])test(`${theme}: toolbar placement, default empty selection, precise actions and matching modal style`,async({page,request})=>{
   await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
@@ -104,9 +129,26 @@ test('failed permanent deletion requires a fresh preview and another explicit co
 test('stop during preflight labels all eligible tasks unstarted and never invokes a mutation',async({page})=>{
   await page.goto('/');await page.getByRole('button',{name:'回收记录',exact:true}).click();const panel=page.getByRole('dialog',{name:'回收记录',exact:true});
   await page.evaluate(()=>{const original=window.avhubDesktop!.fileOperation!;window.avhubDesktop!.fileOperation=async value=>{if(value.action==='preview-records')await new Promise<void>(resolve=>{(window as any).preflightGate=resolve;});return original(value);};});
-  await panel.getByRole('button',{name:'永久删除 待恢复.mp4',exact:true}).click();await panel.getByRole('button',{name:'停止后续操作',exact:true}).click();await page.evaluate(()=>(window as any).preflightGate());
+  await panel.getByRole('button',{name:'永久删除 待恢复.mp4',exact:true}).click();await panel.getByRole('button',{name:'取消预检',exact:true}).click();await page.evaluate(()=>(window as any).preflightGate());
   await expect(panel.locator('[data-state="stopped"]')).toContainText('预检期间已停止');await expect(panel.locator('[data-state="queued"]')).toHaveCount(0);
   expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);await expect(page.getByRole('dialog',{name:'永久删除 1 个视频？'})).toHaveCount(0);
+});
+
+test('closing pending record preflight cancels its scoped request without restoring or deleting',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:'回收记录',exact:true}).click();
+  await page.evaluate(()=>{
+    const w=window as any,original=window.avhubDesktop!.fileOperation!;
+    window.avhubDesktop!.fileOperation=async value=>{
+      if(value.action==='preview-records'){w.recordPreviewRequest=value.requestId;return new Promise((_resolve,reject)=>{w.rejectRecordPreview=reject;});}
+      if(value.action==='cancel-preview'){w.recordPreviewCancelled=value.requestId;w.rejectRecordPreview(new Error('已取消预检，未执行文件修改'));return {ok:true};}
+      return original(value);
+    };
+  });
+  const panel=page.getByRole('dialog',{name:'回收记录',exact:true});
+  await panel.getByRole('button',{name:'恢复',exact:true}).click();await expect(panel.getByRole('button',{name:'取消预检',exact:true})).toBeVisible();
+  await panel.getByRole('button',{name:'关闭回收记录',exact:true}).click();await expect(panel).toHaveCount(0);
+  await expect.poll(()=>page.evaluate(()=>(window as any).recordPreviewCancelled)).toBe(await page.evaluate(()=>(window as any).recordPreviewRequest));
+  expect(await page.evaluate(()=>(window as any).recordCalls)).toEqual([]);
 });
 
 test('failure outside current page is located by record ID, not by a shared filename',async({page})=>{

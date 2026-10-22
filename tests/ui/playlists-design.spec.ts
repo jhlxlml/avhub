@@ -80,7 +80,8 @@ test('empty state, unavailable cover and all-offline list remain usable',async({
   await expect(page.getByRole('button',{name:'从头播放',exact:true})).toBeDisabled();
   await expect(page.getByRole('button',{name:'随机播放列表'})).toBeDisabled();
   await expect(page.locator('.playlist-hero-cover').getByRole('img',{name:'暂无预览图'})).toBeVisible();
-  await expect(page.getByText('列表为空，可在视频封面上点击“加入播放列表”。')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'播放列表暂无视频',exact:true})).toBeVisible();
+  await expect(page.getByText('可在视频封面上点击“加入播放列表”。',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'删除列表',exact:true}).click({trial:true});
   // The existing delete confirmation must still protect a list.
   await page.getByRole('button',{name:'删除列表',exact:true}).click();

@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, json, errorText, type Root } from './api';
 import {BackupTools} from './BackupTools';
 import {StorageTools} from './StorageTools';
 import './settings.css';
 import { Icon, type IconName } from './Icon';
-import { Button, Dialog, StatusMessage } from './ui';
+import { Button, Dialog, DialogHeader, StatusMessage } from './ui';
 import { Diagnostics } from './Diagnostics';
 import { type ThumbnailStatus } from './ThumbnailTasks';
 import { ScreenshotSettings } from './ScreenshotSettings';
@@ -21,11 +21,17 @@ import {confirmInApp} from './AppConfirm';
 import {desktopFile,FileOperationHistory,FileStatePanel,type FilePermission} from './FileManagement';
 import {SourceChanges} from './SourceChanges';
 import {NativePlayerSettings} from './NativePlayerSettings';
+import {DirectorySettingRow} from './DirectorySettingRow';
+import {SettingToggle} from './SettingToggle';
 
-const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'info'},{id:'help',label:'帮助',icon:'help'}];
+const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'activity'},{id:'help',label:'帮助',icon:'help'}];
 
 export function Settings({ roots, close, reload, scanning, scan, previewEnabled, changePreview,thumbnailStatus,changeThumbnailStatus }: { roots: Root[]; close: () => void; reload: () => Promise<void>; scanning: boolean; scan: (root?: number) => Promise<void>; previewEnabled:boolean; changePreview:(enabled:boolean)=>void;thumbnailStatus:ThumbnailStatus|null;changeThumbnailStatus:(value:ThumbnailStatus)=>void }) {
   const [tab,setTab]=useState('directories');
+  const content=useRef<HTMLDivElement>(null);
+  // Keep mounted panels/drafts, but don't carry a previous category's scroll
+  // offset into a different page. No focus stealing or preference writes.
+  useLayoutEffect(()=>{if(content.current)content.current.scrollTop=0;},[tab]);
   const [verticalTabs,setVerticalTabs]=useState(()=>window.matchMedia('(min-width:820px)').matches);
   useEffect(()=>{const media=window.matchMedia('(min-width:820px)');const update=()=>setVerticalTabs(media.matches);update();media.addEventListener('change',update);return()=>media.removeEventListener('change',update);},[]);
   const [path, setPath] = useState('');
@@ -110,15 +116,15 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     const quitting=(event:Event)=>{if(busy)(event as CustomEvent<Promise<unknown>[]>).detail.push(Promise.resolve(false));};
     window.addEventListener('avhub-before-quit',quitting);return()=>window.removeEventListener('avhub-before-quit',quitting);
   },[busy]);
-  return <Dialog labelledBy="settings-title" closeLabel="关闭设置" busy={busy} close={requestClose} className="modal settings-dialog">
-      <h2 id="settings-title" className="dialog-title"><Icon name="settings" size={22}/>媒体库设置</h2><p className="dialog-description">目录默认只读，可按目录授权文件重命名和系统回收；不改视频内容。</p>
+  return <Dialog labelledBy="settings-title" describedBy="settings-description" closeLabel="关闭设置" busy={busy} close={requestClose} className="modal settings-dialog">
+      <DialogHeader id="settings-title" descriptionId="settings-description" icon="settings" title="媒体库设置" description="目录默认只读，可按目录授权文件重命名和系统回收；不改视频内容。"/>
       <div className="settings-workspace">
       <div className="settings-tabs" role="tablist" aria-label="设置分类" aria-orientation={verticalTabs?'vertical':'horizontal'}>{tabs.map((item,index)=><button key={item.id} id={'settings-tab-'+item.id} role="tab" aria-selected={tab===item.id} aria-controls={'settings-panel-'+item.id} tabIndex={tab===item.id?0:-1} disabled={busy} onClick={()=>setTab(item.id)} onKeyDown={event=>{
         if(busy||!['ArrowLeft','ArrowRight','Home','End',...(verticalTabs?['ArrowUp','ArrowDown']:[])].includes(event.key))return;event.preventDefault();
         const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(['ArrowRight','ArrowDown'].includes(event.key)?1:-1)+tabs.length)%tabs.length;
         setTab(tabs[next].id);document.getElementById('settings-tab-'+tabs[next].id)?.focus();
       }}><Icon name={item.icon} size={16}/>{item.label}</button>)}</div>
-      <div className="settings-content">
+      <div className="settings-content" ref={content}>
       <div className="settings-panel" role="tabpanel" id="settings-panel-directories" aria-labelledby="settings-tab-directories" hidden={tab!=='directories'}>
       <section className="settings-section" aria-label="媒体目录">
       <h3><Icon name="folder"/>媒体目录</h3>
@@ -129,23 +135,17 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <button className="ui-button" disabled={busy || scanning} onClick={() => void add(true)}><Icon name="folder" size={16}/>{busy ? '正在处理…' : '浏览本地文件夹'}</button>
       {addedRoot&&<StatusMessage>已添加目录：{addedRoot.path}<Button icon="refresh" disabled={busy||scanning} onClick={()=>void scan(addedRoot.id)}>现在扫描此目录</Button></StatusMessage>}
       {roots.length > 20 && <input className="root-search" type="search" aria-label="搜索已添加目录" placeholder="搜索已添加的目录…" value={rootQuery} onChange={event => { setRootQuery(event.target.value); setRootPage(1); }} />}
-      <div className="root-list">{shownRoots.map(root => <div key={root.id}>
-        <span className="root-icon"><Icon name="folder" size={18}/></span>
-        <div className="root-info"><code title={root.path}>{root.path}</code>{(availability[root.id] ?? root.available) === false && <small>目录离线或不可访问</small>}
-          <div className="file-permission-fields">{(['rename','recycle','permanentDelete'] as const).map(action=><label key={action} title={filePermissions[root.id]?.reason}><input type="checkbox" aria-label={`${action==='rename'?'允许重命名':action==='recycle'?'允许系统回收':'允许永久删除'} ${root.path}`} checked={filePermissions[root.id]?.[action]||false} disabled={busy||scanning||!filePermissions[root.id]?.supported||!window.avhubDesktop?.fileOperation} onChange={event=>void permission(root,action,event.target.checked)}/>{action==='rename'?'允许重命名':action==='recycle'?'允许系统回收':'允许永久删除'}</label>)}</div>
-        </div>
-        <button className="ui-button" disabled={busy || scanning} onClick={() => void scan(root.id)}><Icon name="refresh" size={14}/>扫描此目录</button>
-        {(availability[root.id] ?? root.available) === false && <button className="ui-button" disabled={busy || scanning} onClick={() => void relocate(root.id)}><Icon name="reveal" size={14}/>重新定位</button>}
-        <button className="ui-button danger-action" disabled={busy || scanning} onClick={() => void remove(root.id)}><Icon name="close" size={14}/>移除</button>
-      </div>)}</div>
+      <div className="root-list">{shownRoots.map(root => <DirectorySettingRow key={root.id} root={root} value={filePermissions[root.id]}
+        offline={(availability[root.id]??root.available)===false} disabled={busy||scanning} permission={permission}
+        scan={()=>void scan(root.id)} relocate={()=>void relocate(root.id)} remove={()=>remove(root.id)}/>)}</div>
       {roots.length > 20 && <div className="root-pager" aria-label="目录分页"><span>匹配 {matching.length} 个目录 · {page} / {rootPages} 页</span><button disabled={page <= 1} onClick={() => setRootPage(page - 1)}>上一页目录</button><button disabled={page >= rootPages} onClick={() => setRootPage(page + 1)}>下一页目录</button></div>}
       </section>
-      <section className="settings-section" aria-label="后台封面"><h3><Icon name="camera"/>后台封面</h3>
+      <section className="settings-section thumbnail-settings" aria-label="后台封面"><div className="settings-section-heading"><h3><Icon name="camera"/>后台封面</h3>
+        <Button icon={thumbnailStatus?.paused?'play':'pause'} busy={busy} onClick={()=>void toggleThumbnails()}>{thumbnailStatus?.paused?'恢复封面任务':'暂停封面任务'}</Button></div>
         <ThumbnailSummary status={thumbnailStatus}/>
-        <Button icon={thumbnailStatus?.paused?'play':'pause'} busy={busy} onClick={()=>void toggleThumbnails()}>{thumbnailStatus?.paused?'恢复封面任务':'暂停封面任务'}</Button>
         <small>播放时自动让路，不改变手动暂停设置；离开播放器或活动信号超时后恢复。</small></section>
-      <section className="preview-preference"><label><input type="checkbox" aria-label="封面悬停预览" disabled={busy} checked={previewEnabled} onChange={event=>changePreview(event.target.checked)} />封面悬停预览</label>
-        <small>停留 0.65 秒后静音预览，每次仅播放一个原片片段。不兼容时保留封面，不触发转码；开启会增加读取与解码负载。</small></section>
+      <section className="preview-preference"><SettingToggle label="封面悬停预览" disabled={busy} checked={previewEnabled} onChange={changePreview}
+        description="停留 0.65 秒后静音预览，每次仅播放一个原片片段。不兼容时保留封面，不触发转码；开启会增加读取与解码负载。"/></section>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-playback" aria-labelledby="settings-tab-playback" hidden={tab!=='playback'}>
       <AutoplaySettings busy={busy}/>
       <NativePlayerSettings busy={busy} changeBusy={setBusy}/>

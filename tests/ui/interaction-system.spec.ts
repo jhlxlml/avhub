@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import {answerResumeOrWaitForControls} from './player-readiness';
 
 test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
 async function revealControls(page:Page) {
@@ -10,10 +11,7 @@ async function player(page: Page) {
   await page.getByRole('button', { name: '播放 视频 002', exact: true }).click();
   // A previous context's final progress beacon can arrive after fixture reset.
   // Accept the legitimate resume choice before checking control readiness.
-  const fromStart=page.getByRole('button',{name:'从头开始',exact:true});
-  const fullscreen=page.getByRole('button',{name:'全屏',exact:true});
-  await expect.poll(async()=>await fromStart.isVisible() || await fullscreen.isEnabled()).toBeTruthy();
-  if(await fromStart.isVisible())await fromStart.click();
+  await answerResumeOrWaitForControls(page);
   await expect(page.getByRole('button', { name: '全屏', exact: true })).toBeEnabled();
   await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState >= 2)).toBeTruthy();
   await page.locator('video').evaluate((v: HTMLVideoElement) => v.pause());

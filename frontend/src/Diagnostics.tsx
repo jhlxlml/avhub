@@ -32,7 +32,7 @@ export function Diagnostics({changeBusy}:{changeBusy?:(busy:boolean)=>void}={}) 
     catch(e){setError(errorText(e));}finally{setSaving(false);}
   }
   return <details className="settings-section runtime-diagnostics" onToggle={event => { if (event.currentTarget.open && !report && !busy) void load(); }}>
-    <summary><Icon name="info"/>运行诊断</summary>
+    <summary><Icon name="activity"/>运行诊断</summary>
     <p className="dialog-description">仅检查本机，不联网。数据目录决定当前使用哪个媒体库；诊断文件含本地路径，分享前请检查。</p>
     <div className="diagnostic-actions"><Button icon="refresh" busy={busy} disabled={saving} onClick={() => void load()}>刷新诊断</Button><Button icon="download" busy={saving} disabled={!report || busy} onClick={()=>void download()}>导出诊断</Button>{saving&&<Button onClick={()=>void requireDesktop('cancelExport').cancelExport()}>取消保存诊断</Button>}</div>
     {notice&&<StatusMessage kind={notice==='诊断已保存。'?'success':'info'}>{notice}</StatusMessage>}

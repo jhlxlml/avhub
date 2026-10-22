@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { _electron, expect } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import './playback-geometry.mjs';
+import './bounds-calibration.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const build=path.join(root,'build');mkdirSync(build,{recursive:true});
 const temporary=mkdtempSync(path.join(build,'electron-window-mode-'));
+const resultFile=path.join(build,`window-mode-result-${path.basename(temporary)}.json`);
+const result={passed:false,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')),errors:[]};
 let desktop;
 const stats=()=>desktop.evaluate(({BrowserWindow})=>{
   const w=BrowserWindow.getAllWindows()[0];
@@ -47,6 +50,11 @@ async function expectRatio(page,ratio) {
     // client is reported as 273, overstating ultrawide black bars. Measure the
     // authoritative physical Win32 client, retaining the same 1-DIP edge limit.
     const client=JSON.parse(probe.stdout).hostWindow.client,scale=client.dpi/96;
+    result.ratioSamples??=[];
+    if(result.ratioSamples.length<64)result.ratioSamples.push({ratio,client,scale,
+      gap:edgeGap(client.width/scale,client.height/scale),native:await stats(),
+      renderer:await page.evaluate(()=>({width:innerWidth,height:innerHeight,dpr:devicePixelRatio})),
+      requests:await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].__fitRequests??[])});
     return edgeGap(client.width/scale,client.height/scale);
   }).toBeLessThanOrEqual(1);
   await expect.poll(()=>page.evaluate(r=>Math.max(innerWidth-innerHeight*r,innerHeight-innerWidth/r,0)/2,ratio)).toBeLessThanOrEqual(1);
@@ -64,6 +72,10 @@ try {
   desktop=await _electron.launch({args:[root,'--in-process-gpu','--disable-gpu','--no-sandbox','--autoplay-policy=no-user-gesture-required'],cwd:temporary,
     env:{...process.env,AVHUB_DATA_DIR:temporary,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});
   const page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置'}).waitFor();
+  await desktop.evaluate(({BrowserWindow})=>{
+    const w=BrowserWindow.getAllWindows()[0],original=w.setContentBounds.bind(w);w.__fitRequests=[];
+    w.setContentBounds=(rect,...args)=>{w.__fitRequests.push({rect,...{before:w.getContentBounds()}});if(w.__fitRequests.length>24)w.__fitRequests.shift();return original(rect,...args);};
+  });
   await page.addInitScript(()=>{window.__windowPointer=[];for(const name of ['mousemove','mouseleave','pointerleave'])document.addEventListener(name,event=>{const values=window.__windowPointer;values.push({name,x:event.clientX,y:event.clientY,target:event.target?.className});if(values.length>20)values.shift();},true);});
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme','light');
@@ -82,6 +94,11 @@ try {
     await fetch('/api/scan',{method:'POST'});
   },fixture);
   await expect.poll(()=>page.evaluate(async()=>{const r=await fetch('/api/media?page=1');return(await r.json()).total;}),{timeout:30000}).toBe(4);
+  await expect(page.locator('.card')).toHaveCount(4);
+  // The minimum window need not show both rows at once. Verify a visible first
+  // cover, then admit the second row through real scrolling (keep lazy loading).
+  await expect(page.locator('.card .cover').first()).toBeInViewport();
+  await page.locator('.card').last().scrollIntoViewIfNeeded();
   await expect(page.locator('.card img.thumbnail-ready')).toHaveCount(4,{timeout:15000});
   assert.equal(await page.locator('.card img.thumbnail-ready').evaluateAll(images=>images.every(img=>img.naturalWidth>0)),true);
   await page.evaluate(()=>{document.querySelector('main').style.minHeight='2200px';document.getElementById('app-scroll-area').scrollTo(0,180);});
@@ -225,14 +242,21 @@ try {
   await expect.poll(()=>page.locator('video').evaluate(v=>v.paused)).toBe(true);
   await page.waitForTimeout(1200);
   await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
-  await page.mouse.move(220,240);
+  // Pure playback may shrink to 487x274 DIPs. A fixed y=240 is then inside
+  // the controls, where staying visible is correct. Leave to measured picture.
+  const leaveToPicture=async()=>{
+    const stage=await page.locator('.video-wrap').boundingBox(),bar=await page.locator('.player-controls').boundingBox();
+    assert.ok(bar.y-stage.y>48,'picture must remain between titlebar and controls');
+    await page.mouse.move(stage.x+stage.width/2,stage.y+(48+bar.y-stage.y)/2);
+  };
+  await leaveToPicture();
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/,{timeout:3000});
   await expect(page.locator('.player-controls')).toHaveCSS('opacity','0');
   await expect(page.locator('.desktop-titlebar')).toHaveCSS('opacity','0');
   await page.keyboard.press('k');
   await expect.poll(()=>page.locator('video').evaluate(v=>v.paused)).toBe(false);
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/);
-  await page.mouse.move(220,240);
+  await leaveToPicture();
   await expect(page.locator('.video-wrap')).toHaveClass(/controls-hidden/,{timeout:3000});
   await expect(page.locator('.desktop-titlebar')).toHaveCSS('opacity','0');
   await page.keyboard.press('k');
@@ -255,14 +279,22 @@ try {
   await expect(page.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveAttribute('aria-pressed','true');
   // Real BrowserWindow resize, not a renderer viewport mock. Keep it hidden so
   // tests never steal focus or pin a test window over the user's desktop.
-  await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setBounds({width:640,height:360}));
+  await desktop.evaluate(({BrowserWindow,screen})=>{
+    const window=BrowserWindow.getAllWindows()[0],before=window.getBounds(),area=screen.getDisplayMatching(before).workArea;
+    const width=Math.min(640,area.width,Math.floor(area.height*16/9)),height=Math.round(width*9/16);
+    window.setBounds({width,height,x:Math.max(area.x,Math.min(before.x,area.x+area.width-width)),y:Math.max(area.y,Math.min(before.y,area.y+area.height-height))});
+  });
   await expectRatio(page,16/9);
   await expect.poll(()=>page.evaluate(()=>innerWidth)).toBeLessThanOrEqual(650);
   const stage=await page.locator('.video-wrap').boundingBox();assert.equal(stage.x,0);assert.equal(stage.y,0);
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await page.screenshot({path:path.join(build,'pure-playback-desktop.png')});
   await page.keyboard.press('Escape');await expect(page.locator('.player-top')).toBeVisible();
-  current=await stats();assert.equal(current.top,false);assert.equal(current.full,false);assert.deepEqual(current.minimum,[760,560]);assert.deepEqual(current.bounds,original.bounds);
+  // The window-state event reveals the header before native DPI calibration
+  // has finished. Observe the exact final rect, not the intermediate request.
+  // No tolerance: the original outer position and dimensions must all match.
+  await expect.poll(async()=>(await stats()).bounds).toEqual(original.bounds);
+  current=await stats();assert.equal(current.top,false);assert.equal(current.full,false);assert.deepEqual(current.minimum,original.minimum);assert.deepEqual(current.bounds,original.bounds);
   assert.equal((await scroller.boundingBox()).y,32);
   await expect(titlebar.getByRole('button',{name:'窗口置顶',exact:true})).toHaveCSS('border-radius','0px');
   await revealPlayerControls(page);
@@ -294,7 +326,7 @@ try {
   await expect(page.getByRole('button',{name:'全部视频',exact:true})).toBeVisible();
   await expect.poll(async()=>(await stats()).top).toBe(false);
   assert.equal(await page.evaluate(async()=>(await window.avhubDesktop.getWindowState()).purePlayback),false);
-  assert.deepEqual((await stats()).bounds,original.bounds);
+  await expect.poll(async()=>(await stats()).bounds).toEqual(original.bounds);
   for(const invalid of [{alwaysOnTop:'yes'},{fullScreen:true},{purePlayback:1},{videoAspectRatio:0},{videoAspectRatio:-1},{videoAspectRatio:NaN},{videoAspectRatio:Infinity},{videoAspectRatio:100},{videoAspectRatio:'1.5'}])
     assert.equal(await page.evaluate(async value=>{try{await window.avhubDesktop.setWindowMode(value);return false;}catch{return true;}},invalid),true);
   assert.equal(await page.evaluate(async()=>{try{await window.avhubDesktop.windowAction('shell');return false;}catch{return true;}}),true);
@@ -324,13 +356,15 @@ try {
   await page.evaluate(()=>window.avhubDesktop.setWindowMode({purePlayback:false}));
   assert.equal(await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isMaximized()),true);
   await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].unmaximize());
-  assert.deepEqual((await stats()).bounds,original.bounds);
+  await expect.poll(async()=>(await stats()).bounds).toEqual(original.bounds);
   // The custom close button must use the existing save-before-quit handshake.
   const closed=desktop.waitForEvent('close',{timeout:60000});
   await page.getByRole('button',{name:'关闭窗口',exact:true}).click();await closed;desktop=null;
   assert.ok(temporary.startsWith(build+path.sep));rmSync(temporary,{recursive:true,force:true});
+  result.passed=true;
   console.log('Electron window mode passed in light theme: video-ratio fit, portrait/4:3/ultrawide, rotation, ratio-preserving expansion and resize, titlebar pin, same decoder, restored bounds, library reset, IPC validation and custom close.');
 } catch(error) {
+  result.errors.push(String(error?.stack||error));
   console.error(error);console.error(`Test data retained: ${temporary}`);process.exitCode=1;
   if(desktop) {
     const page=await desktop.firstWindow();
@@ -346,4 +380,5 @@ try {
 }
 finally {
   if(desktop){await desktop.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});}).catch(()=>{});await desktop.close().catch(()=>{});}
+  writeFileSync(resultFile,JSON.stringify(result,null,2));console.log('Window mode result:',resultFile);
 }

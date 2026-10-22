@@ -23,7 +23,7 @@ export function useModalDialog(ref: RefObject<HTMLElement | null>, busy: boolean
     const scrollers = [document.documentElement, document.body, document.getElementById('app-scroll-area')].filter((e): e is HTMLElement => Boolean(e));
     const overflow = scrollers.map(element => ({ element, value: element.style.overflow }));
     scrollers.forEach(element => { element.style.overflow = 'hidden'; });
-    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
+    const focusable = () => Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, summary, a[href], [tabindex]'))
       .filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && !element.closest('[inert]') && element.getClientRects().length > 0);
     const focusFirst = () => {
       const elements = focusable();
@@ -40,7 +40,9 @@ export function useModalDialog(ref: RefObject<HTMLElement | null>, busy: boolean
         const index = elements.indexOf(document.activeElement as HTMLElement);
         if (!elements.length || index < 0 || event.shiftKey && index === 0 || !event.shiftKey && index === elements.length - 1) {
           event.preventDefault();
-          (event.shiftKey ? elements.at(-1) || dialog : elements[0] || dialog).focus({ preventScroll: true });
+          // A wrapped target can be inside a long dialog's own scroller.
+          // Let the browser reveal it; otherwise keyboard focus stays offscreen.
+          (event.shiftKey ? elements.at(-1) || dialog : elements[0] || dialog).focus();
         }
       }
     };

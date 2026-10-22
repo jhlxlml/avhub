@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from .sqlite_runtime import status as sqlite_runtime_status
 
 STARTED = time.monotonic()
 
@@ -24,5 +25,6 @@ def report(data: Path, database: Path, build: dict, desktop: bool, frozen: bool,
                   'pending_cleanup': len(playback.pending_removals), 'ahead_seconds': playback.ahead_seconds, 'back_seconds': playback.back_seconds}
     return {'build': build, 'mode': 'Electron 便携版' if desktop and frozen else 'Electron 开发模式' if desktop else '浏览器本地服务',
             'data_dir': str(data), 'database': str(database), 'frozen': frozen, 'python': sys.version.split()[0],
+            'sqlite_runtime':sqlite_runtime_status(),
             'uptime_seconds': round(time.monotonic() - STARTED), 'tools': {name: tool_version(command) for name, command in tools.items()},
             'playback': active}

@@ -97,9 +97,12 @@ test('playlist refresh retains context and invalid routes recover safely',async(
   await expect(page).not.toHaveURL(/playlist=/);
   await expect(page.getByRole('alert')).toContainText('片单上下文无法恢复');
   await page.goto('/?video=999999&q=003');
+  const recovery=page.getByRole('region',{name:'播放页恢复失败'});
+  await expect(recovery).toContainText('无法恢复播放页');
+  await expect(page).toHaveURL(/video=999999/);
+  await recovery.getByRole('button',{name:'返回媒体库'}).click();
   await expect(page.getByRole('button',{name:'播放 视频 003',exact:true})).toBeVisible();
   await expect(page).not.toHaveURL(/video=/);
-  await expect(page.getByRole('alert')).toContainText('无法恢复播放页');
 });
 
 test('manual watched status survives autosave, can return to automatic and never invents progress',async({page,request})=>{
@@ -166,6 +169,9 @@ test('a late old progress response cannot clear a newer save failure',async({pag
   });
   try {
     await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.currentTime=18;v.pause();});await started;
+    // A newer *different* snapshot must retain its own failure. Identical
+    // pause/back writes now intentionally share the same durable request.
+    await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.currentTime=27;});
     await page.locator('.player-top').getByRole('button',{name:/返回媒体库/}).click();
     await expect(page.getByRole('alert')).toContainText('较新的进度保存失败');
     release();await expect.poll(()=>completed).toBeTruthy();

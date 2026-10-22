@@ -26,6 +26,7 @@ function apply() {
   // Changing CSS tokens never rebuilds media cards, refetches the index, or
   // replaces the video element. Keep display preferences outside query state.
   document.documentElement.dataset.theme=state.theme;
+  document.documentElement.classList.toggle('dark',state.theme==='dark');
   document.documentElement.dataset.coverSize=state.coverSize;
 }
 function publish(value:Appearance) {

@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type IpcMainInvokeEvent, type Rectangle } from 'electron';
 import {textEditTemplate} from './textEditMenu';
 import { fitPlaybackBounds, playbackMinimum } from './playbackGeometry';
+import {initialLibraryWindow} from './windowBounds';
+import {BoundsCalibration} from './boundsCalibration';
 import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
 import {StartupTrace} from './startupTrace';
@@ -18,6 +20,7 @@ import { realpath,stat } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import {NativePlayer} from './nativePlayer';
+import {FilePreviewRequest,cancellableFilePreview} from './filePreview';
 
 const isPackaged = app.isPackaged;
 const projectRoot = app.getAppPath();
@@ -32,7 +35,7 @@ let backendExitCode: number | null | undefined;
 let dataDir = '';
 let startupError: Error | null = null;
 let purePlayback = false;
-let normalPlaybackWindow: { contentBounds: Rectangle; maximized: boolean } | null = null;
+let normalPlaybackWindow: { contentBounds: Rectangle; outerBounds:Rectangle; maximized: boolean } | null = null;
 let playbackAspectRatio=0;
 let expandedPlaybackBounds:Rectangle|null=null;
 let fittingPlaybackWindow=false;
@@ -53,18 +56,18 @@ ipcMain.handle('avhub:native-player',(event,action:unknown,input:unknown)=>{
 });
 let pendingDataMigration:DataMigration|undefined;
 
-function setExactContentBounds(window:BrowserWindow,target:Rectangle) {
+function setExactBounds(window:BrowserWindow,target:Rectangle,kind:'content'|'outer',onSettled?:()=>void) {
   const revision=++placementRevision;clearTimeout(placementTimer);settlingPlaybackWindow=true;
-  window.setContentBounds(target);
-  let requested={...target},attempt=0;
+  const write=(bounds:Rectangle)=>kind==='content'?window.setContentBounds(bounds):window.setBounds(bounds);
+  const calibration=new BoundsCalibration(target,kind==='content'&&purePlayback?playbackAspectRatio:0);
+  write(target);
   const settle=()=>{
     if(revision!==placementRevision)return;
     if(window.isDestroyed()){settlingPlaybackWindow=false;return;}
-    const actual=window.getContentBounds();
-    const delta={x:target.x-actual.x,y:target.y-actual.y,width:target.width-actual.width,height:target.height-actual.height};
-    if(Object.values(delta).every(value=>value===0)||Object.values(delta).some(value=>Math.abs(value)>3)||attempt++>=3){settlingPlaybackWindow=false;if(purePlayback&&!expandedPlaybackBounds)lastFittedPlaybackBounds=actual;return;}
-    requested={x:requested.x+delta.x,y:requested.y+delta.y,width:requested.width+delta.width,height:requested.height+delta.height};
-    window.setContentBounds(requested);placementTimer=setTimeout(settle,20);
+    const actual=kind==='content'?window.getContentBounds():window.getBounds();
+    const next=calibration.observe(actual);
+    if(!next){settlingPlaybackWindow=false;if(kind==='content'&&purePlayback&&!expandedPlaybackBounds)lastFittedPlaybackBounds=actual;onSettled?.();return;}
+    write(next);placementTimer=setTimeout(settle,20);
   };
   // Native client/outer rounding is not settled inside setContentBounds().
   // Calibrate against the completed request, cancel on a newer placement.
@@ -86,7 +89,7 @@ function fitPlaybackWindow(window:BrowserWindow,largest=expandedPlaybackBounds!=
     if(window.isMaximized())window.unmaximize();
     window.setMinimumSize(...playbackMinimum(playbackAspectRatio,work));
     window.setAspectRatio(playbackAspectRatio);
-    setExactContentBounds(window,fitPlaybackBounds(current,work,playbackAspectRatio,largest));
+    setExactBounds(window,fitPlaybackBounds(current,work,playbackAspectRatio,largest),'content');
   } finally {fittingPlaybackWindow=false;}
 }
 function togglePlaybackExpand(window:BrowserWindow) {
@@ -94,7 +97,7 @@ function togglePlaybackExpand(window:BrowserWindow) {
     const restore=expandedPlaybackBounds;expandedPlaybackBounds=null;
     // This was already fitted before expansion. Re-fitting its rounded area
     // changes width/height again and accumulates drift on every toggle.
-    setExactContentBounds(window,restore);
+    setExactBounds(window,restore,'content');
   } else {
     expandedPlaybackBounds=window.getContentBounds();fitPlaybackWindow(window,true);
   }
@@ -117,6 +120,7 @@ const localExports=new LocalExports(()=>dataDir,async(request,signal)=>{
     const metadata=await health.json() as {build_id?:unknown;api_protocol?:unknown};
     const report=await captureChromiumDiagnostics(mainWindow.webContents,signal,{
       gpu:()=>app.getGPUInfo('complete'),features:()=>app.getGPUFeatureStatus(),
+      display:()=>mainWindow&&!mainWindow.isDestroyed()?screen.getDisplayMatching(mainWindow.getBounds()):null,
       build:{version:app.getVersion(),build_id:typeof metadata.build_id==='string'&&/^[a-f0-9]{16}$/.test(metadata.build_id)?metadata.build_id:null,api_protocol:typeof metadata.api_protocol==='number'?metadata.api_protocol:null},
     });
     return {filename:'avhub-playback-diagnostics.json',response:new Response(JSON.stringify(report,null,2)),maximum:256*1024};
@@ -157,10 +161,11 @@ function applyWindowMode(window:BrowserWindow,value:unknown) {
   if (update.purePlayback !== undefined && update.purePlayback !== purePlayback) {
     if (update.purePlayback) {
       const maximized=window.isMaximized();
+      const outerBounds=maximized?window.getNormalBounds():window.getBounds();
       // Windows maximized/normal invisible frame insets differ. Restore first
       // and measure the real client bounds rather than inferring an offset.
       if(maximized)window.unmaximize();
-      normalPlaybackWindow = { contentBounds:window.getContentBounds(),maximized };
+      normalPlaybackWindow = { contentBounds:window.getContentBounds(),outerBounds,maximized };
       if(maximized)expandedPlaybackBounds=window.getContentBounds();
       window.setMinimumSize(270,180);
       purePlayback = true;
@@ -169,11 +174,19 @@ function applyWindowMode(window:BrowserWindow,value:unknown) {
       purePlayback = false;
       playbackAspectRatio=0;expandedPlaybackBounds=null;lastFittedPlaybackBounds=null;
       window.setAspectRatio(0);
-      window.setMinimumSize(760, 560);
+      const libraryBounds=normalPlaybackWindow?.contentBounds??window.getContentBounds();
+      window.setMinimumSize(...initialLibraryWindow(screen.getDisplayMatching(libraryBounds).workArea).minimum);
       if (normalPlaybackWindow) {
         if (window.isMaximized()) window.unmaximize();
-        setExactContentBounds(window,normalPlaybackWindow.contentBounds);
-        if(normalPlaybackWindow.maximized)window.maximize();
+        // Maximizing immediately would cancel client/outer DPI calibration and
+        // store a rounded restore position (e.g. x + 1 DIP at 175% scaling).
+        const maximize=normalPlaybackWindow.maximized;
+        // Restore the library's OUTER rect. Native fullscreen can change the
+        // rounded non-client inset; applying the old client rect would shift
+        // the whole library even after a successful client-area calibration.
+        setExactBounds(window,normalPlaybackWindow.outerBounds,'outer',maximize?()=>{
+          if(!window.isDestroyed()&&!purePlayback)window.maximize();
+        }:undefined);
       }
       normalPlaybackWindow = null;
     }
@@ -222,6 +235,7 @@ ipcMain.handle('avhub:media-action',async(event,mediaId:unknown,action:unknown)=
 });
 
 let fileActionBusy=false;
+let filePreviewRequest:FilePreviewRequest|null=null;
 function recycleError(error:unknown):string {
   const value=error as {code?:string;message?:string},message=String(value?.message||error);
   if(value?.code==='EBUSY'||/\b(?:WinError\s*|winerror\s*[:=]\s*)(32|33)\b/i.test(message))return '文件正被其他程序占用，请关闭对应程序后重试；应用不会自动关闭它们';
@@ -231,8 +245,16 @@ function recycleError(error:unknown):string {
 }
 ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
   trustedWindow(event);
+  const cancellation=input as {action?:unknown;requestId?:unknown}|null;
+  if(cancellation?.action==='cancel-preview'){
+    if(typeof cancellation.requestId!=='string'||!/^[a-f0-9]{32}$/.test(cancellation.requestId))throw new Error('预检请求标识无效');
+    // A delayed cancellation must never cancel a newer preview or a write.
+    const matched=filePreviewRequest?.id===cancellation.requestId;
+    if(matched)filePreviewRequest!.cancel();
+    return {ok:true,cancelled:matched};
+  }
   if(fileActionBusy||shuttingDown||allowQuit)throw new Error('文件操作尚未完成或应用正在退出');
-  const value=input as {action?:string;id?:number|string;ids?:number[];recordIds?:string[];recordAction?:string;previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean;permanentDelete?:boolean;decision?:string;signature?:string;confirmed?:boolean};
+  const value=input as {action?:string;requestId?:string;id?:number|string;ids?:number[];recordIds?:string[];recordAction?:string;previewToken?:string;stem?:string;rename?:boolean;recycle?:boolean;permanentDelete?:boolean;decision?:string;signature?:string;confirmed?:boolean};
   if(!value||!['rename','recycle','permissions','recycle-bin','recheck','forget','preview','release-preview','restore-record','delete-record','clear-record','preview-records','release-record-preview','recheck-record','resolve-source'].includes(value.action||''))throw new Error('文件操作参数无效');
   if(value.action==='recycle-bin'){await shell.openExternal('shell:RecycleBinFolder');return {ok:true};}
   const action=value.action;
@@ -251,13 +273,19 @@ ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
   if(action==='permissions'&&(typeof value.rename!=='boolean'||typeof value.recycle!=='boolean'))throw new Error('目录权限无效');
   if(value.permanentDelete!==undefined&&typeof value.permanentDelete!=='boolean')throw new Error('永久删除权限参数无效');
   if(action==='resolve-source'&&(!['keep','reset'].includes(value.decision||'')||typeof value.signature!=='string'||!/^[a-f0-9]{64}$/.test(value.signature)))throw new Error('来源确认参数无效');
+  if(value.requestId!==undefined&&(typeof value.requestId!=='string'||!/^[a-f0-9]{32}$/.test(value.requestId)))throw new Error('预检请求标识无效');
+  const preview=cancellableFilePreview(action)?new FilePreviewRequest(value.requestId??randomBytes(16).toString('hex')):null;
   const call=async(route:string,body:unknown,method='POST')=>{
-    const response=await fetch(`http://127.0.0.1:${backendPort}${route}`,{method,headers:{'X-AVHub-Token':sessionToken,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const request=async(signal?:AbortSignal)=>{
+    const response=await fetch(`http://127.0.0.1:${backendPort}${route}`,{method,headers:{'X-AVHub-Token':sessionToken,'Content-Type':'application/json'},body:JSON.stringify(body),...(signal?{signal}:{})});
     if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('本地文件服务响应异常，请查看操作记录后重启');
     const result=await response.json() as {detail?:string;id?:string;source?:string;media_id?:number};
     if(!response.ok)throw new Error(result.detail||'文件操作未完成');return result;
+    };
+    return preview?preview.run(request):request();
   };
   fileActionBusy=true;
+  filePreviewRequest=preview;
   try {
     if(action==='resolve-source')return await call(`/api/source-changes/${value.id}/resolve`,{decision:value.decision,signature:value.signature});
     if(action==='preview-records')return await call('/api/recycle-records/preview',{record_ids:value.recordIds,action:value.recordAction});
@@ -285,7 +313,7 @@ ipcMain.handle('avhub:file-operation',async(event,input:unknown)=>{
     }
     const completed=await call(`/api/file-operations/${operation.id}/result`,{success:true});
     return {...completed,operation_id:operation.id};
-  } finally {fileActionBusy=false;}
+  } finally {if(filePreviewRequest===preview)filePreviewRequest=null;fileActionBusy=false;}
 });
 
 ipcMain.handle('avhub:screenshot-action',async(event,id:unknown,action:unknown)=>{
@@ -441,9 +469,14 @@ async function waitForBackend(child: ChildProcess): Promise<void> {
   const deadline = Date.now() + 45_000;
   const healthUrl = `http://127.0.0.1:${backendPort}/api/health`;
   const expectedSessionId = createHash('sha256').update(sessionToken).digest('hex').slice(0, 16);
+  let spawnError:Error|undefined;
+  const onError=(error:Error)=>{spawnError=error;};
+  child.once('error',onError);
+  try {
   while (Date.now() < deadline) {
-    if (backendExitCode !== null && backendExitCode !== undefined) {
-      throw new Error(`媒体服务意外退出（${backendExitCode}），详情见数据目录中的 backend.log`);
+    if(spawnError)throw new Error('无法启动本地媒体服务，详情见数据目录中的 backend.log');
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`媒体服务意外退出（${child.exitCode ?? child.signalCode}），详情见数据目录中的 backend.log`);
     }
     try {
       const response = await fetch(healthUrl, { signal: AbortSignal.timeout(1200) });
@@ -456,20 +489,22 @@ async function waitForBackend(child: ChildProcess): Promise<void> {
     } catch { /* The Python server may still be starting. */ }
     await delay(250);
   }
-  child.kill();
+  // The failure owner must stop the complete owned tree. Killing just this
+  // parent here can orphan a frozen backend's worker before tree cleanup runs.
   throw new Error('等待本地媒体服务启动超时，详情见数据目录中的 backend.log');
+  } finally {child.removeListener('error',onError);}
 }
 
 function createWindow(): BrowserWindow {
   const url = `http://127.0.0.1:${backendPort}`;
   const allowedOrigin = new URL(url).origin;
+  const initial=initialLibraryWindow(screen.getPrimaryDisplay().workArea);
   const window = new BrowserWindow({
     icon: loadDesktopIcon(projectRoot, process.resourcesPath, isPackaged),
     show: isPackaged || process.env.AVHUB_HEADLESS_TEST !== '1',
-    width: 1440,
-    height: 900,
-    minWidth: 760,
-    minHeight: 560,
+    ...initial.bounds,
+    minWidth: initial.minimum[0],
+    minHeight: initial.minimum[1],
     // Frameless from creation: changing the OS frame by recreating a window
     // would destroy the active decoder. Keep native edge resizing (thickFrame).
     frame: false,
@@ -621,7 +656,8 @@ async function stopBackend() {
 
 app.on('before-quit', event => {
   if (allowQuit) return;
-  if(fileActionBusy){event.preventDefault();if(mainWindow&&!mainWindow.isDestroyed())void dialog.showMessageBox(mainWindow,{type:'info',title:'文件操作正在进行',message:'请等待文件操作结果后再关闭应用。',buttons:['返回应用']});return;}
+  if(fileActionBusy&&!filePreviewRequest){event.preventDefault();if(mainWindow&&!mainWindow.isDestroyed())void dialog.showMessageBox(mainWindow,{type:'info',title:'文件操作正在进行',message:'请等待文件操作结果后再关闭应用。',buttons:['返回应用']});return;}
+  filePreviewRequest?.cancel('应用正在退出，已取消预检；未执行文件修改');
   event.preventDefault();
   if (shuttingDown) return;
   shuttingDown = true;
@@ -699,9 +735,17 @@ app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
   app.setAppUserModelId('local.avhub.desktop');
   await startApplication();
-}).catch(error => {
+}).catch(async error => {
+  shuttingDown=true;
   appendDesktopLog(`startup-error ${error instanceof Error ? error.message : String(error)}`);
-  dialog.showErrorBox('AVHub 启动失败', error instanceof Error ? error.message : String(error));
-  allowQuit = true;
-  app.quit();
+  // No renderer exists to own normal quit/save prompts. Release the backend
+  // (including any frozen child workers) before the dialog and final quit.
+  // Mark shutdown first so its exit listener cannot race a second error/quit.
+  try {await stopBackend();}
+  catch(cleanup) {appendDesktopLog(`startup-cleanup-error ${String(cleanup)}`);}
+  finally {
+    appendDesktopLog('startup-cleanup-complete');
+    try {dialog.showErrorBox('AVHub 启动失败', error instanceof Error ? error.message : String(error));}
+    finally {allowQuit=true;app.quit();}
+  }
 });

@@ -28,6 +28,7 @@ export function FileActionDialog({media,action,close,changed}:{media:Media;actio
   }
   return <Dialog label={action==='rename'?'重命名视频文件':'移入系统回收站'} closeLabel="关闭文件操作" busy={busy} close={requestClose} className={`modal library-tool-dialog file-action-dialog${action==='recycle'?' is-destructive':''}`}>
     <h2 className="dialog-title"><Icon name={action==='rename'?'edit':'trash'} size={22}/>{action==='rename'?'重命名文件':'移入系统回收站'}</h2>
+    <div className="file-action-content">
     <div className="file-action-target">
       <div className="file-action-cover">{media.thumbnail_url&&!coverFailed?<img src={media.thumbnail_url} alt="目标视频封面" onError={()=>setCoverFailed(true)}/>:<Icon name="film" size={26}/>}</div>
       <div><strong>{filename}</strong><small>{media.title!==filename?media.title+' · ':''}{fileSizeLabel(media.size)||'大小未知'}{media.width&&media.height?` · ${media.width} × ${media.height}`:''}</small></div>
@@ -37,6 +38,7 @@ export function FileActionDialog({media,action,close,changed}:{media:Media;actio
       <div className="file-name-preview" aria-label="重命名预览"><div><span>修改后文件名</span><strong>{stem}{extension}</strong></div><div><span>同步视频标题</span><strong>{stem||'尚未填写'}</strong></div></div><p className="dialog-description">文件名与视频标题同步更新；保留收藏、进度和片单。自动保留同目录外挂字幕关联，不修改字幕文件。字幕被替换或修改后需重新导入。</p>{subtitleNames.length>0&&<p className="dialog-description">检测到 {subtitleNames.length} 个外挂字幕：{subtitleNames.join('、')}</p>}</>:
       <p className="dialog-description">将此视频交给 Windows 系统回收站，不建立视频副本。可在媒体库工具栏的回收记录中恢复至原目录，也可使用系统回收站；回收失败不会改为永久删除。收藏、进度和片单记录保留。</p>}
     {error&&<StatusMessage kind="error">{error}</StatusMessage>}
+    </div>
     <div className="tool-footer"><Button disabled={busy} onClick={requestClose}>取消</Button><Button icon={action==='rename'?'edit':'trash'} variant={action==='rename'?'primary':'danger'} busy={busy} disabled={action==='rename'&&(!stem||stem===original)} onClick={()=>void execute()}>{action==='rename'?'确认重命名':'确认移入回收站'}</Button></div>
   </Dialog>;
 }

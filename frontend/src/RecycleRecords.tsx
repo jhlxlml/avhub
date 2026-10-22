@@ -1,7 +1,8 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
 import {api,errorText} from './api';
 import {desktopFile} from './FileManagement';
-import {Button,Dialog,EmptyState,StatusMessage,Toast} from './ui';
+import {desktopFilePreview} from './desktopFile';
+import {Button,Dialog,DialogHeader,EmptyState,StatusMessage,Toast} from './ui';
 import {Icon} from './Icon';
 import {confirmInApp} from './AppConfirm';
 import {fileSizeLabel} from './mediaLabels';
@@ -15,6 +16,7 @@ type Task={item:Entry;action:'restore'|'delete'|'clear';status:'queued'|'running
 const taskLabels:Record<Task['status'],string>={queued:'待执行',running:'正在处理',success:'已完成',failed:'失败',skipped:'跳过',stopped:'未执行'};
 const labels:Record<Entry['status'],string>={available:'可恢复',restored:'已恢复',missing:'回收站中未找到',offline:'磁盘离线',deleted:'已永久删除',review:'待核对',pending:'操作中'};
 export function RecycleRecords({close,changed,targetId=''}:{close:()=>void;changed:()=>void;targetId?:string}){
+  const headingId=useId(),descriptionId=useId();
   const [data,setData]=useState<Page|null>(null),[page,setPage]=useState(1),[query,setQuery]=useState(''),[search,setSearch]=useState('');
   const [revision,setRevision]=useState(0),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [picked,setPicked]=useState<string[]>([]),[result,setResult]=useState<Task[]>([]),[lastAction,setLastAction]=useState<RecordAction>('restore-record');
@@ -22,7 +24,9 @@ export function RecycleRecords({close,changed,targetId=''}:{close:()=>void;chang
   const [focusRecord,setFocusRecord]=useState('');
   const [locating,setLocating]=useState(false),[locationError,setLocationError]=useState('');
   const locked=useRef(false),stopped=useRef(false),[stopping,setStopping]=useState(false),refreshRequested=useRef(true);
-  useDraftGuard(false,busy,'回收记录操作尚未完成，请等待当前项完成');
+  const previewController=useRef<AbortController|null>(null),[previewing,setPreviewing]=useState(false);
+  useDraftGuard(false,busy&&!previewing,'回收记录操作尚未完成，请等待当前项完成');
+  useEffect(()=>()=>previewController.current?.abort(),[]);
   useEffect(()=>{const timer=setTimeout(()=>setSearch(query.trim()),250);return()=>clearTimeout(timer);},[query]);
   useEffect(()=>{
     const controller=new AbortController();setLoading(true);setError('');setPicked([]);
@@ -55,7 +59,9 @@ export function RecycleRecords({close,changed,targetId=''}:{close:()=>void;chang
     locked.current=true;setBusy(true);setLastAction(action);setPhase('正在核对操作清单…');setError('');setNotice('');setResult([]);setProgress({done:0,total:items.length,current:''});stopped.current=false;setStopping(false);
     let token='';let touched=false;
     try{
-      const preview=await desktopFile({action:'preview-records',recordIds:items.map(item=>item.id),recordAction:action.split('-')[0] as Task['action']});
+      const controller=new AbortController();previewController.current=controller;setPreviewing(true);
+      const preview=await desktopFilePreview({action:'preview-records',recordIds:items.map(item=>item.id),recordAction:action.split('-')[0] as Task['action']},controller.signal);
+      previewController.current=null;setPreviewing(false);
       if(!preview.preview_token||!preview.records)throw new Error('操作预览响应异常，请更新桌面组件');token=preview.preview_token;
       if(new Set(preview.records.map(record=>record.id)).size!==preview.records.length||preview.records.some(record=>!items.some(item=>item.id===record.id)||!['restore','delete','clear'].includes(record.action)||record.eligible&&(action==='restore-record'&&record.action!=='restore'||action==='clear-record'&&record.action!=='clear'||action==='delete-record'&&record.action==='restore')))throw new Error('操作预览清单不一致，已拒绝执行');
       const tasks:Task[]=preview.records.map(record=>({item:{...items.find(item=>item.id===record.id)!,...(record.name?{name:record.name,source:record.source!,size:record.size||0}:{})},action:record.action,status:record.eligible?'queued':'skipped',reason:record.reason}));
@@ -87,15 +93,20 @@ export function RecycleRecords({close,changed,targetId=''}:{close:()=>void;chang
         done++;setProgress(current=>({...current,done}));
       }
       if(success){changed();setNotice(`已完成 ${success} 项`);}
-    }catch(error){setError(errorText(error));}
+    }catch(error){
+      if(stopped.current&&previewController.current?.signal.aborted){
+        setResult(items.map(item=>({item,action:action.split('-')[0] as Task['action'],status:'stopped',reason:'预检期间已停止，未执行文件操作'})));
+        setNotice('预检已取消，未执行文件操作');
+      }else setError(errorText(error));
+    }
     finally{
       if(token)await desktopFile({action:'release-record-preview',previewToken:token}).catch(()=>{});
+      previewController.current=null;setPreviewing(false);
       if(touched)reload();setBusy(false);setPhase('');locked.current=false;
     }
   }
-  return <Dialog label="回收记录" closeLabel="关闭回收记录" busy={busy} close={close} className="modal library-tool-dialog recycle-record-dialog">
-    <h2 className="dialog-title"><Icon name="trash" size={22}/>回收记录</h2>
-    <p className="dialog-description">视频保存在 Windows 系统回收站，AVHub 不保存视频副本。恢复至原目录；永久删除仅处理精确匹配的项目。</p>
+  return <Dialog labelledBy={headingId} describedBy={descriptionId} closeLabel="关闭回收记录" busy={busy&&!previewing} close={close} className="modal library-tool-dialog recycle-record-dialog">
+    <DialogHeader id={headingId} descriptionId={descriptionId} icon="trash" title="回收记录" description="视频保存在 Windows 系统回收站，AVHub 不保存视频副本。恢复至原目录；永久删除仅处理精确匹配的项目。"/>
     <div className="recycle-record-toolbar"><label className="recycle-record-search"><Icon name="search" size={17}/><input aria-label="搜索回收记录" placeholder="搜索文件名或原目录" value={query} disabled={busy} onChange={event=>{setQuery(event.target.value);setPage(1);setPicked([]);}}/></label>
       <Button icon="refresh" aria-label="刷新回收记录" title="刷新回收记录" disabled={selectionDisabled} onClick={reload}/>
       <Button icon="external" disabled={busy} onClick={()=>void desktopFile({action:'recycle-bin'}).catch(error=>setError(errorText(error)))}>系统回收站</Button></div>
@@ -109,8 +120,8 @@ export function RecycleRecords({close,changed,targetId=''}:{close:()=>void;chang
       {chosen.length>0&&chosen.every(item=>['restored','missing','deleted'].includes(item.status))&&<Button icon="close" disabled={selectionDisabled} onClick={()=>void run(chosen,'clear-record')}>清除记录</Button>}
     </div>}
     {busy&&<div className="recycle-record-progress" role="region" aria-label="回收操作进度"><StatusMessage kind="loading">{phase} {progress.current&&`${progress.done} / ${progress.total} · ${progress.current}`}</StatusMessage>
-      <progress aria-label="已完成项目" max={Math.max(1,progress.total)} value={progress.done}/><Button disabled={stopping} onClick={()=>{stopped.current=true;setStopping(true);}}>停止后续操作</Button></div>}
-    {loading?<StatusMessage kind="loading">正在核对系统回收站…</StatusMessage>:data?.items.length?<ol className="recycle-record-list">{data.items.map(item=><li key={item.id} data-recycle-id={item.id} tabIndex={-1}>
+      <progress aria-label="已完成项目" max={Math.max(1,progress.total)} value={progress.done}/><Button disabled={stopping} onClick={()=>{stopped.current=true;setStopping(true);previewController.current?.abort();}}>{previewing?'取消预检':'停止后续操作'}</Button></div>}
+    {loading?<StatusMessage kind="loading">正在核对系统回收站…</StatusMessage>:data?.items.length?<ol className="recycle-record-list" aria-label="回收记录列表">{data.items.map(item=><li key={item.id} data-recycle-id={item.id} data-selected={picked.includes(item.id)||undefined} tabIndex={-1}>
       <input type="checkbox" aria-label={`选择回收记录 ${item.name}`} disabled={selectionDisabled||['offline','review','pending'].includes(item.status)} checked={picked.includes(item.id)} onChange={event=>setPicked(value=>event.target.checked?[...new Set([...value,item.id])]:value.filter(id=>id!==item.id))}/>
       <div className="recycle-record-cover"><MediaThumbnail url={item.thumbnail_url}/></div>
       <div className="recycle-record-details"><strong title={item.name}>{item.name}</strong><span className={`recycle-record-status is-${item.status}`}>{labels[item.status]}</span><small>{fileSizeLabel(item.size)} · {new Date(item.created_at*1000).toLocaleString()}</small><code title={item.source}>{item.source}</code>{item.error&&<small className="file-operation-error">{item.error}</small>}</div>

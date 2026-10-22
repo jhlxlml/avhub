@@ -46,6 +46,44 @@ class ThumbnailServiceTests(unittest.TestCase):
         self.assertEqual((result['total'],len(result['items'])),(3,2))
         self.assertTrue(all(row['last_error']=='decoder error' for row in result['items']))
 
+    def test_viewport_hints_are_bounded_readonly_and_not_durable_jobs(self):
+        self.seed(3);service=self.service(lambda *args:(True,''))
+        with patch.object(service,'connection',side_effect=AssertionError('viewport write')),patch.object(service.jobs,'connection',side_effect=AssertionError('selection write')):
+            service.prioritize([3,3,2]);self.assertEqual(service.jobs.next()[0]['media_id'],2)
+            service.prioritize([3]);self.assertEqual(service.jobs.next()[0]['media_id'],3)
+            with patch.object(m.sqlite3,'connect',side_effect=AssertionError('hint opens database')):
+                for _ in range(300):service.prioritize(range(1000))
+            self.assertEqual(len(service.jobs.visible),120)
+        with m.read_connection() as db:
+            self.assertTrue(all(row[0]==0 for row in db.execute('SELECT priority FROM thumbnail_jobs')))
+        # Hints disappear on restart, but every durable job remains recoverable.
+        restarted=self.service(lambda *args:(True,''));self.assertEqual(restarted.jobs.next()[0]['media_id'],1)
+        self.assertEqual(restarted.jobs.count(),3)
+
+    def test_hint_cannot_select_blocked_missing_or_replaced_job_or_override_newer_retry(self):
+        self.seed(3);service=self.service(lambda *args:(True,''));service.prioritize([3])
+        with m.connection() as db:
+            db.execute('UPDATE thumbnail_jobs SET ready_at=? WHERE media_id=3',(time.time()+60,))
+        self.assertEqual(service.jobs.next()[0]['media_id'],1)
+        with m.connection() as db:
+            db.execute('UPDATE thumbnail_jobs SET ready_at=0 WHERE media_id=3')
+            db.execute('UPDATE media SET size=size+1 WHERE id=3')
+        key,job=service.jobs.next();self.assertEqual(key['media_id'],3);self.assertIsNone(job)
+        service.jobs.finish(key,True)
+        service.prioritize([2]);m.retry_thumbnail(1,m.ThumbnailRetry(frame_time=15))
+        self.assertEqual(service.jobs.next()[0]['media_id'],1)
+
+    def test_worker_selection_does_not_join_serialized_writer_queue(self):
+        self.seed(3);service=self.service(lambda *args:(True,''));entered=threading.Event();release=threading.Event()
+        def writer():
+            with m.connection() as db:
+                db.execute("UPDATE media SET title='pending' WHERE id=1");entered.set();release.wait(3)
+        thread=threading.Thread(target=writer);thread.start();self.assertTrue(entered.wait(2))
+        try:
+            began=time.perf_counter();service.prioritize([3]);key,_=service.jobs.next()
+            self.assertEqual(key['media_id'],3);self.assertLess(time.perf_counter()-began,.3)
+        finally:release.set();thread.join(3)
+
     def test_playing_cancels_decode_and_release_resumes_same_pending_job(self):
         self.seed();entered=threading.Event();cancelled_seen=threading.Event();calls=[]
         def work(key,cancelled,gate):

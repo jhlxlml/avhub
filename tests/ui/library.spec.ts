@@ -11,7 +11,7 @@ test('347 videos: true count, last page, sorting, sizes and filter resets', asyn
   await expect(page.getByRole('button', { name: '下一页', exact: true })).toBeDisabled();
   await page.getByRole('combobox', { name: '排序方式' }).selectOption('name');
   await page.getByRole('button', { name: '切换为升序', exact: true }).click();
-  await expect(page.getByText('共 347 个视频 · 第 1 / 8 页', { exact: true })).toBeVisible();
+  await expect(page.locator('.pagination-summary')).toHaveText('共 347 个视频');await expect(page.locator('.pagination-position')).toHaveText('第 1 / 8 页');
   await expect(page.locator('.video-title').first()).toHaveText('视频 001');
   await page.getByRole('combobox', { name: '每页数量' }).selectOption('96');
   await expect(page.locator('.card')).toHaveCount(96);
@@ -21,7 +21,7 @@ test('347 videos: true count, last page, sorting, sizes and filter resets', asyn
   await expect(page.locator('.video-title').first()).toHaveText('视频 097');
   await page.getByRole('combobox', { name: '按目录筛选' }).selectOption('2');
   await expect(page.getByText('共 1 个结果 · 本页 1 个', { exact: true })).toBeVisible();
-  await expect(page.getByText('共 1 个视频 · 第 1 / 1 页', { exact: true })).toBeVisible();
+  await expect(page.locator('.pagination-summary')).toHaveText('共 1 个视频');await expect(page.locator('.pagination-position')).toHaveText('第 1 / 1 页');
 });
 
 test('removing final favorite on last page clamps to the previous page', async ({ page, request }) => {
@@ -30,7 +30,7 @@ test('removing final favorite on last page clamps to the previous page', async (
   await expect(page.locator('.card')).toHaveCount(1);
   await page.getByRole('button', { name: '取消收藏 视频 025', exact: true }).click();
   await expect(page.locator('.card')).toHaveCount(24);
-  await expect(page.getByText('共 24 个视频 · 第 1 / 1 页', { exact: true })).toBeVisible();
+  await expect(page.locator('.pagination-summary')).toHaveText('共 24 个视频');await expect(page.locator('.pagination-position')).toHaveText('第 1 / 1 页');
 });
 
 test('ten thousand registered directories use bounded options, search and settings pages', async ({ page, request }) => {

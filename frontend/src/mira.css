@@ -1,0 +1,301 @@
+/* Mira foundations. No preflight: media/native-window geometry is not reset.
+   Scan only owned primitives, never media filenames or the frozen web archive. */
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./components/ui";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@theme inline {
+  --color-background:var(--ui-bg);
+  --color-foreground:var(--ui-text);
+  --color-primary:var(--ui-accent);
+  --color-primary-foreground:var(--ui-on-accent);
+  --color-muted:var(--ui-raised);
+  --color-muted-foreground:var(--ui-muted);
+  --color-border:var(--ui-border);
+  --color-ring:var(--ui-accent);
+  --radius-md:var(--ui-radius);
+}
+
+/* Source-owned component bridge. Existing feature classes retain layout only. */
+.mira-button[data-slot="button"] {
+  min-height:32px;border:1px solid transparent;border-radius:var(--ui-radius);
+  background:var(--ui-surface);color:var(--ui-secondary);padding:7px 11px;
+  font-size:12px;line-height:1.4;font-weight:500;gap:7px;
+  transition:background-color .12s,color .12s,border-color .12s;
+}
+.mira-button[data-slot="button"]:hover:not(:disabled) {background:var(--ui-hover);color:var(--ui-text)}
+.mira-button[data-variant="default"] {background:var(--ui-accent);border-color:transparent;color:var(--ui-on-accent)}
+.mira-button[data-variant="default"]:hover:not(:disabled) {background:var(--ui-accent-hover);color:var(--ui-on-accent)}
+.mira-button[data-variant="ghost"] {background:transparent;border-color:transparent}
+.mira-button[data-variant="secondary"] {background:var(--ui-raised);border-color:transparent}
+.mira-button[data-variant="destructive"] {color:var(--ui-danger);background:var(--ui-danger-soft);border-color:transparent}
+.mira-button[data-variant="destructive"]:hover:not(:disabled) {color:var(--ui-danger);background:color-mix(in srgb,var(--ui-danger) 16%,var(--ui-surface))}
+.mira-button[data-slot="button"][aria-pressed="true"] {background:var(--ui-accent-soft);color:var(--ui-accent);border-color:transparent}
+.mira-button[data-size="icon"] {width:32px;height:32px;padding:7px;flex:none}
+.mira-button[data-size="sm"] {min-height:28px;padding:5px 8px}
+.mira-button[data-size="lg"] {min-height:36px}
+.mira-button[data-slot="button"]:focus-visible {outline:2px solid var(--ui-accent);outline-offset:2px}
+.mira-button[data-slot="button"]:disabled {opacity:.45;cursor:default}
+
+/* Dense media workspace: hierarchy through alignment, not card-in-card chrome. */
+main>header {min-height:60px;height:auto;padding:12px 24px;gap:20px}
+.brand {gap:9px}.brand b {font-size:20px;letter-spacing:-.65px}.brand small {font-size:10px;letter-spacing:0}
+.brand .logo {width:32px;height:32px;border-radius:9px;background:var(--ui-text);color:var(--ui-bg)}
+.primary-nav {gap:2px}.primary-nav>button {min-height:32px;height:32px;box-sizing:border-box;padding:7px 10px;font-size:12px;border-radius:7px}
+.primary-nav>button.active {background:var(--ui-accent-soft);box-shadow:none}
+.primary-nav .playlist-nav {margin-left:6px}
+.header-actions {gap:3px}
+.header-actions>.ui-button,.header-actions>.ui-icon-button,.header-search>.search-toggle {height:32px;min-height:32px;border-radius:7px}
+.header-actions>.ui-icon-button,.header-search>.search-toggle {width:32px}
+.app-layout {padding:18px 24px 32px}
+.toolbar {gap:10px;min-height:34px}
+.library-browse-tools,.library-organize-tools {gap:6px}
+.library-browse-tools>.ui-icon-button,.library-sort-controls .sort-direction {width:32px;height:32px;min-height:32px;padding:7px}
+.toolbar .folder-filter,.library-sort-controls .sort-select {min-height:32px;height:32px;padding:6px 28px 6px 10px;font-size:12px}
+.toolbar .advanced-toggle {min-height:32px;padding:7px 9px;font-size:12px;border-radius:7px}
+.toolbar .mira-button {background:transparent;border-color:transparent}
+.toolbar .mira-button[aria-pressed="true"] {background:var(--ui-accent-soft);border-color:transparent}
+.library-toolbar-right {gap:10px}
+.resolution-filter {height:32px;box-sizing:border-box;padding:2px;border:0;background:var(--ui-raised)}
+.resolution-filter>button {height:28px;min-height:28px;box-sizing:border-box;padding:4px 7px;border-radius:5px;font-size:10px}
+.resolution-filter>button[aria-pressed="true"] {background:var(--ui-surface);color:var(--ui-text);box-shadow:var(--ui-shadow-soft)}
+.switch {height:32px;box-sizing:border-box;padding:2px;border:0;background:var(--ui-raised)}
+.switch>button {height:28px;box-sizing:border-box;padding:4px 7px;border-radius:5px}
+.switch>button.active {background:var(--ui-surface);box-shadow:var(--ui-shadow-soft);color:var(--ui-text)}
+.cover-size-control>.ui-icon-button {height:32px;min-height:32px;width:32px;background:var(--ui-surface);padding:6px}
+.section-title {margin:22px 0 14px}.section-title h2 {font-size:18px;font-weight:600;letter-spacing:-.4px}
+.library-heading .library-result-count {font-size:11px}
+.media-grid {gap:22px 16px}
+.cover {border-radius:var(--ui-cover-radius);box-shadow:none}
+.card:hover .cover {box-shadow:0 0 0 1px var(--ui-border)}
+.meta {padding:9px 1px 0}.video-title {font-size:12.5px;font-weight:550;line-height:1.5}
+.video-specs {margin-top:4px;gap:6px}.meta .video-spec-text {font-size:10.5px}
+.resolution-badge,.meta .resolution-badge {font-size:9px;height:17px;border-radius:4px;min-width:26px;padding:1px 4px}
+.media-list .card {border-radius:var(--ui-panel-radius);padding:8px;border-color:var(--ui-divider);box-shadow:none}
+.library .advanced-filters {padding:14px;background:var(--ui-surface);border-radius:var(--ui-panel-radius)}
+.advanced-filter-fields {gap:14px}.advanced-filter-fields select {min-height:32px;font-size:12px;padding:7px 10px}
+.advanced-filter-help {font-size:11px}
+.scan-status {padding:10px 12px;border-radius:var(--ui-radius);box-shadow:none}
+.scan-heading {gap:10px;font-size:12px}.scan-heading strong {font-size:12px;font-weight:550}
+.scan-heading>.ui-icon-button {width:26px;height:26px;min-height:26px;padding:5px}
+.media-grid .cover:focus-within :is(.star,.queue-add) {opacity:1}
+.cover-size-popover {border-radius:var(--ui-panel-radius);padding:12px;box-shadow:var(--ui-shadow)}
+.cover-size-presets>button {min-height:30px;border:1px solid transparent}
+.cover-size-presets>button:hover {background:var(--ui-hover);color:var(--ui-text)}
+.cover-size-presets>button[aria-pressed="true"] {border-color:var(--ui-accent-border);box-shadow:none}
+
+/* Keep established focus/guard behavior; only the owned surfaces change. */
+.modal-backdrop {backdrop-filter:none;background:#09090bb3}
+:root[data-theme="light"] .modal-backdrop {background:#18181b55}
+.modal,.playlist-panel {border-radius:var(--ui-panel-radius);padding:24px;border-color:var(--ui-border)}
+.modal .close,.playlist-panel .close {width:28px;height:28px;min-height:28px;top:18px;right:18px;padding:6px;border:0}
+.dialog-title {font-size:18px!important;letter-spacing:-.4px;gap:9px}
+.dialog-title>.ui-icon {color:var(--ui-secondary);width:19px;height:19px}
+.is-destructive .dialog-title>.ui-icon {color:var(--ui-danger)}
+.dialog-description {font-size:12px;line-height:1.65;margin:7px 0 18px}
+.modal.settings-dialog .settings-tabs {padding-right:14px;gap:3px}
+.modal.settings-dialog .settings-tabs>button {min-height:34px;padding:8px 10px;gap:8px;font-size:12px;border-radius:7px}
+.modal.settings-dialog .settings-panel>:is(.settings-section,.backup-tools,.preview-preference) {padding:16px;margin-bottom:12px;border-radius:var(--ui-panel-radius);background:var(--ui-field)}
+.settings-panel h3 {letter-spacing:-.1px}
+.settings-dialog .root-list {gap:0;border-top:1px solid var(--ui-divider)}
+.settings-dialog .root-list>.directory-setting-row {display:block;padding:14px 0;margin:0;border:0;border-bottom:1px solid var(--ui-divider);border-radius:0;background:transparent}
+.directory-setting-main {display:flex;align-items:center;gap:10px;min-width:0}
+.directory-setting-main .root-info {flex:1;min-width:0}
+.directory-setting-main .root-info strong {display:block;font-size:12px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ui-text)}
+.directory-setting-main .root-info code {display:block;font-family:inherit;font-size:11px;line-height:1.7;color:var(--ui-muted)}
+.directory-setting-actions {display:flex;align-items:center;gap:3px;flex:none}
+.settings-dialog .root-list .directory-setting-actions>.ui-icon-button {display:grid;place-items:center;flex:none;width:30px;height:30px;min-height:30px;padding:6px;border:0;background:transparent;color:var(--ui-secondary)}
+.directory-setting-meta {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:5px 0 0 38px;min-width:0}
+.directory-setting-meta>span {color:var(--ui-muted);font-size:11px;line-height:1.6;overflow-wrap:anywhere}
+.directory-setting-meta .directory-offline {color:var(--ui-warning)}
+.settings-dialog .root-list .directory-permission-toggle {display:flex;align-items:center;gap:5px;flex:none;min-height:26px;padding:3px 5px;font-size:11px;background:transparent;border:0;border-radius:5px;color:var(--ui-secondary)}
+.directory-permission-toggle[aria-expanded="true"] {color:var(--ui-accent)!important}
+.directory-permissions[hidden] {display:none!important}
+.directory-permissions {margin:10px 0 0 38px;padding:12px;background:var(--ui-surface);border:1px solid var(--ui-divider);border-radius:var(--ui-radius)}
+.directory-permissions>p {margin:0 0 8px;font-size:11px;line-height:1.6;color:var(--ui-muted)}
+.directory-permissions .file-permission-fields {display:grid;gap:0;margin:0}
+.directory-permissions .file-permission-fields>label {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;font-size:12px;cursor:pointer}
+.directory-permissions label+label {border-top:1px solid var(--ui-divider)}
+.directory-permissions label>span {min-width:0;flex:1}
+.directory-permissions label b {display:block;font-size:12px;font-weight:500}
+.directory-permissions label small {display:block;margin-top:4px;font-size:11px;line-height:1.6;color:var(--ui-muted)}
+.directory-permissions label[data-risk="destructive"] {margin-top:6px}
+.settings-dialog .settings-switch {appearance:none;position:relative;flex:none;width:30px;height:18px;min-height:18px;padding:0;margin:0;border:1px solid var(--ui-border);border-radius:999px;background:var(--ui-hover);cursor:pointer}
+.settings-dialog .settings-switch::before {content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-secondary)}
+.settings-dialog .settings-switch:checked {background:var(--ui-accent);border-color:var(--ui-accent)}
+.settings-dialog .settings-switch:checked::before {left:14px;background:var(--ui-on-accent)}
+.settings-dialog label[data-risk="destructive"] .settings-switch:checked {background:var(--ui-danger);border-color:var(--ui-danger)}
+.settings-dialog .settings-switch:disabled {opacity:.45;cursor:not-allowed}
+.settings-dialog .settings-switch:focus-visible {outline:2px solid var(--ui-accent);outline-offset:3px}
+.directory-setting-menu {z-index:25;overflow:auto;padding:4px;border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-surface);color:var(--ui-text);box-shadow:var(--ui-shadow)}
+.settings-dialog .root-list .directory-setting-menu>button {display:flex;align-items:flex-start;width:100%;gap:8px;padding:9px;border:0;border-radius:5px;text-align:left;background:transparent;color:var(--ui-text);font-size:12px}
+.directory-setting-menu button>.ui-icon {flex:none;margin-top:1px}
+.directory-setting-menu button small {display:block;margin-top:5px;color:var(--ui-muted);font-size:10px;line-height:1.5}
+.settings-dialog .settings-toggle-row {display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:20px;margin:0;min-width:0;cursor:pointer}
+.settings-toggle-copy {display:block;flex:1;min-width:0}
+.settings-dialog .settings-toggle-copy>b {display:block;font-size:12px;font-weight:500;color:var(--ui-text);line-height:1.6}
+.settings-dialog .settings-toggle-copy>small {display:block;margin:5px 0 0;color:var(--ui-muted);font-size:11px;font-weight:400;line-height:1.7}
+.settings-section-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+.settings-panel .settings-section-heading h3 {margin:0;flex:1}
+.settings-section-heading>.ui-button {flex:none}
+.thumbnail-settings .thumbnail-task-summary {display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:0 0 10px}
+.thumbnail-settings .thumbnail-task-summary>span {background:transparent;border:0;padding:0;border-radius:0;font-size:11px;color:var(--ui-muted);font-variant-numeric:tabular-nums}
+.thumbnail-settings .thumbnail-task-summary .task-summary-state {display:inline-flex;align-items:center;gap:6px;color:var(--ui-secondary)}
+.thumbnail-settings .task-summary-state::before {content:"";width:5px;height:5px;flex:none;border-radius:50%;background:var(--ui-muted)}
+.thumbnail-settings .task-summary-state[data-tone="success"] {color:var(--ui-success)}
+.thumbnail-settings .task-summary-state[data-tone="attention"] {color:var(--ui-warning)}
+.thumbnail-settings .task-summary-state:is([data-tone="success"],[data-tone="attention"])::before {background:currentColor}
+.settings-dialog .thumbnail-settings>small {display:block;font-size:11px;line-height:1.7;color:var(--ui-muted)}
+.settings-dialog .autoplay-settings>small,.settings-dialog .app-tools>small {font-size:11px;line-height:1.7;color:var(--ui-muted)}
+.settings-dialog .settings-section>label:has(>select),.settings-dialog .settings-section>.app-select-field {display:grid;width:100%;max-width:none;box-sizing:border-box;grid-template-columns:minmax(100px,1fr) minmax(150px,220px);align-items:center;gap:16px;color:var(--ui-secondary);font-size:12px}
+.settings-dialog .settings-section>label>select,.settings-dialog .settings-section>.app-select-field>input {width:100%;min-height:32px;margin:0;padding:7px 9px;font-size:12px;border-radius:var(--ui-radius);box-sizing:border-box}
+.settings-dialog .autoplay-fields {gap:14px}
+.settings-dialog .autoplay-fields label {font-size:11px;color:var(--ui-secondary)}
+.settings-dialog .autoplay-fields select {min-height:32px;font-size:12px;padding:7px 9px;border-radius:var(--ui-radius)}
+@media(max-width:600px) {.settings-dialog .settings-section>label:has(>select),.settings-dialog .settings-section>.app-select-field{grid-template-columns:minmax(0,1fr);gap:7px}.settings-section-heading{gap:8px;flex-wrap:wrap}.settings-toggle-row{gap:12px}}
+@media(max-width:600px) {.directory-setting-meta{margin-left:0}.directory-permissions{margin-left:0}.settings-dialog .root-list .directory-setting-actions>.directory-relocate{font-size:10px;padding:5px;flex:none}.directory-setting-meta{align-items:flex-start}}
+.root-icon {width:28px;height:28px;border-radius:6px;background:var(--ui-raised)}
+.file-permission-fields {gap:8px 14px}
+.modal input:not([type="range"]):not([type="checkbox"]):not([type="file"]),.modal select {min-height:32px;padding:7px 9px;font-size:12px}
+.ui-status {font-size:12px}.ui-status:is(.error,.success) {padding:9px 11px;border-radius:var(--ui-radius)}
+.toast {display:flex;align-items:center;gap:9px;left:auto;right:18px;bottom:18px;transform:none;width:fit-content;max-width:min(440px,calc(100vw - 36px));padding:10px 12px;font-size:12px;line-height:1.6;border-radius:10px;background:var(--ui-surface);border-color:var(--ui-border);box-shadow:var(--ui-shadow)}
+.toast>.ui-icon {flex:none}.toast>.ui-icon-button {width:26px;height:26px;min-height:26px;padding:5px;margin-left:auto}
+.playlist-panel.playlist-workspace {padding:22px;border-radius:var(--ui-panel-radius)}
+.playlist-workspace .playlist-summary {padding:16px;border-radius:var(--ui-panel-radius);background:var(--ui-field)}
+.playlist-workspace .playlist-list {padding:14px 0;margin-bottom:16px;gap:6px}
+.playlist-workspace .playlist-list>button {padding:7px 10px;font-size:12px;border-radius:6px}
+.playlist-workspace .playlist-item-title {font-size:12.5px;font-weight:500}
+.playlist-video-cover,.playlist-hero-cover {border-radius:var(--ui-cover-radius)}
+.media-actions .media-menu {border-radius:9px;padding:4px;box-shadow:var(--ui-shadow)}
+.media-actions .media-menu>button {padding:8px 10px;font-size:12px;border-radius:5px;gap:9px}
+.pagination-footer {margin-top:22px;border-color:var(--ui-divider)}
+.pagination button,.pagination select,.pagination input {min-height:30px;border-radius:6px;font-size:12px}
+.pagination {display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;row-gap:10px;column-gap:20px;margin-top:0;padding:14px 0;border-top:1px solid var(--ui-divider)}
+.pagination .pagination-summary {font-size:11px;line-height:1.6;font-variant-numeric:tabular-nums}
+.pagination .page-buttons {display:flex;align-items:center;gap:3px}
+.pagination .mira-button[data-slot="button"] {height:32px;min-height:32px;width:32px;padding:7px;border-color:transparent;background:transparent;color:var(--ui-secondary)}
+.pagination .mira-button[data-slot="button"]:hover:not(:disabled) {background:var(--ui-hover);color:var(--ui-text)}
+.pagination .mira-button:disabled {background:transparent;opacity:.3}
+.pagination .pagination-position {min-width:80px;text-align:center;font-size:11px;font-variant-numeric:tabular-nums;color:var(--ui-secondary);white-space:nowrap}
+.pagination-tools {display:flex;align-items:center;justify-content:flex-end;gap:12px;justify-self:end}
+.pagination form {display:flex;align-items:center;gap:0;height:32px;margin:0;padding:0 2px;background:var(--ui-raised);border-radius:var(--ui-radius)}
+:root .pagination input[type="number"] {appearance:textfield;width:42px;height:32px;min-height:32px;text-align:center;padding:4px;border:0;background:transparent;color:var(--ui-text);font-size:12px;font-variant-numeric:tabular-nums}
+.pagination input::-webkit-inner-spin-button,.pagination input::-webkit-outer-spin-button {appearance:none;margin:0}
+.pagination form .pagination-jump {width:28px;height:28px;min-height:28px;padding:6px}
+.pagination select {height:32px;min-height:32px;padding:5px 8px;background:transparent;color:var(--ui-secondary);font-size:11px;cursor:pointer}
+@media(max-width:1000px) {.pagination{grid-template-columns:auto 1fr;gap:10px 14px}.pagination-summary{grid-column:1 / -1}.pagination-tools{justify-self:end}}
+@media(max-width:600px) {.pagination{grid-template-columns:minmax(0,1fr);justify-items:center}.pagination-summary{grid-column:auto}.pagination-tools{justify-self:center}.pagination .page-buttons{gap:3px}}
+.file-permission-fields label[data-risk="destructive"] {color:var(--ui-danger)}
+.file-permission-fields label[data-risk="destructive"] input {accent-color:var(--ui-danger)}
+
+/* Video is an independent dark surface. Never style the video pixels. */
+.player-shell .player-top {height:60px;gap:14px;padding:0 24px}
+.player-shell .player-top>span {font-size:13px;font-weight:550}
+.player-shell .player-info {border-radius:var(--ui-panel-radius);box-shadow:none}
+.player-shell .player-info h2 {font-size:20px;font-weight:600;letter-spacing:-.4px}
+.player-controls button,.native-stage button {transition:background-color .12s,color .12s}
+.player-controls .ui-icon,.native-stage .ui-icon {stroke-width:1.75}
+.native-stage .native-panel {border-radius:var(--ui-panel-radius);font-size:12px;background:var(--ui-surface);border-color:var(--ui-border);color:var(--ui-text)}
+.native-stage .native-panel select,.native-stage .native-panel input[type="number"] {background:var(--ui-field);border-color:var(--ui-border);color:var(--ui-text);border-radius:var(--ui-radius)}
+.native-stage .native-panel dt,.native-stage .native-panel small {color:var(--ui-secondary)}
+.video-wrap>.resume {width:min(480px,calc(100% - 32px));max-width:100%;padding:22px 24px;gap:12px;border-radius:var(--ui-panel-radius);text-align:center;line-height:1.6;box-shadow:var(--ui-shadow)}
+.video-wrap>.resume>b {font-size:16px;font-weight:600;letter-spacing:-.2px}
+.video-wrap>.resume>span {font-size:12px;line-height:1.75;color:var(--ui-secondary);overflow-wrap:anywhere}
+.video-wrap>.resume>button {min-height:34px;padding:8px 14px;font-size:12px;border-radius:var(--ui-radius);flex-shrink:0}
+.video-wrap .setting-popover {border-radius:var(--ui-panel-radius);backdrop-filter:none;padding:12px;border-color:var(--ui-border);box-shadow:var(--ui-shadow);animation:none}
+.video-wrap .setting-popover select {min-height:32px;padding:7px 9px;font-size:12px;border-radius:var(--ui-radius)}
+.desktop-titlebar {font-family:inherit}
+
+/* Borderless control policy: 32px workspace controls, 28px nested actions.
+   Transparent borders retain geometry; keyboard focus remains explicit.
+   Panel/divider boundaries and video/native-window controls are not reset. */
+:root .toolbar :is(.folder-filter,.sort-select,.advanced-toggle,.cover-size-control>.ui-icon-button),
+:root .toolbar .ui-button[aria-pressed="true"],:root .toolbar .advanced-toggle.active:hover,
+:root .pagination :is(button,select,input),:root .cover-size-presets>button[aria-pressed="true"],
+:root .primary-nav>button,:root .settings-tabs>button {border-color:transparent;box-shadow:none}
+:root .modal :is(.ui-button,.ui-icon-button),:root .playlist-panel :is(.ui-button,.ui-icon-button) {border-color:transparent}
+:root .modal :is(select,textarea,input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])) {border-color:transparent;background:var(--ui-raised)}
+:root .toolbar :is(.folder-filter,.sort-select):hover,:root .modal select:hover {background:var(--ui-hover)}
+:root .modal :is(.ui-button,select),:root .pagination :is(button,select,input) {min-height:32px;box-sizing:border-box}
+:root .modal .ui-button {height:32px;padding:7px 11px;font-size:12px;line-height:1.4}
+:root .settings-dialog .settings-tabs>button {height:32px;min-height:32px}
+:root .settings-dialog .directory-setting-actions>.ui-icon-button {width:28px;height:28px;min-height:28px}
+:root .settings-dialog .directory-permission-toggle {min-height:28px}
+:root .cover-size-control>.ui-icon-button {background:transparent}
+:root .cover-size-control>.ui-icon-button:hover {background:var(--ui-hover)}
+:root .cover-size-control>.ui-icon-button[aria-expanded="true"] {background:var(--ui-accent-soft)}
+
+/* Cross-module convergence: keep content surfaces, remove option outlines.
+   Selection checkboxes/keycaps are not switches or ordinary action buttons. */
+:root .playlist-workspace :is(.playlist-list>button,.playlist-detail-actions>.ui-button) {border-color:transparent;min-height:32px;box-sizing:border-box}
+:root .playlist-panel .ui-button {height:32px;min-height:32px;padding:7px 11px;font-size:12px;line-height:1.4}
+:root .playlist-workspace .playlist-item-actions>button {width:28px;height:28px;padding:6px;border:0;background:transparent}
+:root .playlist-workspace .playlist-item-actions>button:hover:not(:disabled) {background:var(--ui-hover)}
+:root .playlist-workspace .playlist-item-actions>.playlist-remove:hover:not(:disabled) {background:var(--ui-danger-soft);color:var(--ui-danger)}
+:root .playlist-panel :is(input:not([type="checkbox"]),select) {min-height:32px;box-sizing:border-box;border-color:transparent;background:var(--ui-raised);font-size:12px}
+:root .playlist-workspace .playlist-search-wrap {height:32px;box-sizing:border-box;border-color:transparent;background:var(--ui-raised)}
+:root .playlist-workspace .playlist-search-wrap .playlist-search[type="search"] {min-height:28px;height:28px;background:transparent}
+:root .playlist-workspace .playlist-video-items>li:focus-within {border-color:transparent}
+.settings-dialog .backup-tools>.settings-toggle-row {flex-basis:100%;margin:8px 0}
+.settings-dialog .backup-tools>small {font-size:11px;line-height:1.7}
+.settings-dialog .backup-import-controls {display:flex;flex-wrap:wrap;flex-basis:100%;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--ui-divider)}
+.settings-dialog .storage-sizes {column-gap:24px;row-gap:0;margin:12px 0}
+.settings-dialog .storage-sizes>div {display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;background:transparent;border:0;border-bottom:1px solid var(--ui-divider);border-radius:0}
+/* Directory navigation and metadata share compact, borderless surfaces. */
+:root .folder-search-row input[type="search"] {min-height:32px;border-color:transparent;background:var(--ui-raised);font-size:12px;border-radius:var(--ui-radius)}
+:root .folder-heading>button,:root .folder-breadcrumbs button {min-height:32px;border-color:transparent;border-radius:var(--ui-radius);font-size:12px}
+.folder-heading {gap:8px}
+.folder-breadcrumbs {min-width:0;gap:2px}
+.folder-breadcrumbs>span {display:inline-flex;align-items:center;min-width:0;max-width:100%;color:var(--ui-muted)}
+.folder-breadcrumbs button {max-width:min(260px,100%)}
+.folder-breadcrumbs>span>button {min-width:0;max-width:240px}
+:root .folder-tiles>button {min-height:44px;padding:8px 10px;border-color:transparent;background:var(--ui-field);border-radius:var(--ui-radius)}
+:root .folder-tiles>button:hover {background:var(--ui-hover);border-color:transparent}
+.folder-tiles>button>b {font-size:12px;font-weight:500}
+.folder-tiles>button>small {font-variant-numeric:tabular-nums}
+.media-edit-dialog .ui-dialog-header {padding-right:32px}
+.media-edit-dialog .dialog-title {margin-top:0}
+.media-edit-dialog .dialog-description {overflow-wrap:anywhere}
+:root .series-heading select {min-height:32px;padding:6px 10px;border-color:transparent;background:var(--ui-raised);border-radius:var(--ui-radius);font-size:12px}
+.series-heading>label {display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ui-secondary)}
+.series-heading h2 {min-width:0;overflow-wrap:anywhere;font-size:18px}
+:root .series-episode {border-color:transparent;background:transparent;border-radius:var(--ui-radius);padding:8px}
+:root .series-episode:hover:not(:disabled) {background:var(--ui-hover);border-color:transparent}
+.series-episode .episode-duration {font-variant-numeric:tabular-nums;white-space:nowrap}
+@media(max-width:600px) {.folder-search-row {flex-wrap:wrap}.folder-search-row input[type="search"] {width:100%;min-width:0}.folder-recursive {margin-left:auto}.folder-breadcrumbs {flex-basis:100%;order:1}.folder-breadcrumbs>span>button {max-width:180px}}
+
+.settings-dialog .storage-sizes dt {font-size:11px;line-height:1.7;flex:1;min-width:0}
+.settings-dialog .storage-sizes dd {margin:0;flex:none;font-size:12px;line-height:1.7;text-align:right;font-variant-numeric:tabular-nums}
+.settings-dialog .storage-sizes dd small {font-size:10px}
+:root :is(.root-pager,.folder-pager,.playlist-workspace .queue-pager)>button {min-height:32px;padding:6px 10px;border-color:transparent;background:transparent;color:var(--ui-secondary);font-size:12px;border-radius:var(--ui-radius)}
+:root .bulk-selection-bar {border-color:transparent;background:var(--ui-raised)}
+:root .bulk-selection-bar .ui-button {min-height:32px;height:32px;font-size:12px;border-color:transparent}
+.modal .tool-description {font-size:12px;line-height:1.7;color:var(--ui-muted)}
+.modal .tool-fields {gap:14px}
+.modal .tool-fields label {font-size:12px;color:var(--ui-secondary)}
+:root .video-wrap .setting-popover select,:root .native-stage .native-panel select {min-height:32px;border-color:transparent}
+@media(max-width:600px) {.settings-dialog .storage-sizes{grid-template-columns:minmax(0,1fr)}}
+
+@media(max-width:1200px) {main>header {padding:12px 20px;gap:14px}.app-layout {padding-left:20px;padding-right:20px}}
+@media(max-width:860px) {
+  .library-browse-tools {flex:1 1 100%}
+  .library-browse-tools>.directory-filter {flex:1 1 120px;min-width:80px}
+  .library-browse-tools .folder-filter {width:100%;max-width:none}
+  .library-sort-controls .sort-select {min-width:92px;max-width:112px}
+}
+@media(max-width:720px) {
+  .header-actions {width:auto;flex-wrap:nowrap;gap:2px}
+  .header-actions:has(.header-search.expanded) {width:100%;flex-wrap:wrap}
+  .header-actions .refresh-library>span {display:none}
+  .header-actions .refresh-library {width:32px;padding:7px}
+  .header-search {min-width:32px}
+  .primary-nav {padding:0;gap:1px}
+  .primary-nav>button {min-height:32px;height:32px;padding:7px 8px;font-size:11px;gap:5px}
+  .primary-nav .playlist-nav {margin-left:2px}
+}
+@media(max-width:819px) {.modal.settings-dialog .settings-tabs>button {min-height:32px}.modal.settings-dialog .settings-panel>:is(.settings-section,.backup-tools,.preview-preference) {padding:13px}}
+@media(max-width:600px) {main>header {padding:12px;gap:10px}.app-layout {padding:14px 12px 24px}.modal,.playlist-panel {padding:20px 16px}.modal .close,.playlist-panel .close {right:12px;top:14px}.library-toolbar-right {gap:7px}.media-grid {gap:18px 12px}.player-shell .player-top {padding:0 12px;gap:6px}.player-shell .player-top>span {font-size:12px}}
+@media(max-width:420px) {.brand b {font-size:18px}.brand small {display:none}.brand .logo {width:28px;height:28px;border-radius:7px}.header-actions {gap:1px}.library-organize-tools {border:0;padding-left:0}}
+@media(max-width:600px) {.toast {right:12px;bottom:12px;max-width:calc(100vw - 24px)}.video-wrap>.resume {padding:16px;gap:10px}.pagination .page-buttons {gap:5px}}
+@media(prefers-reduced-motion:reduce) {.mira-button[data-slot="button"],.player-controls button,.native-stage button {transition:none}}

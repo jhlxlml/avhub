@@ -4,7 +4,7 @@ import {Icon} from './Icon';
 import './directory-tree.css';
 
 type Node={root:Root;folder:string;name:string;count?:number;branch:boolean;level:number};
-type Shared={active:boolean;selectedRoot:string;selectedFolder:string;revision:number;expanded:Set<string>;toggle:(key:string)=>void;select:(root:string,folder:string)=>void;cache:Map<string,FolderPage>;pageMemory:Map<string,number>;restoreScroll:()=>void};
+type Shared={active:boolean;selectedRoot:string;selectedFolder:string;revision:number;expanded:Set<string>;toggle:(key:string)=>void;select:(root:string,folder:string)=>void;cache:Map<string,FolderPage>;pageMemory:Map<string,number>;restoreScroll:()=>void;focusKey:string;focus:(key:string)=>void};
 const nodeKey=(id:number,folder:string)=>`${id}:${folder}`;
 function TreeBranch({node,shared}:{node:Node;shared:Shared}) {
   const key=nodeKey(node.root.id,node.folder),open=shared.expanded.has(key);
@@ -53,12 +53,12 @@ function TreeBranch({node,shared}:{node:Node;shared:Shared}) {
     else if(event.key==='Enter'||event.key===' ') {event.preventDefault();shared.select(String(node.root.id),node.folder);}
   }
   return <li role="none">
-    <div ref={row} role="treeitem" aria-label={node.name} aria-level={node.level} aria-selected={selected} aria-expanded={branch?open:undefined} tabIndex={0}
+    <div ref={row} role="treeitem" data-tree-key={key} aria-label={node.name} aria-level={node.level} aria-selected={selected} aria-expanded={branch?open:undefined} tabIndex={shared.focusKey===key?0:-1} onFocus={event=>{if(event.target===event.currentTarget)shared.focus(key);}}
       className={`directory-tree-row${selected?' is-selected':''}`} title={`${node.root.path}${node.folder?' / '+node.folder:''}`}
-      style={{paddingLeft:8+Math.min(node.level-1,12)*12}} onKeyDown={keyboard} onClick={()=>shared.select(String(node.root.id),node.folder)}>
+      style={{paddingLeft:8+Math.min(node.level-1,5)*10}} onKeyDown={keyboard} onClick={()=>shared.select(String(node.root.id),node.folder)}>
       {branch?<button type="button" tabIndex={-1} className="tree-chevron" aria-label={`${open?'收起':'展开'}目录 ${node.name}`} onClick={event=>{event.stopPropagation();shared.toggle(key);}}><Icon name={open?'chevronDown':'chevronRight'} size={13}/></button>:<span className="tree-chevron"/>}
-      <Icon name={node.root.available===false?'warning':'folder'} size={15}/><span className="tree-node-name">{node.name}</span>
-      {(node.count??result?.video_count)!=null&&<small>{node.count??result?.video_count}</small>}
+      <Icon name={node.root.available===false?'warning':open?'reveal':'folder'} className={node.root.available===false?'tree-offline':undefined} size={15}/><span className="tree-node-name">{node.name}</span>
+      {(node.count??result?.video_count)!=null&&<small title="含子目录的视频数量">{(node.count??result!.video_count).toLocaleString('zh-CN')}</small>}
     </div>
     {open&&<ul role="group">
       {busy&&<li role="none" className="tree-message" aria-live="polite"><Icon name="refresh" className="is-spinning" size={12}/>加载目录…</li>}
@@ -74,6 +74,8 @@ export function DirectoryTree({roots,root,folder,revision,select,close,active,vi
   const [query,setQuery]=useState(''),[page,setPage]=useState(1),[expanded,setExpanded]=useState<Set<string>>(()=>new Set()),[notice,setNotice]=useState(''),[stableRevision,setStableRevision]=useState(revision);
   const [cache]=useState(()=>new Map<string,FolderPage>());
   const [pageMemory]=useState(()=>new Map<string,number>());
+  const [focusKey,setFocusKey]=useState('');
+  const tree=useRef<HTMLUListElement>(null);
   const opened=useRef(false),visibleNow=useRef(visible);visibleNow.current=visible;
   if(visible)opened.current=true;
   const scroll=useRef<HTMLDivElement>(null),savedScroll=useRef(0),restoring=useRef(false),frame=useRef<number|null>(null);
@@ -103,7 +105,26 @@ export function DirectoryTree({roots,root,folder,revision,select,close,active,vi
   const pages=Math.max(1,Math.ceil(matching.length/50)),safePage=Math.min(page,pages);
   const shown=matching.slice((safePage-1)*50,safePage*50),selected=roots.find(r=>String(r.id)===root);
   if(selected&&!query&&!shown.some(r=>r.id===selected.id))shown.unshift(selected);
-  const shared:Shared={active,selectedRoot:root,selectedFolder:folder,revision:stableRevision,cache,pageMemory,restoreScroll,expanded,select,toggle:key=>{
+  // One Tab stop for the tree. Arrow keys navigate within it; filtering or
+  // collapsing a branch must never leave all remaining rows untabbable.
+  useLayoutEffect(()=>{
+    if(!visible||!tree.current)return;
+    const reconcile=()=>{
+      const rows=Array.from(tree.current?.querySelectorAll<HTMLElement>('[role="treeitem"]')||[]);
+      if(rows.some(row=>row.dataset.treeKey===focusKey))return;
+      const parent=rows.filter(row=>focusKey.startsWith(`${row.dataset.treeKey}${row.dataset.treeKey?.endsWith(':')?'':'/'}`)).at(-1);
+      const fallback=parent||rows.find(row=>row.getAttribute('aria-selected')==='true')||rows[0];
+      const next=fallback?.dataset.treeKey||'';
+      if(next!==focusKey)setFocusKey(next);
+    };
+    reconcile();
+    // Branch paging/loading is local state, so it need not re-render this panel.
+    // Observe only its bounded DOM, not the media library or per-frame video state.
+    const observer=new MutationObserver(reconcile);
+    observer.observe(tree.current,{childList:true,subtree:true});
+    return()=>observer.disconnect();
+  });
+  const shared:Shared={active,selectedRoot:root,selectedFolder:folder,revision:stableRevision,cache,pageMemory,restoreScroll,expanded,select,focusKey,focus:setFocusKey,toggle:key=>{
     if(!expanded.has(key)&&expanded.size>=32){setNotice('请先收起部分目录，或点击“全部收起”。');return;}
     setNotice('');setExpanded(current=>{
       const next=new Set(current);
@@ -114,10 +135,10 @@ export function DirectoryTree({roots,root,folder,revision,select,close,active,vi
   }};
   if(!opened.current)return null; // No tree DOM or folder requests before first opening.
   return <aside className="directory-tree-panel" aria-label="多级目录树" hidden={!visible}>
-    <div className="directory-tree-heading"><Icon name="folder" size={16}/><h2>目录</h2><button className="ui-icon-button" aria-label="全部收起目录" title="全部收起" onClick={()=>{setExpanded(new Set());setNotice('');}}><Icon name="list" size={15}/></button><button className="ui-icon-button" aria-label="收起目录树" title="收起目录树" onClick={close}><Icon name="chevronLeft" size={15}/></button></div>
+    <div className="directory-tree-heading"><Icon name="folder" size={16}/><h2>目录</h2><button className="ui-icon-button" aria-label="全部收起目录" title="全部收起" disabled={!expanded.size} onClick={()=>{setExpanded(new Set());setNotice('');}}><Icon name="collapseAll" size={15}/></button><button className="ui-icon-button" aria-label="收起目录树" title="收起目录树" onClick={close}><Icon name="chevronLeft" size={15}/></button></div>
     <input type="search" aria-label="搜索目录树媒体目录" placeholder="筛选媒体目录…" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}}/>
     <button className={`tree-all${!root?' is-selected':''}`} aria-label="全部目录" aria-pressed={!root} onClick={()=>select('','')}><Icon name="library" size={15}/><span>全部目录</span><small>{roots.length}</small></button>
-    <div className="directory-tree-scroll" ref={scroll} onWheelCapture={()=>{restoring.current=false;}} onPointerDownCapture={()=>{restoring.current=false;}} onScroll={event=>{if(visibleNow.current&&!restoring.current)savedScroll.current=event.currentTarget.scrollTop;}}><ul role="tree" aria-label="媒体目录树">{shown.map(r=><TreeBranch key={r.id} shared={shared} node={{root:r,folder:'',name:r.path.split(/[\\/]/).filter(Boolean).at(-1)||r.path,branch:true,level:1}}/>)}</ul>
+    <div className="directory-tree-scroll" ref={scroll} onWheelCapture={()=>{restoring.current=false;}} onPointerDownCapture={()=>{restoring.current=false;}} onScroll={event=>{if(visibleNow.current&&!restoring.current)savedScroll.current=event.currentTarget.scrollTop;}}><ul ref={tree} role="tree" aria-label="媒体目录树">{shown.map(r=><TreeBranch key={r.id} shared={shared} node={{root:r,folder:'',name:r.path.split(/[\\/]/).filter(Boolean).at(-1)||r.path,branch:true,level:1}}/>)}</ul>
       {!shown.length&&<p className="tree-message">{roots.length?'没有匹配的媒体目录':'添加媒体目录后在这里浏览'}</p>}
     </div>
     {pages>1&&<div className="tree-page"><button aria-label="上一页媒体目录树" disabled={safePage<=1} onClick={()=>setPage(safePage-1)}><Icon name="chevronLeft" size={14}/></button><small>{safePage} / {pages} · {matching.length} 个</small><button aria-label="下一页媒体目录树" disabled={safePage>=pages} onClick={()=>setPage(safePage+1)}><Icon name="chevronRight" size={14}/></button></div>}

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import {answerResumeOrWaitForControls} from './player-readiness';
 
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
@@ -13,10 +14,7 @@ async function openPlayer(page:Page,url='/?video=2') {
   await page.goto(url);
   // Fixture reset can precede the previous context's final progress beacon.
   // A legitimate resume prompt must be answered, not mistaken for a load hang.
-  const fromStart=page.getByRole('button',{name:'从头开始',exact:true});
-  const fullscreen=page.getByRole('button',{name:'全屏',exact:true});
-  await expect.poll(async()=>await fromStart.isVisible() || await fullscreen.isEnabled()).toBeTruthy();
-  if(await fromStart.isVisible())await fromStart.click();
+  await answerResumeOrWaitForControls(page);
 }
 
 test('pure playback fills the viewport without system fullscreen or restarting the video',async({page})=>{

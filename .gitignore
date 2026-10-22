@@ -61,6 +61,8 @@ frame-inspection/
 /bin/*
 !/bin/FFmpeg-LICENSE.txt
 !/bin/FFmpeg-BUILD-INFO.txt
+!/bin/SQLite-LICENSE.txt
+!/bin/SQLite-BUILD-INFO.txt
 
 # Test reports, coverage, logs and temporary/backup files
 /test-results/

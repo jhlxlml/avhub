@@ -115,12 +115,15 @@ class ScanTests(unittest.TestCase):
         source.write_bytes(b'unchanged source')
         stat = source.stat()
         with m.connection() as db:
-            db.execute('UPDATE media SET path=?,size=?,modified=?,missing=0,root_id=1 WHERE id=1',
-                       (str(source.resolve()),stat.st_size,stat.st_mtime))
-        with patch.object(m,'thumbnail',return_value=None), patch.object(m,'connection',wraps=m.connection) as connect:
+            db.execute("UPDATE media SET path=?,size=?,modified=?,source_identity=?,file_state='normal',missing=0,root_id=1 WHERE id=1",
+                       (str(source.resolve()),stat.st_size,stat.st_mtime,m.media_identity.encoded(stat)))
+        with patch.object(m,'thumbnail',return_value=None), patch.object(m,'connection',wraps=m.connection) as connect, \
+                patch.object(m,'read_connection',wraps=m.read_connection) as reads:
             self.assertFalse(m.scan_file(1, source))
-        # One read to compare the index; no per-file UPDATE transaction on an unchanged video.
-        self.assertEqual(connect.call_count,1)
+        # Compare through the WAL read snapshot, without even entering the
+        # serialized connection queue for a known unchanged source.
+        self.assertEqual(reads.call_count,1)
+        self.assertEqual(connect.call_count,0)
 
     def test_ten_thousand_file_scan_uses_bounded_parallel_workers(self):
         for index in range(10_000):

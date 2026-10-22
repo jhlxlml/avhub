@@ -3,6 +3,7 @@ import {api,json,request,readJson,isHtmlResponse,SERVICE_MISMATCH,errorText} fro
 import {flushPreferences} from './preferences';
 import {Icon} from './Icon';
 import {Button,StatusMessage} from './ui';
+import {SettingToggle} from './SettingToggle';
 import {requireDesktop} from './nativeDesktop';
 import {confirmAction} from './confirmAction';
 
@@ -121,12 +122,14 @@ export function BackupTools({busy,changeBusy,scanning,reload}:{busy:boolean;chan
   return <section className="backup-tools" aria-label="媒体库备份">
     <h3><Icon name="database"/>数据备份</h3>
     <p>完整备份包含数据库与手动封面，可选缩略图。恢复前先校验和预览，确认后替换记录；原视频不变。</p>
-    <label className="backup-options"><input type="checkbox" aria-label="备份包含缩略图" checked={thumbnails} disabled={busy||scanning} onChange={e=>setThumbnails(e.target.checked)}/>包含缩略图（体积更大，迁移后无需重新截图）</label>
+    <SettingToggle label="备份包含缩略图" checked={thumbnails} disabled={busy||scanning} onChange={setThumbnails}
+      description="备份体积更大，迁移后无需重新生成缩略图。">包含缩略图</SettingToggle>
     <Button variant="primary" icon="download" disabled={busy||scanning} onClick={()=>void download(true)}>保存完整备份</Button>
     <Button icon="download" disabled={busy||scanning} onClick={()=>void download(false)}>保存媒体库备份</Button>
     <small>数据库备份不携带图片。完整包上限 2 GB，数据库上限 512 MB；包含本地路径，请妥善保存。</small>
-    <label className="backup-restore"><Icon name="upload" size={16}/>选择备份文件<input ref={fileInput} aria-label="选择备份文件" type="file" accept=".zip,.db,.sqlite,.sqlite3,application/zip,application/vnd.sqlite3" disabled={busy||scanning} onChange={e=>{void release().catch(err=>setError(errorText(err)));setFile(e.target.files?.[0]||null);setError('');setNotice('');}}/></label>
-    <Button icon="shield" disabled={busy||scanning||!file} onClick={()=>void inspect()}>校验并预览备份</Button>
+    <div className="backup-import-controls"><Button icon="upload" disabled={busy||scanning} onClick={()=>fileInput.current?.click()}>选择备份文件</Button>
+      <input ref={fileInput} aria-label="选择备份文件" type="file" hidden accept=".zip,.db,.sqlite,.sqlite3,application/zip,application/vnd.sqlite3" disabled={busy||scanning} onChange={e=>{void release().catch(err=>setError(errorText(err)));setFile(e.target.files?.[0]||null);setError('');setNotice('');}}/>
+      <Button icon="shield" disabled={busy||scanning||!file} onClick={()=>void inspect()}>校验并预览备份</Button></div>
     {file&&<small>{file.name} · {(file.size/1048576).toFixed(1)} MB</small>}
     {job?.state==='running'&&<div className="data-job-progress" role="status"><span>{stages[job.stage]||'正在处理'}{job.total>0&&job.stage!=='uploading'?` · ${job.done} / ${job.total}`:''}</span>
       <progress aria-label="数据任务进度" {...(job.total>0&&job.stage!=='uploading'?{value:job.done,max:job.total}:{})}/>

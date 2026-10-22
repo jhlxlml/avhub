@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { api, errorText, type FolderPage, type Root } from './api';
 import { Icon } from './Icon';
 import { Button, StatusMessage } from './ui';
@@ -8,6 +8,7 @@ export function FolderBrowser({ root, folder, recursive, change, changeRecursive
   changeRecursive: (recursive: boolean) => void; revision: number; treeMode?:boolean;
 }) {
   const [open, setOpen] = useState(Boolean(folder)&&!treeMode);
+  const contentId = useId();
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<FolderPage | null>(null);
@@ -32,7 +33,7 @@ export function FolderBrowser({ root, folder, recursive, change, changeRecursive
   const rootName = root.path.split(/[\\/]/).filter(Boolean).at(-1) || root.path;
   return <section className="folder-browser" aria-label="子目录导航">
     <div className="folder-heading">
-      <button aria-label="浏览子目录" aria-expanded={open} onClick={() => setOpen(value => !value)}><Icon name={open?'chevronDown':'chevronRight'} size={14}/>子目录</button>
+      <button aria-label="浏览子目录" aria-expanded={open} aria-controls={open?contentId:undefined} onClick={() => setOpen(value => !value)}><Icon name={open?'chevronDown':'chevronRight'} size={14}/>子目录</button>
       <nav aria-label="目录路径" className="folder-breadcrumbs">
         <button aria-label="返回目录根层" title={root.path} aria-current={!folder ? 'location' : undefined} onClick={() => change('')}>{rootName}</button>
         {parts.map((part, index) => <span key={index}> / <button title={parts.slice(0,index+1).join('/')}
@@ -40,10 +41,10 @@ export function FolderBrowser({ root, folder, recursive, change, changeRecursive
       </nav>
       <label className="folder-recursive"><input type="checkbox" checked={recursive} onChange={event => changeRecursive(event.target.checked)} />包含子目录</label>
     </div>
-    {open && <div className="folder-content">
+    {open && <div id={contentId} className="folder-content" aria-busy={loading}>
       <div className="folder-search-row"><input type="search" aria-label="搜索子目录" placeholder="搜索本层子目录…" value={query}
         onChange={event => { setQuery(event.target.value); setPage(1); }} />
-        <small>{loading ? '正在加载…' : result ? `本层 ${result.direct_count} 个视频 · 含子目录 ${result.video_count} 个` : ''}</small>
+        <small role="status">{loading ? '正在加载…' : result ? `本层 ${result.direct_count.toLocaleString('zh-CN')} 个视频 · 含子目录 ${result.video_count.toLocaleString('zh-CN')} 个` : ''}</small>
       </div>
       {error ? <div className="folder-error"><StatusMessage kind="error">{error}</StatusMessage><Button icon="refresh" onClick={() => setRetry(value => value+1)}>重试目录加载</Button></div> :
         !loading && result && (result.items.length ? <div className="folder-tiles">{result.items.map(item =>

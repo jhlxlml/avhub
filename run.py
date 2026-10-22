@@ -1,3 +1,6 @@
+from app.sqlite_runtime import initialize
+initialize()  # Before uvicorn, app imports, migration, or any database access.
+
 import argparse
 import os
 import sys

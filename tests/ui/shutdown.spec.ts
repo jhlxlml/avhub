@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
+import {waitForDecodedPlayback} from './player-readiness';
 
-test.beforeEach(async ({ request }) => { await request.post('/test/reset'); });
+// Isolate renderer quit contracts from the headless host's audio output sink.
+test.beforeEach(async ({ request }) => { await request.post('/test/reset'); await request.patch('/api/preferences',{data:{values:{audio:{volume:0,muted:true}}}}); });
 
 test('quit suspends episode countdown and cancellation restores episode navigation', async ({ page, request }) => {
   const next = await (await request.get('/api/media/2')).json();
@@ -27,7 +29,7 @@ test('quit suspends episode countdown and cancellation restores episode navigati
 
 test('failed quit saves preserve the source and cancelled quit restores keyboard playback', async ({ page }) => {
   await page.goto('/?video=2');
-  await expect.poll(() => page.locator('video').evaluate((v: HTMLVideoElement) => v.readyState >= 2 && !v.paused)).toBeTruthy();
+  await waitForDecodedPlayback(page);
   const source = (await page.locator('video').getAttribute('src'))!;
   await page.route('**/api/media/2/progress', route => route.fulfill({ status: 503, json: { detail: 'test shutdown save failure' } }));
   expect(await page.evaluate(async () => {

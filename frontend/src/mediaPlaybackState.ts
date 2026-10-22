@@ -4,6 +4,7 @@ const pending=new Map<number,Promise<boolean>>();
 const invalidated=new WeakSet<MediaPlaybackState>();
 const failed=new Map<number,{state:MediaPlaybackState;changes:Partial<Pick<MediaPlaybackState,'audio'|'subtitle'|'delay'>>}>();
 let timestamp=0;
+let confirmation:{task:Promise<boolean>;done:boolean}|null=null;
 export function readMediaPlaybackState(id:number){return api<MediaPlaybackState>(`/api/media/${id}/playback-state`);}
 export function saveMediaPlaybackState(id:number,state:MediaPlaybackState,changes:Partial<Pick<MediaPlaybackState,'audio'|'subtitle'|'delay'>>){
   if(invalidated.has(state))return Promise.resolve(true);
@@ -23,5 +24,30 @@ export function saveMediaPlaybackState(id:number,state:MediaPlaybackState,change
     }
   });pending.set(id,task);void task.then(()=>{if(pending.get(id)===task)pending.delete(id);});return task;
 }
-export async function flushMediaPlaybackState(){await Promise.all([...pending.values()]);for(const [id,value] of [...failed])await saveMediaPlaybackState(id,value.state,value.changes);return !failed.size;}
+export function flushMediaPlaybackState(){
+  if(confirmation&&!confirmation.done)return confirmation.task;
+  let entry!:{task:Promise<boolean>;done:boolean};
+  const task=(async()=>{
+    // Publish the shared barrier before inspecting even an empty queue.
+    await Promise.resolve();
+    const retried=new Set<number>();
+    try{
+      for(;;){
+        const writing=[...pending.values()];
+        if(writing.length){await Promise.all(writing);continue;}
+        const retry=[...failed].find(([id])=>!retried.has(id));
+        if(!retry)return !failed.size;
+        const [id,value]=retry;retried.add(id);
+        // One automatic retry per media in this confirmation round. A failed
+        // retry must not loop; later explicit confirmations can try again.
+        await saveMediaPlaybackState(id,value.state,value.changes);
+        // Re-read the queue: edits made during any wait remain protected.
+      }
+    }finally{entry.done=true;}
+  })();
+  entry={task,done:false};confirmation=entry;
+  const clear=()=>{if(confirmation===entry)confirmation=null;};
+  void task.then(clear,clear);
+  return task;
+}
 window.addEventListener('avhub-before-quit',event=>(event as CustomEvent<Promise<boolean>[]>).detail.push(flushMediaPlaybackState()));

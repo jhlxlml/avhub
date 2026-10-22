@@ -8,7 +8,7 @@ import { api, checkServiceBuild, json, duration, errorText, views, type View, ty
 import { Settings } from './Settings';
 import {AboutHost} from './AppTools';
 import { Diagnostics } from './Diagnostics';
-import { Button, EmptyState, StatusMessage, Toast } from './ui';
+import { Button, ContentState, EmptyState, StatusMessage, Toast } from './ui';
 import { episodeLabel, formatLabel,fileSizeLabel,resolutionTiers,resolutionDisplayLabel } from './mediaLabels';
 import { Playlists } from './Playlists';
 import { Pagination } from './Pagination';
@@ -42,12 +42,14 @@ import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
 import {librarySorts,sortField,isAscending,validSort} from './librarySort';
 import {ResolutionBadge} from './ResolutionBadge';
 import {NativePlayerOverlay} from './NativePlayerOverlay';
+import {readRoute,transientRouteRead} from './routeRecovery';
 import './styles.css';
 import './library-performance.css';
 import './design-system.css';
 import './appearance.css';
 import './scrollbars.css';
 import './playlists.css';
+import './mira.css';
 
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
 
@@ -163,6 +165,8 @@ function App() {
   const [previewEnabled,setPreviewEnabled]=useState(loadPreviewPreference);
   const [previewId,setPreviewId]=useState<number|null>(null);
   const [routeLoading,setRouteLoading]=useState(false);
+  const [routeError,setRouteError]=useState('');
+  const [routeAttempt,setRouteAttempt]=useState(0);
   const router=useWatchRouter(()=>{
     setAutomaticMedia(null);
     setFilters(readFilters());setRevision(value=>value+1);
@@ -205,20 +209,20 @@ function App() {
   }, [filters,router.replaceHref]);
   useEffect(()=>{
     const {mediaId,playlistId}=router.route;
-    if(!mediaId){setSelected(null);setQueue(null);setRouteLoading(false);void resetPlaybackWindow().catch(e=>setNotice(errorText(e)));return;}
-    const controller=new AbortController();setRouteLoading(true);
+    if(!mediaId){setSelected(null);setQueue(null);setRouteLoading(false);setRouteError('');void resetPlaybackWindow().catch(e=>setNotice(errorText(e)));return;}
+    const controller=new AbortController();setRouteLoading(true);setRouteError('');
     void (async()=>{
-      const media=await api<Media>(`/api/media/${mediaId}`,{signal:controller.signal});
+      const media=await readRoute<Media>(`/api/media/${mediaId}`,controller.signal);
       let source:PlaylistSource|null=null;
       if(playlistId) {
-        try {const list=await api<{id:number;name:string}>(`/api/playlists/${playlistId}/queue?media_id=${mediaId}&page_size=40`,{signal:controller.signal});source={id:list.id,name:list.name,...readPlaylistPlayback()};}
-        catch(e){if(controller.signal.aborted)return;setNotice(`片单上下文无法恢复：${errorText(e)}。已改为普通播放。`);router.navigate(mediaId,null,true);}
+        try {const list=await readRoute<{id:number;name:string}>(`/api/playlists/${playlistId}/queue?media_id=${mediaId}&page_size=40`,controller.signal);source={id:list.id,name:list.name,...readPlaylistPlayback()};}
+        catch(e){if(controller.signal.aborted)return;if(transientRouteRead(e))throw e;setNotice(`片单上下文无法恢复：${errorText(e)}。已改为普通播放。`);router.navigate(mediaId,null,true);}
       }
       if(!controller.signal.aborted){scroll.current=router.route.scroll;setQueue(source);setSelected(media);scrollPageTo(0);}
-    })().catch(e=>{if(!controller.signal.aborted){setNotice(`无法恢复播放页：${errorText(e)}`);router.navigate(null,null,true);restore.current=true;}})
+    })().catch(e=>{if(!controller.signal.aborted)setRouteError(errorText(e));})
       .finally(()=>{if(!controller.signal.aborted)setRouteLoading(false);});
     return ()=>controller.abort();
-  },[router.route.mediaId,router.route.playlistId]);
+  },[router.route.mediaId,router.route.playlistId,routeAttempt]);
 
   useEffect(()=>{
     if(library.data&&library.data.page!==filters.page)setFilters(f=>({...f,page:library.data!.page}));
@@ -306,7 +310,13 @@ function App() {
   }}/>;
   return <>
     {notice && <Toast key={notification.id} message={notice} autoDismissMs={notification.autoDismissMs} close={() => setNotice('')}>{notice.startsWith('设置尚未保存') && <Button icon="refresh" onClick={()=>{setNotice('');void flushPreferences();}}>重试保存设置</Button>}</Toast>}
-    {router.route.mediaId && (!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage></div>}
+    {router.route.mediaId&&routeError&&<section className={`player-loading route-recovery${selected?.id===router.route.mediaId?' is-inline':''}`} aria-label="播放页恢复失败">
+      <StatusMessage kind="error">无法恢复播放页：{routeError}</StatusMessage>
+      <p>目标视频和片单位置已保留。可重试加载，不会自动转换画质或重复文件操作。</p>
+      <div><Button icon="refresh" onClick={()=>setRouteAttempt(value=>value+1)}>重试打开视频</Button>
+      {(!selected||selected.id!==router.route.mediaId)&&<Button icon="arrowLeft" onClick={close}>返回媒体库</Button>}</div>
+    </section>}
+    {router.route.mediaId && !routeError&&(!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage><Button icon="arrowLeft" onClick={close}>返回媒体库</Button></div>}
     {selected && selected.id===router.route.mediaId && <Suspense fallback={<div className="player-loading"><StatusMessage kind="loading">正在打开播放器…</StatusMessage></div>}>
       <Player key={selected.id} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} changePlaylistPlayback={changePlaylistPlayback} update={updateMedia}
         favoriteBusy={favoritePending.includes(selected.id)} changeFavorite={changeFavorite} registerNavigationGuard={router.registerGuard} notify={setNotice} />
@@ -330,7 +340,7 @@ function App() {
           </div>
           <ScanRecovery job={scan.job} resume={scan.resume} />
           <ThumbnailTasks status={thumbnails.status} changed={thumbnails.changed}/>
-          <button className="ui-button refresh-library" onClick={() => void scan.start()} disabled={scan.scanning}><Icon name="refresh" className={scan.scanning?'is-spinning':''}/><span>{scan.scanning ? '正在扫描…' : '刷新媒体库'}</span></button>
+          <button className="ui-button refresh-library" aria-label={scan.scanning?'正在扫描…':'刷新媒体库'} title={scan.scanning?'正在扫描…':'刷新媒体库'} onClick={() => void scan.start()} disabled={scan.scanning}><Icon name="refresh" className={scan.scanning?'is-spinning':''}/><span>{scan.scanning ? '正在扫描…' : '刷新媒体库'}</span></button>
           <ThemeToggle/>
           <button className="ui-icon-button" aria-label="媒体库设置" title="媒体库设置" onClick={() => setSettings(true)}><Icon name="settings"/></button></div>
       </header>
@@ -403,9 +413,9 @@ function App() {
           changeRecursive={recursive => setFilters(f => ({ ...f, recursive, page: 1 }))} />}
         <LibraryHeading title={title} count={library.data?`共 ${displayTotal} 个结果 · 本页 ${visible.length} 个`:library.showLoading?'正在加载…':''}
           updating={Boolean(library.data&&library.showLoading)}/>
-        {requestError&&library.data&&<StatusMessage kind="error">{requestError}<Button icon="refresh" onClick={()=>setRevision(x=>x+1)}>重试</Button></StatusMessage>}
-        {requestError&&!library.data ? <div className="empty"><StatusMessage kind="error">{requestError}</StatusMessage><Button icon="refresh" onClick={() => setRevision(x => x + 1)}>重试</Button></div> :
-          loading&&!library.data ? <div className="library-query-placeholder" aria-busy="true" aria-label="视频列表载入中">{library.showLoading&&<StatusMessage kind="loading">正在加载视频…</StatusMessage>}</div> :
+        {requestError&&library.data&&<ContentState kind="error" title="媒体库暂时无法更新" description={requestError}><Button icon="refresh" onClick={()=>setRevision(x=>x+1)}>重试</Button></ContentState>}
+        {requestError&&!library.data ? <ContentState kind="error" title="媒体库暂时无法加载" description={requestError}><Button icon="refresh" onClick={() => setRevision(x => x + 1)}>重试</Button></ContentState> :
+          loading&&!library.data ? <div className="library-query-placeholder" aria-busy="true" aria-label="视频列表载入中">{library.showLoading&&<ContentState kind="loading" title="正在加载视频…"/>}</div> :
             visible.length ? <div className={`media-${filters.layout}`}>{visible.map(m => <article className={`card${picked.includes(m.id) ? ' selected' : ''}`} key={m.id}>
             <div className="cover" onPointerEnter={event=>{if(previewEnabled && !selected && event.pointerType==='mouse')setPreviewId(m.id);}} onPointerLeave={()=>setPreviewId(null)}>
               {bulkMode && <label className="bulk-pick"><input type="checkbox" aria-label={`选择 ${m.title}`} checked={picked.includes(m.id)} onChange={event => event.target.checked ? pick([m.id]) : setPicked(current => current.filter(id => id !== m.id))}/></label>}

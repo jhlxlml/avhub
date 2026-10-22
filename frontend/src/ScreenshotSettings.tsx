@@ -1,13 +1,14 @@
-import { useEffect,useState,useRef } from 'react';
+import { useEffect,useId,useState,useRef } from 'react';
 import { api,json,errorText } from './api';
 import { rememberSavedPreference } from './preferences';
 import { Icon } from './Icon';
-import { Button,StatusMessage } from './ui';
+import { Button,FieldHint,StatusMessage } from './ui';
 import { revealScreenshot,type ScreenshotSettings as Settings } from './screenshots';
 import {requireDesktop} from './nativeDesktop';
 import './screenshots.css';
 
 export function ScreenshotSettings({busy,changeBusy,enabled,onDirtyChange}:{busy:boolean;changeBusy:(value:boolean)=>void;enabled:boolean;onDirtyChange?:(dirty:boolean)=>void}) {
+  const directoryId=useId(),hintId=useId(),pathId=useId();
   const [settings,setSettings]=useState<Settings|null>(null);
   const [directory,setDirectory]=useState('');
   const [loading,setLoading]=useState(false);
@@ -33,13 +34,13 @@ export function ScreenshotSettings({busy,changeBusy,enabled,onDirtyChange}:{busy
   return <section className="settings-section screenshot-settings" aria-label="视频截图设置">
     <h3><Icon name="camera"/>视频截图</h3>
     <p className="screenshot-description">一键保存 PNG，不弹保存窗口，不中断播放。保留当前解码画面的分辨率，不含控件、文字字幕与画面缩放。</p>
-    <label htmlFor="screenshot-directory">默认保存目录</label>
-    <div className="screenshot-directory-field"><input id="screenshot-directory" disabled={locked} value={directory} placeholder="留空使用应用数据目录" onChange={event=>setDirectory(event.target.value)}/>
+    <label htmlFor={directoryId}>默认保存目录</label>
+    <div className="screenshot-directory-field"><input id={directoryId} aria-describedby={`${pathId} ${hintId}`} disabled={locked} value={directory} placeholder="留空使用应用数据目录" onChange={event=>setDirectory(event.target.value)}/>
       <Button icon="folder" disabled={locked} onClick={()=>void action(async()=>{
         const selected=await requireDesktop('chooseFolder').chooseFolder('screenshots');
         if('path' in selected)setDirectory(selected.path);
       })}>浏览</Button></div>
-    <small className="screenshot-path" title={settings?.effective_directory}>当前保存到：{settings?.effective_directory??'正在读取…'}</small>
+    <small id={pathId} className="screenshot-path" title={settings?.effective_directory}>当前保存到：{settings?.effective_directory??(loading?'正在读取…':'尚未读取，请重试')}</small>
     {settings&&!settings.available&&<StatusMessage kind="error">{settings.warning}</StatusMessage>}
     <div className="screenshot-options" aria-label="截图快捷键"><span>截图快捷键</span><kbd>C</kbd><small>输入文字、菜单或设置中不触发。</small></div>
     {dirty&&<StatusMessage>截图目录尚未保存，切换设置分类会保留草稿。</StatusMessage>}
@@ -52,10 +53,10 @@ export function ScreenshotSettings({busy,changeBusy,enabled,onDirtyChange}:{busy
       <Button icon="reveal" disabled={locked} onClick={()=>void action(async()=>{
         await revealScreenshot();
       })}>打开截图目录</Button></div>
-    <small>文件名包含视频标题、播放时间与截图时间，连续截图不会覆盖。自定义目录须已存在；默认目录在首次保存时创建。</small>
+    <FieldHint id={hintId}>文件名包含视频标题、播放时间与截图时间，连续截图不会覆盖。自定义目录须已存在；默认目录在首次保存时创建。修改后需点击“保存截图设置”。</FieldHint>
     {notice&&<StatusMessage kind={failed?'error':notice==='截图设置已保存'?'success':'info'}>{notice}</StatusMessage>}
     {!settings&&!loading&&<Button disabled={busy} icon="refresh" onClick={()=>void action(async()=>{
-      const value=await api<Settings>('/api/screenshots/settings');setSettings(value);setDirectory(value.directory);
+      const value=await api<Settings>('/api/screenshots/settings');loaded.current=true;setSettings(value);setDirectory(value.directory);setNotice('已重新读取截图设置');
     })}>重新读取截图设置</Button>}
   </section>;
 }
