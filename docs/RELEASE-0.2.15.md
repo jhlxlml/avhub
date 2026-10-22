@@ -19,12 +19,13 @@
 - 取消按请求身份隔离，旧取消不影响新预检；真实重命名、回收、恢复、永久删除和权限写入仍保留退出保护，不使用预检超时强行结束或重放写操作。
 - 批量回收与回收记录的预检取消、弹窗关闭和停止反馈更清晰。取消客户端等待不等于撤销已经执行的系统操作，也不承诺中断后端已开始的只读枚举。
 - 构建身份覆盖依赖锁、Python 依赖清单、嵌套 UI 源码及原始静态资源，减少前后端或缓存误认旧构建的风险。
+- 最近回收验收按实际请求完成状态核对记录，不再用默认 5 秒文字等待代替接口结果；新增有界的回收桥接与枚举/身份核对阶段诊断，不记录视频路径或身份，不自动重试文件写操作。
 
 ## 下载、升级与验证边界
 
 - 提供单文件便携 EXE 和解压即用文件夹 ZIP，均内置所需运行环境。日常使用推荐完整解压 ZIP 后启动 AVHub.exe，可避免单文件版每次自解压的开销。
 - 升级前退出应用并备份数据目录；保留 AVHub-data 与 avhub-data-location.json。应用备份不包含原视频，发布包不包含用户媒体、数据库或开发缓存。
-- 版本准备前，同一修复源码的本地 EXE / ZIP 已通过合成旧库升级、观看进度与片单保留、数据目录迁移、生成 H.264 视频真实解码首帧、重启和退出验收；ZIP 成品另通过预检卡住、取消和写保护故障注入。升版后的正式成品由标签触发的 GitHub Actions 重新构建并验收，本地结果不代替云端结果。
+- 本次采用本地构建、成品验收后手动上传发布，不以 GitHub Actions 成功作为发布依据，也不宣称云端流程已全部通过。发布文件校验清单记录源提交、构建身份、大小与 SHA-256。成品验收涵盖合成旧库升级、观看进度与片单保留、数据目录迁移、生成 H.264 视频真实解码首帧、重启与退出，以及 ZIP 成品的预检卡住、取消和写保护故障注入。
 - 默认继续优先原文件、原画播放；必要且支持时仅无损封装，不自动降分辨率、位深、色彩或音频质量。有损兼容播放仍须用户明确确认。
 - **本版不分发 MPV 二进制**，源码中的 MPV 能力仍为开发预览；没有解除运行库分发、物理画面、混合 DPI 或 HDR 验收门槛。
 - 部分设备/视频的呈现掉帧、历史后台提交长尾以及此前搁置的特定大 MP4 卡顿未宣称彻底解决；生成样本与本地单机测试不构成全格式、全硬件无卡顿承诺。
@@ -35,4 +36,4 @@
 - Added a pinned, verified private SQLite 3.54.1 runtime and improved scan, artwork, search, playback-memory and database-lifecycle coordination without weakening durability. System SQLite remains untouched.
 - Fixed redundant sole-audio-track selection that could prevent original-file playback. Original quality remains mandatory; lossy compatibility still requires explicit consent.
 - Read-only file preflight now has a bounded header/body deadline and request-scoped cancellation. Closing a stalled preview no longer blocks quitting; actual writes remain protected and are never silently retried or permanently deleted as a fallback.
-- Both portable formats remain available; the extracted folder ZIP avoids repeated self-extraction. Pre-release local packaged tests cover synthetic legacy upgrades, migration, decoded frames and shutdown; the tagged build is rebuilt and checked independently by Actions. MPV binaries are not distributed. Known frame drops, background-commit tails and the deferred specific MP4 issue are not claimed fixed.
+- Both portable formats remain available; the extracted folder ZIP avoids repeated self-extraction. This release is built and validated locally, then uploaded manually, not certified by an all-green Actions run. Packaged checks cover synthetic legacy upgrades, migration, decoded frames, shutdown and cancellable preflight/write protection. The manifest binds downloads to their source commit, build identity and SHA-256. MPV binaries are not distributed. Known frame drops, background-commit tails and the deferred specific MP4 issue are not claimed fixed.
