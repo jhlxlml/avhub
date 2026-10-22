@@ -7,10 +7,11 @@
 | 操作 | 测试 | 打包 | 发布 Releases |
 | --- | --- | --- | --- |
 | 推送 main / 对 main 提 PR | 是 | 否 | 否 |
-| 推送 `vX.Y.Z` 正式版本标签 | 是 | 是 | 是，仅本仓库 |
+| 推送 `vX.Y.Z` 正式版本标签 | 是，先核对同提交候选 | 是 | 是，仅本仓库 |
 | Actions → Run workflow | 是 | 是 | 否，仅下载 Actions artifact |
 
-版本标签必须与 package.json、package-lock.json 一致，并有 `docs/RELEASE-X.Y.Z.md`。例如下一版准备好后：
+版本标签必须与 package.json、package-lock.json 一致，并有 `docs/RELEASE-X.Y.Z.md`。
+正式标签不能作为第一次完整云端验收：必须先完成下述同提交候选流程。
 
 版本号仅在准备用户授权的正式版本标签发布时递增补丁号；本地迭代和普通源码推送不升版。一次正式发布汇总累积改动，失败重试沿用已准备的版本。源码推送只测试，另行推送版本标签才打包和公开发布。已经公开的版本和标签不得作为失败重试覆盖。
 
@@ -18,11 +19,53 @@
 git add <本次源码与发布说明>
 git commit -m "release: AVHub X.Y.Z"
 git push origin main
+# 在 Actions 手动运行候选验收，mpv_validation=false。
+# 确认同一提交的完整流程通过、EXE/ZIP 附件仍有效；期间不再修改提交。
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
 将 `X.Y.Z` 换成真实版本。**推送标签即授权 CI 打包并发布**，普通提交不会生成 EXE。不要只为了测试流程推送正式标签，请使用手动 Run workflow。
+
+## 候选验收与正式标签门禁
+
+1. 经用户授权准备版本元数据与说明，提交并普通推送源码。
+2. 经用户授权，在 Actions → Windows desktop CI and release → Run workflow 选择
+   相应分支，保持 `mpv_validation=false`。手动流程执行完整回归、打包、真实
+   EXE/ZIP 验收和校验清单，只生成 Actions 附件，不发布 Release。
+3. 对照运行记录的完整提交 SHA。只有成功的手动流程、成功的打包/两个成品验收/
+   清单/附件步骤和未过期的 `windows-portable-<SHA>` 附件才有效。普通 main 成功、
+   MPV 专项成功、其他提交的成功、过期附件都不满足门禁。
+4. 确认后另行获准推送正式标签。标签流程在工具下载前通过只读 GitHub API
+   校验上述证据；缺失、API 不可用或无法确认时阻止后续构建发布，不绕过。
+   标签流程仍重新构建和验收自己的成品，不把旧候选包改名上传。
+
+候选通过后如果修复代码、版本或发布说明并形成新提交，必须重新候选验收。
+候选附件保留 14 天，过期需重新运行。流程不自动创建、移动标签或公开 Release。
+这些措施降低可预防失败，但不能保证下载源、GitHub 服务或 runner 永远无故障。
+
+## 本地与 CI 共用验收命令
+
+准备好 `requirements-ci.txt`、锁定的 npm 依赖与运行库后：
+
+```powershell
+python scripts/verify-windows.py
+python scripts/verify-windows.py --execute
+# 或只执行与 CI 完全相同的某一步：
+python scripts/verify-windows.py --execute --step 'Backend regression'
+python scripts/verify-windows.py --execute --step 'Windows short-path regression'
+```
+
+不带 `--execute` 只列出计划。命令直接读取工作流的源码验证步骤，不另维护一份
+测试列表；遇到未处理的条件或 GitHub 表达式拒绝执行。本地入口不安装工具，
+不打包、不上传、不发布。渲染器依旧只是 harness，真实 Electron 验收步骤保留。
+本地入口设 `CI=true` 复用确定性更新 UI 模拟，不视为真实联网更新接口验收。
+
+`npm run test:backend` 与 `npm run test:backend:short-path` 共用后端报告器，
+分别保存 `build/backend-tests/normal.*` 与 `short-path-all.*` 的逐项日志和 JSON。
+失败时 CI 收集这些报告，含失败测试名与堆栈；不收集数据库或测试视频。
+短路径命令在独立真实 8.3 TEMP 下运行完整后端，而不只运行旧的精选用例。
+CI 要求真实别名存在，缺失即失败，不用 SKIP 冒充验收通过；不改系统 TEMP。
 
 ## 流程与安全
 

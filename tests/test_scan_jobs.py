@@ -14,7 +14,9 @@ from app.scanning import ScanManager
 class ScanJobsTests(unittest.TestCase):
     def setUp(self):
         temporary=tempfile.TemporaryDirectory(prefix='avhub-spooled-scan-');self.addCleanup(temporary.cleanup)
-        self.folder=Path(temporary.name);self.thumbs=self.folder/'thumbnails';self.thumbs.mkdir()
+        # Seed the same canonical paths persisted by the production scanner.
+        # TEMP can contain a real Windows 8.3 alias (RUNNER~1 on hosted runners).
+        self.folder=Path(temporary.name).resolve();self.thumbs=self.folder/'thumbnails';self.thumbs.mkdir()
         for key,value in [('DATA',self.folder),('DB',self.folder/'library.db'),('THUMBS',self.thumbs)]:
             context=patch.object(m,key,value);context.start();self.addCleanup(context.stop)
         m.bootstrap();self.source=self.folder/'source';self.source.mkdir()
@@ -30,6 +32,19 @@ class ScanJobsTests(unittest.TestCase):
                 db.execute('''INSERT INTO media(id,root_id,path,name,title,size,modified,duration,created_at,updated_at)
                     VALUES(?,1,?,?,?, ?,?,120,0,0)''',(number,str(path),path.name,path.stem,stat.st_size,stat.st_mtime))
             self.jobs.schedule(path,number,120,True)
+
+    def test_short_and_canonical_source_reuse_the_same_seeded_media(self):
+        from check_path_alias import short_path
+        alias=short_path(self.source)
+        if alias is None:self.skipTest('Host has no distinct 8.3 source alias')
+        self.seed();self.assertTrue(alias.samefile(self.source))
+        with patch.object(m,'probe',side_effect=AssertionError('unchanged alias must not re-probe')):
+            self.assertFalse(m.scan_file(1,alias/'1.mp4'))
+        with m.read_connection() as db:
+            rows=db.execute('SELECT id,path FROM media').fetchall()
+        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['id'],1)
+        self.assertEqual(rows[0]['path'],str((self.source/'1.mp4').resolve()))
+        self.assertEqual((alias/'1.mp4').read_bytes(),b'never modified')
 
     def join(self):
         self.manager.thread.join(10);self.assertFalse(self.manager.busy())

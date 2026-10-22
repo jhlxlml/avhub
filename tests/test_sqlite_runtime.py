@@ -67,7 +67,7 @@ class SQLiteRuntimeTests(unittest.TestCase):
     def test_prepare_rejects_corrupt_cached_archive_before_extraction(self):
         prepare=load_script('prepare-sqlite');info=runtime.manifest()
         with tempfile.TemporaryDirectory(prefix='avhub-sqlite-archive-') as owned:
-            root=Path(owned);downloads=root/'build/downloads';downloads.mkdir(parents=True)
+            root=Path(owned).resolve();downloads=root/'build/downloads';downloads.mkdir(parents=True)
             archive=downloads/Path(info['url']).name;archive.write_bytes(b'owned corrupt archive')
             target=root/'bin/sqlite/sqlite3.dll'
             with patch.object(prepare,'ROOT',root),patch.object(prepare,'runtime_path',return_value=target),patch.object(prepare,'urlopen') as network:

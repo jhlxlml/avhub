@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: windows-${{ github.ref }}
@@ -41,11 +42,16 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - name: Validate release tag before downloading tools
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python -c "import runpy,os;runpy.run_path('scripts/ci-prepare.py')['validate_release'](os.environ['RELEASE_TAG'])"
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: python -c "import runpy,os,json;runpy.run_path('scripts/ci-prepare.py')['validate_release'](os.environ.get('RELEASE_TAG') or 'v'+json.load(open('package.json'))['version'])"
+      - name: Require successful exact-commit release candidate
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/check-release-candidate.py
       - name: Prepare pinned FFmpeg
         run: python scripts/ci-prepare.py
       - name: Prepare and verify pinned private SQLite
@@ -109,12 +115,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/build-dependency-policy.mjs
       - name: Windows short-path regression
-        run: python scripts/python-runtime.py tests/check_path_alias.py
+        # Full suite under a real 8.3 alias; unavailable is NOT accepted as a pass.
+        run: npm run test:backend:short-path
       - name: Shared renderer regression
         run: npx playwright test tests/ui/desktop-policy.spec.ts tests/ui/favorite-stability.spec.ts tests/ui/directory-tree.spec.ts tests/ui/help.spec.ts tests/ui/manual-updates.spec.ts tests/ui/update-result-banner.spec.ts tests/ui/screenshots.spec.ts tests/ui/library-transitions.spec.ts tests/ui/player-control-idle.spec.ts tests/ui/mouse-seek.spec.ts tests/ui/chromium-diagnostics.spec.ts
       - name: Windows short-path screenshot regression
         # Shared renderer tests are harnesses, not browser product acceptance.
-        run: python tests/check_path_alias.py --ui
+        run: python tests/check_path_alias.py --ui --require-alias
       - name: Read-only route recovery and desktop runtime messages
         run: npx playwright test tests/ui/route-recovery.spec.ts tests/ui/native-runtime-message.spec.ts tests/ui/progress-save.spec.ts
       - name: Renderer interaction and theme regression harness
@@ -214,6 +221,8 @@ jobs:
         with:
           name: windows-failure-${{ github.sha }}-${{ github.run_attempt }}
           path: |
+            build/backend-tests/*.log
+            build/backend-tests/*.json
             test-results/**
             playwright-report/**
             build/electron-*/**/*.log

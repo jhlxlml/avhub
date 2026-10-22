@@ -18,6 +18,10 @@ CASES=[
     'test_screenshots.ScreenshotTests.test_default_save_preserves_png_bytes_dimensions_and_source',
     'test_screenshots.ScreenshotTests.test_legacy_shortcuts_normalize_to_c_without_losing_directory',
     'test_stability.LibraryTests.test_sidecar_subtitle_discovery_and_path_scope',
+    'test_atomic_scan_enqueue',
+    'test_bulk_read_isolation',
+    'test_scan_batch_experiment',
+    'test_sqlite_runtime',
 ]
 def short_path(path):
     if os.name!='nt':return None
@@ -26,16 +30,18 @@ def short_path(path):
     buffer=ctypes.create_unicode_buffer(32768);length=function(str(path),buffer,len(buffer))
     if not 0<length<len(buffer) or Path(buffer.value)==Path(path).resolve():return None
     return Path(buffer.value)
-def main():
+def main(argv=None):
     parser=argparse.ArgumentParser()
     mode=parser.add_mutually_exclusive_group()
     mode.add_argument('--all',action='store_true')
     mode.add_argument('--ui',action='store_true',help='Run screenshot renderer tests with a real Windows short TEMP')
-    args=parser.parse_args()
+    parser.add_argument('--require-alias',action='store_true',help='Fail instead of skipping when the host cannot supply a real alias')
+    args=parser.parse_args(argv)
     tests=Path(__file__).resolve().parent;sys.path.insert(0,str(tests));sys.path.insert(0,str(tests.parent))
     with tempfile.TemporaryDirectory(prefix='avhub-ci-alias-regression-') as directory:
         alias=short_path(directory)
         if alias is None:
+            if args.require_alias:raise SystemExit('Required real Windows 8.3 alias is unavailable; acceptance did not run')
             print('SKIP: this system does not provide a distinct Windows 8.3 alias');return
         if not alias.samefile(directory):raise RuntimeError('Alias does not identify the owned test directory')
         if args.ui:
@@ -53,7 +59,8 @@ def main():
         try:
             tempfile.tempdir=str(alias)  # Child test process only; not a user/system setting.
             suite=unittest.defaultTestLoader.discover(str(tests),pattern='test_*.py') if args.all else unittest.defaultTestLoader.loadTestsFromNames(CASES)
-            result=unittest.TextTestRunner(verbosity=1).run(suite)
+            from backend_report import run
+            result=run(suite,'short-path-all' if args.all else 'short-path-focused')
         finally:tempfile.tempdir=previous
         if not result.wasSuccessful():raise SystemExit(1)
         print(f'Windows 8.3 regression passed: {result.testsRun} cases; zero failures')
