@@ -1,5 +1,23 @@
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({request})=>{await request.post('/test/reset');await request.post('/test/thumbnail-fixture');});
+test('stalled hover releases its source after a bounded deadline without transcoding or retry',async({page,request})=>{
+  await request.patch('/api/preferences',{data:{values:{hoverPreview:true}}});
+  let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});let reads=0,playback=0;
+  await page.route('**/media/*/file',async route=>{reads++;await gate;await route.abort().catch(()=>{});});
+  page.on('request',r=>{if(r.method()==='POST'&&/\/api\/media\/\d+\/playback/.test(r.url()))playback++;});
+  try{
+    await page.goto('/?sort=name');await page.clock.install();
+    const card=page.locator('.card').first();await card.locator('.cover').hover();await page.clock.runFor(700);
+    await expect(card.locator('.hover-preview')).toHaveCount(1);await expect.poll(()=>reads).toBeGreaterThan(0);
+    await card.evaluate(e=>{(window as any).__timedPreview=e.querySelector('.hover-preview');});
+    await page.clock.runFor(7000);
+    await card.locator('.hover-preview').dispatchEvent('stalled'); // cannot extend the original deadline
+    await page.clock.runFor(1100);await expect(card.locator('.hover-preview')).toHaveCount(0);
+    expect(await page.evaluate(()=>(window as any).__timedPreview.getAttribute('src'))).toBeNull();
+    await expect(card.locator('.thumbnail-ready')).toBeVisible();
+    const attempts=reads;await page.clock.runFor(10000);expect(reads).toBe(attempts);expect(playback).toBe(0);
+  }finally{release();}
+});
 for(const theme of ['dark','light'])test(`${theme}: favorite hides like playlist action and preserves the decoded preview and cover`,async({page,request})=>{
   await request.patch('/api/preferences',{data:{values:{hoverPreview:true}}});
   await page.goto('/?sort=name');

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api, json, errorText, type Root } from './api';
 import {BackupTools} from './BackupTools';
 import {StorageTools} from './StorageTools';
+import {MissingArtworkTools} from './MissingArtworkTools';
 import './settings.css';
 import { Icon, type IconName } from './Icon';
 import { Button, Dialog, DialogHeader, StatusMessage } from './ui';
@@ -44,6 +45,11 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
   const [screenshotDirty,setScreenshotDirty]=useState(false),[addedRoot,setAddedRoot]=useState<Root|null>(null);
   const [mouseDirty,setMouseDirty]=useState(false);
   const [filePermissions,setFilePermissions]=useState<Record<number,FilePermission>>({});
+  const directoryAction=useRef(false),permissionEpoch=useRef(0),latestPermissions=useRef(filePermissions);
+  latestPermissions.current=filePermissions;
+  const [permissionError,setPermissionError]=useState(''),[statusError,setStatusError]=useState('');
+  const [permissionLoading,setPermissionLoading]=useState(false),[statusLoading,setStatusLoading]=useState(false);
+  const [permissionRetry,setPermissionRetry]=useState(0),[statusRetry,setStatusRetry]=useState(0);
   const drafts=[screenshotDirty?'截图目录':'',mouseDirty?'鼠标侧键时长':'',path.trim()?'待添加目录':''].filter(Boolean);
   useDraftGuard(drafts.length>0,busy,`${drafts.join('、')}尚未保存，放弃修改并关闭设置吗？`);
   const requestClose=async()=>{if(!busy&&(!drafts.length||await confirmInApp('放弃未保存的修改？',drafts.join('、'),'关闭后这些修改不会保存。','放弃修改',true)))close();};
@@ -57,22 +63,42 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
   const page = Math.min(rootPage, rootPages);
   const shownRoots = matching.slice((page - 1) * 20, page * 20);
   const statusIds = shownRoots.map(root => root.id).join(',');
-  useEffect(()=>{if(!statusIds||tab!=='directories')return;const controller=new AbortController();void api<FilePermission[]>(`/api/file-permissions?ids=${statusIds}`,{signal:controller.signal}).then(values=>{if(!controller.signal.aborted)setFilePermissions(Object.fromEntries(values.map(value=>[value.root_id,value])));}).catch(()=>{});return()=>controller.abort();},[statusIds,tab,roots]);
+  const rootIdentity=JSON.stringify(shownRoots.map(root=>[root.id,root.path]));
+  useEffect(()=>{
+    if(!statusIds||tab!=='directories')return;
+    const controller=new AbortController(),epoch=++permissionEpoch.current;setPermissionError('');setPermissionLoading(true);
+    // Never present an old grant as current after a failed refresh.
+    setFilePermissions({});
+    void api<FilePermission[]>(`/api/file-permissions?ids=${statusIds}`,{signal:controller.signal}).then(values=>{
+      if(!controller.signal.aborted&&epoch===permissionEpoch.current)setFilePermissions(Object.fromEntries(values.map(value=>[value.root_id,value])));
+    }).catch(e=>{if(!controller.signal.aborted&&epoch===permissionEpoch.current)setPermissionError(errorText(e));})
+      .finally(()=>{if(!controller.signal.aborted&&epoch===permissionEpoch.current)setPermissionLoading(false);});
+    return()=>controller.abort();
+  },[statusIds,tab,rootIdentity,permissionRetry]);
   async function permission(root:Root,action:'rename'|'recycle'|'permanentDelete',enabled:boolean){
-    const current=filePermissions[root.id];if(!current||busy||scanning)return;
-    if(enabled&&!await confirmInApp(action==='permanentDelete'?'开启永久删除权限？':'开启文件整理权限？',root.path,action==='permanentDelete'?'仅允许回收记录中精确识别的项目永久删除，无法通过回收站恢复；每次操作仍需单独确认。不会直接删除源目录的视频。':`允许${action==='rename'?'修改真实文件名并同步标题':'移入 Windows 系统回收站或恢复原目录'}。该授权只作用于此目录，更具体的子目录授权优先；不会修改视频内容。`,'开启权限',action==='permanentDelete'))return;
+    if(!filePermissions[root.id]||busy||scanning||directoryAction.current)return;
+    directoryAction.current=true;
     setBusy(true);setNotice('');setNoticeError(false);
-    try{await desktopFile({action:'permissions',id:root.id,rename:action==='rename'?enabled:current.rename,recycle:action==='recycle'?enabled:current.recycle,permanentDelete:action==='permanentDelete'?enabled:current.permanentDelete===true});setFilePermissions(value=>({...value,[root.id]:{...current,[action]:enabled}}));}
-    catch(error){setNoticeError(true);setNotice(errorText(error));}finally{setBusy(false);}
+    try{
+      if(enabled&&!await confirmInApp(action==='permanentDelete'?'开启永久删除权限？':'开启文件整理权限？',root.path,action==='permanentDelete'?'仅允许回收记录中精确识别的项目永久删除，无法通过回收站恢复；每次操作仍需单独确认。不会直接删除源目录的视频。':`允许${action==='rename'?'修改真实文件名并同步标题':'移入 Windows 系统回收站或恢复原目录'}。该授权只作用于此目录，更具体的子目录授权优先；不会修改视频内容。`,'开启权限',action==='permanentDelete'))return;
+      const current=latestPermissions.current[root.id];if(!current)throw new Error('目录权限正在刷新，请读取完成后重试');
+      ++permissionEpoch.current;setPermissionLoading(false);
+      const result=await desktopFile({action:'permissions',id:root.id,rename:action==='rename'?enabled:current.rename,recycle:action==='recycle'?enabled:current.recycle,permanentDelete:action==='permanentDelete'?enabled:current.permanentDelete===true});
+      if(result.ok!==true)throw new Error('权限保存未确认，请重新读取后核对');
+      setFilePermissions(value=>({...value,[root.id]:{...current,[action]:enabled}}));
+    }catch(error){setNoticeError(true);setNotice(errorText(error));}finally{directoryAction.current=false;setBusy(false);}
   }
   useEffect(() => {
     if (!statusIds || tab!=='directories') return;
     const controller = new AbortController();
+    setStatusError('');setStatusLoading(true);
+    setAvailability({});
     void api<Root[]>(`/api/roots/status?ids=${statusIds}`, { signal: controller.signal }).then(values => {
       if (!controller.signal.aborted) setAvailability(current => ({ ...current, ...Object.fromEntries(values.map(root => [root.id, root.available === true])) }));
-    }).catch(() => {});
+    }).catch(e=>{if(!controller.signal.aborted)setStatusError(errorText(e));})
+      .finally(()=>{if(!controller.signal.aborted)setStatusLoading(false);});
     return () => controller.abort();
-  }, [statusIds, roots, tab]);
+  }, [statusIds, roots, tab,statusRetry]);
   async function add(pick: boolean) {
     if (busy) return;
     setBusy(true); setNotice(''); setNoticeError(false);
@@ -91,7 +117,8 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     finally { setBusy(false); }
   }
   async function remove(id: number) {
-    if(busy||scanning)return;
+    if(busy||scanning||directoryAction.current)return;
+    directoryAction.current=true;
     setBusy(true); setNotice(''); setNoticeError(false);
     try {
       const root=roots.find(value=>value.id===id);
@@ -100,7 +127,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       await api(`/api/roots/${id}`, { method: 'DELETE' });if(addedRoot?.id===id)setAddedRoot(null);await reload();setNotice('目录已从媒体库移除，原视频未改变。');
     }
     catch (e) { setNoticeError(true); setNotice(errorText(e)); }
-    finally { setBusy(false); }
+    finally { directoryAction.current=false;setBusy(false); }
   }
   async function relocate(id: number) {
     if (busy) return;
@@ -135,6 +162,10 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <button className="ui-button" disabled={busy || scanning} onClick={() => void add(true)}><Icon name="folder" size={16}/>{busy ? '正在处理…' : '浏览本地文件夹'}</button>
       {addedRoot&&<StatusMessage>已添加目录：{addedRoot.path}<Button icon="refresh" disabled={busy||scanning} onClick={()=>void scan(addedRoot.id)}>现在扫描此目录</Button></StatusMessage>}
       {roots.length > 20 && <input className="root-search" type="search" aria-label="搜索已添加目录" placeholder="搜索已添加的目录…" value={rootQuery} onChange={event => { setRootQuery(event.target.value); setRootPage(1); }} />}
+      {permissionLoading&&<small role="status" className="ui-field-hint">正在读取文件权限…</small>}
+      {permissionError&&<StatusMessage kind="error" className="settings-read-error"><span className="settings-read-error-copy">文件权限读取失败：{permissionError}</span><Button icon="refresh" disabled={busy||scanning} onClick={()=>setPermissionRetry(value=>value+1)}>重试文件权限</Button></StatusMessage>}
+      {statusLoading&&<small role="status" className="ui-field-hint">正在检查目录状态…</small>}
+      {statusError&&<StatusMessage kind="error" className="settings-read-error"><span className="settings-read-error-copy">目录状态检查失败：{statusError}</span><Button icon="refresh" disabled={busy} onClick={()=>setStatusRetry(value=>value+1)}>重试目录状态</Button></StatusMessage>}
       <div className="root-list">{shownRoots.map(root => <DirectorySettingRow key={root.id} root={root} value={filePermissions[root.id]}
         offline={(availability[root.id]??root.available)===false} disabled={busy||scanning} permission={permission}
         scan={()=>void scan(root.id)} relocate={()=>void relocate(root.id)} remove={()=>remove(root.id)}/>)}</div>
@@ -153,7 +184,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <MouseSeekSettings busy={busy} changeBusy={setBusy} onDirtyChange={setMouseDirty}/>
       <ScreenshotSettings busy={busy} changeBusy={setBusy} enabled={tab==='playback'} onDirtyChange={setScreenshotDirty}/>
       <details className="settings-advanced"><summary>高级播放设置</summary><NativePrepareSettings busy={busy} changeBusy={setBusy}/></details>
-      </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><FileStatePanel busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><SourceChanges busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><FileOperationHistory busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/></div>
+      </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><FileStatePanel busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><SourceChanges busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><FileOperationHistory busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/><MissingArtworkTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'} reload={reload}/></div>
       {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'success'}>{notice}</StatusMessage>}
       <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics changeBusy={setBusy}/></div>
       <div className="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" hidden={tab!=='help'}>{tab==='help'&&<HelpPanel changeBusy={setBusy} busy={busy}/>}</div>

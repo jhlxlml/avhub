@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import {StartupTrace} from '../dist/startupTrace.js';
+import {StartupTrace,rendererStartupStages} from '../dist/startupTrace.js';
 let now=10;const lines=[];
 const trace=new StartupTrace(line=>lines.push(line),()=>now);
 trace.mark('begin');now=60;trace.mark('backend-start');now=120;trace.mark('backend-ready');
 now=150;trace.mark('library-ready');now=170;trace.mark('library-ready');
 assert.equal(lines.length,4);assert.match(lines[1],/elapsed_ms=50$/);assert.match(lines[3],/elapsed_ms=140$/);
+assert.deepEqual(trace.snapshot(),{last_stage:'library-ready',ready:true,elapsed_ms:160});
+const phases=[];const diagnostic=new StartupTrace(line=>phases.push(line),()=>now);
+for(const stage of rendererStartupStages)diagnostic.mark(stage);
+assert.equal(diagnostic.snapshot().ready,false);assert.equal(diagnostic.snapshot().last_stage,'library-read-error');
+assert.equal(phases.length,rendererStartupStages.length);
 console.log('Startup trace passed: monotonic offsets and no duplicate ready events.');

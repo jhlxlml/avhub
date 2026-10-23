@@ -5,7 +5,8 @@
 .desktop-shell main>header,.desktop-shell .player-top {top:0}
 .desktop-shell #app-scroll-area>main,.desktop-shell #app-scroll-area .player-shell {min-height:100%}
 /* Fill short libraries without stretching cards; long libraries scroll naturally. */
-.desktop-shell #app-scroll-area>main:not([hidden]) {display:grid;grid-template-rows:auto 1fr}
+.desktop-shell #app-scroll-area>main:not([hidden]) {display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr}
+.desktop-shell #app-scroll-area>main>header,.desktop-shell #app-scroll-area>main>.app-layout {min-width:0}
 .desktop-shell .app-layout:not(.with-directory-tree) {display:flex}
 .desktop-shell .app-layout>.library {align-self:stretch;flex:1;display:flex;flex-direction:column}
 .desktop-shell .library>.series-library {flex:1;display:flex;flex-direction:column}

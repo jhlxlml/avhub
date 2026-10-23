@@ -12,6 +12,13 @@ from app import main as m
 
 
 class PortableStateTests(unittest.TestCase):
+    def test_privacy_mode_is_a_portable_strict_boolean(self):
+        for invalid in ('true',1,None,{},[]):
+            with self.assertRaises(HTTPException):m.set_preferences(m.PreferencesInput(values={'privacyMode':invalid}))
+        for enabled in (True,False):
+            m.set_preferences(m.PreferencesInput(values={'privacyMode':enabled}))
+            self.assertEqual(m.get_preferences()['values']['privacyMode'],enabled)
+
     def setUp(self):
         with m.connection() as db:
             db.execute('DELETE FROM preferences');db.execute('DELETE FROM playlist_items');db.execute('DELETE FROM playlists');db.execute('DELETE FROM media')

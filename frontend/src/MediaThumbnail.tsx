@@ -15,7 +15,7 @@ export function MediaThumbnail({url,retryKey=0}:{url?:string|null;retryKey?:numb
   return <>
     {(!near||status!=='ready') && <span className="cover-placeholder" role="img" aria-label={status==='failed'?'预览图加载失败':status==='loading'?'正在加载预览图':'暂无预览图'}
       title={status==='failed'||status==='missing'?'预览图不可用，可在编辑媒体信息中单独重试或更换封面':'正在加载预览图'}><Icon name="film" size={29}/></span>}
-    {url && status!=='failed' && <img ref={imageRef} className={`thumbnail${near&&status==='ready'?' thumbnail-ready':''}`} src={near?url:undefined} alt="" loading="lazy" decoding="async"
+    {url && status!=='failed' && <img data-private-media ref={imageRef} className={`thumbnail${near&&status==='ready'?' thumbnail-ready':''}`} src={near?url:undefined} alt="" loading="lazy" decoding="async"
       onLoad={event=>setResult({url,retryKey,status:event.currentTarget.naturalWidth>0?'ready':'failed'})} onError={()=>setResult({url,retryKey,status:'failed'})}/>}
   </>;
 }

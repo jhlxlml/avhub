@@ -1,7 +1,9 @@
 .app-tools>small,.app-about-content>small{display:block;color:var(--ui-muted);font-size:11px;line-height:1.8;margin-top:10px}
 .app-about-brand {display:flex;align-items:center;gap:12px;margin:0 0 14px;font-size:23px;font-weight:650;color:var(--ui-text)}
 .app-about-brand small {display:block;margin-top:3px;font-size:11px;font-weight:400;color:var(--ui-muted)}
-.app-about-mark {display:grid;place-items:center;width:42px;height:42px;flex:none;background:var(--ui-accent);color:var(--ui-surface);border-radius:12px}
+.app-about-mark {display:grid;place-items:center;width:42px;height:42px;flex:none;border-radius:12px}
+.app-about-mark>img,.brand .logo>img{display:block;width:100%;height:100%}.brand .logo:has(img){background:transparent}
+.window-about>img,.native-title>img{display:block;flex:none}
 .app-about-intro {font-size:12px;line-height:1.8;color:var(--ui-secondary);margin:0 0 12px}
 .app-about-principles {display:flex;flex-wrap:wrap;gap:8px 14px;font-size:11px;color:var(--ui-secondary)}
 .app-about-principles>span {display:inline-flex;align-items:center;gap:5px}.app-about-principles .ui-icon {color:var(--ui-accent)}

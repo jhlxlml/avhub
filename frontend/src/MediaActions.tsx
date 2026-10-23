@@ -16,6 +16,7 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
   const [prepareOpen,setPrepareOpen]=useState(false);
   const [editOpen,setEditOpen]=useState(false);
   const [fileAction,setFileAction]=useState<'rename'|'recycle'|null>(null),[fileInfo,setFileInfo]=useState<FileActionInfo|null>(null);
+  const [fileError,setFileError]=useState(''),[fileLoading,setFileLoading]=useState(false),[fileRetry,setFileRetry]=useState(0);
   const prepareEnabled=useNativePreparation();
   const [busy,setBusy]=useState(false);
   const lock=useRef(false);
@@ -25,10 +26,12 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
   const closeMenu=useCallback(()=>setOpen(false),[]);
   useAnchoredMenu(open,trigger,menu,closeMenu);
   useEffect(()=>{
-    if(!open)return;const controller=new AbortController();setFileInfo(null);
-    void api<FileActionInfo>(`/api/media/${media.id}/file-actions`,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted)setFileInfo(value);}).catch(()=>{});
+    if(!open)return;const controller=new AbortController();setFileInfo(null);setFileError('');setFileLoading(true);
+    void api<FileActionInfo>(`/api/media/${media.id}/file-actions`,{signal:controller.signal}).then(value=>{if(!controller.signal.aborted)setFileInfo(value);})
+      .catch(e=>{if(!controller.signal.aborted)setFileError(errorText(e));})
+      .finally(()=>{if(!controller.signal.aborted)setFileLoading(false);});
     return()=>controller.abort();
-  },[open,media.id]);
+  },[open,media.id,fileRetry]);
   useEffect(()=>{
     if(!open)return;
     const outside=(e:PointerEvent)=>{if(!root.current?.contains(e.target as Node)&&!menu.current?.contains(e.target as Node))setOpen(false);};
@@ -74,6 +77,8 @@ export function MediaActions({media,update,changed,notify,pauseForPreparation,pl
       {prepareEnabled&&media.ext.toLowerCase()==='.mkv'&&<button role="menuitem" disabled={busy||Boolean(media.missing)} onClick={()=>{pauseForPreparation?.();setOpen(false);setPrepareOpen(true);}}><Icon name="quality" size={16}/>无损播放准备</button>}
       <small>只修改应用记录，不改动原文件</small>
       <div className="media-menu-file-heading">文件整理 · 需目录授权</div>
+      {fileLoading&&<small role="status">正在读取文件操作权限…</small>}
+      {fileError&&<><small role="alert">文件操作信息读取失败：{fileError}</small><button role="menuitem" disabled={busy} onClick={()=>setFileRetry(value=>value+1)}><Icon name="refresh" size={16}/>重试文件操作信息</button></>}
       <button role="menuitem" disabled={busy||!fileInfo?.rename||!window.avhubDesktop?.fileOperation} title={fileInfo?.rename_reason??fileInfo?.reason} onClick={()=>{trigger.current?.focus({preventScroll:true});setOpen(false);setFileAction('rename');}}><Icon name="edit" size={16}/>重命名文件</button>
       <button role="menuitem" className="danger-action" disabled={busy||!fileInfo?.recycle||!window.avhubDesktop?.fileOperation} title={fileInfo?.recycle_reason??fileInfo?.reason} onClick={()=>{trigger.current?.focus({preventScroll:true});setOpen(false);setFileAction('recycle');}}><Icon name="trash" size={16}/>移入系统回收站</button>
       {fileInfo?.reason&&<small>{fileInfo.reason}</small>}

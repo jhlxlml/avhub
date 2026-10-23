@@ -1,0 +1,19 @@
+{
+  "source": "frontend/public/avhub.svg",
+  "source_sha256": "46456e169e45b9b80a846cb767f1b66d739b9ba57bec6db9a00f66c82b4c9ef5",
+  "files": {
+    "avhub-source.png": "62ab243ac469058b4beb2f17a9ac1f5bccb04385c32f48089edeb06695085593",
+    "avhub.png": "9c4481982a60436a7e3596667f7339eb7b11752a9e95f18f24e354841b7f120c",
+    "avhub.ico": "d3a24fe308439c7e64955004cf3dae37f00d627f5a469f9a6e989cc67a08cacb"
+  },
+  "ico_sizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "style": "About mark: indigo rounded square and white rounded play glyph"
+}

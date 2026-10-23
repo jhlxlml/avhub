@@ -178,7 +178,7 @@ export function NativePlayerOverlay(){
       onPointerMove={event=>{if(draggingWindow.current)void command('window-drag',{phase:'move',x:event.screenX,y:event.screenY});}}
       onPointerUp={event=>{if(!draggingWindow.current)return;draggingWindow.current=false;if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);void command('window-drag',{phase:'end',x:event.screenX,y:event.screenY});}}
       onPointerCancel={event=>{draggingWindow.current=false;void command('window-drag',{phase:'end',x:event.screenX,y:event.screenY});}}>
-      <span className="native-title"><Icon name="play" size={14}/>AVHub · {state.pure?'纯净播放':state.title}</span>
+      <span className="native-title"><img src="/avhub.svg" alt="" width="16" height="16"/>AVHub · {state.pure?'纯净播放':state.title}</span>
       <div>{button('pin',state.pinned?'取消置顶':'窗口置顶',()=>void command('window','pin'),state.pinned)}{button('minimize','最小化',()=>void command('window','minimize'))}{button(state.maximized?'windowRestore':'windowMaximize',state.maximized?'还原窗口':'最大化',()=>void command('window','maximize'))}{button('close',state.embedded?'关闭窗口':'关闭原生播放',()=>void (state.embedded?command('window','close'):close()))}</div>
     </div>}
     {(state.phase==='starting'||state.pendingSeek!==null||props['paused-for-cache']===true||props.seeking===true)&&<div className="native-status" role="status">{state.phase==='starting'?'正在准备原生播放…':props.seeking||state.pendingSeek!==null?'正在定位画面…':'正在等待视频数据…'}</div>}

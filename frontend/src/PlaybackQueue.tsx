@@ -65,7 +65,7 @@ export function PlaybackQueue({ media, queue, busy, play, siblings, setSiblings,
           <button aria-label={`队列播放 ${item.title}`} aria-current={item.id === media.id ? 'true' : undefined}
             disabled={busy || Boolean(item.missing) || item.id === media.id} title={item.name} onClick={() => play(item)}>
             <span className="queue-number">{item.id === media.id ? <Icon name="play" size={13}/> : (item.playlist_index??((currentPage-1)*size+rowIndex))+1}</span>
-            {item.thumbnail_url && <img src={item.thumbnail_url} alt="" loading="lazy" decoding="async" />}
+            {item.thumbnail_url && <img data-private-media src={item.thumbnail_url} alt="" loading="lazy" decoding="async" />}
             <span className="queue-item-text"><b>{item.title}</b><small>{item.missing ? '文件离线' : `${item.name} · ${duration(item.duration)}`}</small></span>
           </button></li>)}</ol> : <ContentState kind="empty" title="没有匹配的视频" description={search?'试试其他关键词，或定位当前视频。':'当前范围暂无可显示的视频。'}/>}
       {(pages > 1 || Boolean(search)) && <div className="queue-pager"><span>{currentPage} / {pages} 页</span>

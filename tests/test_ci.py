@@ -15,6 +15,15 @@ def module(name,file):
 prepare=module('ci_prepare','scripts/ci-prepare.py');artifacts=module('ci_artifacts','scripts/ci-artifacts.py')
 publisher=module('ci_publisher','scripts/publish-release.py')
 class CITests(unittest.TestCase):
+    def test_renderer_inventory_has_a_dynamic_catch_all(self):
+        workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)
+        commands='\n'.join(step.get('run','') for step in workflow['jobs']['verify']['steps'])
+        self.assertIn('python scripts/test-renderer-remaining.py',commands)
+        inventory=module('remaining_renderer','scripts/test-renderer-remaining.py')
+        listed=set(__import__('re').findall(r'tests/ui/[\w/-]+\.spec\.ts',commands))
+        discovered={path.relative_to(ROOT).as_posix() for path in (ROOT/'tests/ui').rglob('*.spec.ts')}
+        self.assertEqual(discovered,listed|set(inventory.remaining(workflow)))
+
     def test_local_replay_uses_workflow_commands_without_packaging_or_releasing(self):
         replay=module('verify_windows','scripts/verify-windows.py')
         workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)
@@ -62,6 +71,15 @@ class CITests(unittest.TestCase):
         self.assertIn('npm audit --audit-level=moderate',commands)
         self.assertIn('electron/test/file-preview.test.mjs',commands)
         self.assertIn('electron/test/file-preview.mjs',commands)
+        self.assertIn('electron/test/external-removal.mjs',commands)
+        self.assertIn('tests/ui/lazy-settings.spec.ts',commands)
+        self.assertIn('tests/ui/missing-artwork.spec.ts',commands)
+        self.assertIn('tests/ui/brand-filters.spec.ts',commands)
+        self.assertIn('electron/test/icon.mjs',commands)
+        self.assertIn('electron/test/startup-restarts.mjs',commands)
+        self.assertIn('electron/test/directory-controls.mjs',commands)
+        self.assertIn('electron/test/privacy-memory.mjs',commands)
+        self.assertIn('electron/test/storage-concurrency.mjs',commands)
 
     def test_sqlite_is_prepared_before_tests_and_no_system_dll_is_replaced(self):
         workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)

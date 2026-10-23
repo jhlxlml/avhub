@@ -2,6 +2,24 @@
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
 
+for(const theme of ['dark','light'])for(const width of [390,720,1024,1440])test(`${theme} ${width}: header icon slots and gaps are equal, including scan recovery`,async({page,request})=>{
+  await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
+  await page.route('**/api/scan',route=>route.request().method()==='GET'?route.fulfill({json:{id:'header-test',root_id:null,state:'interrupted',total:0,processed:0,updated:0,current:'',error_count:0,errors:[],started_at:0,finished_at:null}}):route.continue());
+  await page.setViewportSize({width,height:900});await page.goto('/');await expect(page.getByRole('button',{name:'继续上次扫描',exact:true})).toBeVisible();
+  const controls=page.locator('.header-search>.search-toggle,.header-actions>.scan-recovery,.header-actions>.ui-icon-button');
+  await expect(controls).toHaveCount(7);
+  const boxes=await controls.evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};}));
+  for(let i=0;i<boxes.length;i++){
+    expect(boxes[i].width).toBe(32);expect(boxes[i].height).toBe(32);expect(boxes[i].y).toBe(boxes[0].y);
+    if(i)expect(Math.abs(boxes[i].x-boxes[i-1].x-boxes[i-1].width-6)).toBeLessThan(.1);
+  }
+  await expect(page.locator('.header-search')).toHaveCSS('width','32px');
+  await page.locator('.header-actions').screenshot({path:`build/ui-refinement/header-icons-${theme}-${width}.png`});
+  await page.getByRole('button',{name:'搜索视频',exact:true}).click();await expect(page.getByRole('textbox',{name:'搜索视频',exact:true})).toBeVisible();
+  expect(await page.locator('.header-actions').evaluate(el=>el.scrollWidth<=el.clientWidth+1)).toBe(true);
+  await page.getByRole('button',{name:'收起搜索',exact:true}).click();await expect(page.locator('.header-search')).toHaveCSS('width','32px');
+});
+
 test('cover sizing enters the slider and exits naturally by Tab or Escape',async({page})=>{
   await page.goto('/');await expect(page.locator('.card')).toHaveCount(48);
   const trigger=page.getByRole('button',{name:'调整封面大小',exact:true});

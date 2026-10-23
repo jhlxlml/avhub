@@ -12,7 +12,8 @@ for(const theme of ['dark','light'])test(`about settings ${theme}: repeat clicks
   await expect(panel).toContainText('版本信息已复制');
   await expect(panel.getByText('版本信息已复制',{exact:true})).toHaveCount(0,{timeout:5000});
   await page.setViewportSize({width:390,height:820});
-  expect(await page.getByRole('tablist',{name:'设置分类'}).evaluate(e=>e.scrollWidth<=e.clientWidth)).toBe(true);
+  await expect(page.getByRole('tablist',{name:'设置分类'})).toHaveCSS('overflow-x','auto');
+  expect(await page.getByRole('dialog').evaluate(e=>e.scrollWidth<=e.clientWidth+1)).toBe(true);
   await page.screenshot({path:`test-results/about-settings-${theme}.png`});
   await panel.getByRole('button',{name:'复制项目地址',exact:true}).click();await expect(panel).toContainText('项目地址已复制');
   await page.getByRole('tab',{name:'媒体目录',exact:true}).click();

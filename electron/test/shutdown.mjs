@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { _electron, expect } from '@playwright/test';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, truncateSync,copyFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, truncateSync,copyFileSync,writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { get } from 'node:http';
 import path from 'node:path';
@@ -22,7 +22,22 @@ const results = [];
 async function launch() {
   desktop = await _electron.launch({ args: [root, '--in-process-gpu', '--disable-gpu', '--no-sandbox', '--autoplay-policy=no-user-gesture-required'], cwd: temporary,
     env: { ...process.env, AVHUB_DATA_DIR: temporary, AVHUB_HEADLESS_TEST: '1', AVHUB_SMOKE_TEST: '0' }, timeout: 60000 });
-  const page = await desktop.firstWindow(); await page.getByRole('button', { name: '媒体库设置' }).waitFor();
+  const page = await desktop.firstWindow();
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const reads=[];
+  page.on('response',response=>{
+    if(!new URL(response.url()).pathname.startsWith('/api/'))return;
+    reads.push({path:new URL(response.url()).pathname,status:response.status()});
+    if(reads.length>50)reads.shift();
+  });
+  try{await page.getByRole('button', { name: '媒体库设置' }).waitFor();}
+  catch(error){
+    const evidence={url:page.url(),body:await page.locator('body').innerText().catch(()=>''),errors,reads,
+      resources:await page.evaluate(()=>performance.getEntriesByType('resource').map(row=>({name:row.name,duration:row.duration}))).catch(()=>[])};
+    writeFileSync(path.join(temporary,'startup-failure.json'),JSON.stringify(evidence,null,2));
+    await page.screenshot({path:path.join(temporary,'startup-failure.png')}).catch(()=>{});
+    console.error('Shutdown restart failure state:',JSON.stringify(evidence));throw error;
+  }
   return page;
 }
 async function revealControls(page){

@@ -1,6 +1,18 @@
 // Isolated renderer harness; desktop acceptance runs in real Electron.
 import {test,expect,type Page} from '@playwright/test';
 test.beforeEach(async({request})=>{await request.post('/test/reset');});
+test('file information failure stays local, retry keeps menu bounded and never writes',async({page})=>{
+  let reads=0,writes=0;
+  page.on('request',request=>{if(request.method()!=='GET'&&request.url().includes('/api/file-operations'))writes++;});
+  await page.route('**/api/media/*/file-actions',route=>++reads===1?route.fulfill({status:503,json:{detail:'文件操作信息测试失败'}}):route.continue());
+  await page.goto('/');await page.locator('.media-more').first().click();
+  await expect(page.getByRole('menu').getByRole('alert')).toContainText('文件操作信息测试失败');
+  await expect(page.getByRole('menuitem',{name:'重命名文件',exact:true})).toBeDisabled();
+  await page.getByRole('menuitem',{name:'重试文件操作信息',exact:true}).click();
+  await expect(page.getByRole('menu').getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('menu').getByText('正在读取文件操作权限…',{exact:true})).toHaveCount(0);
+  await fits(page);expect(reads).toBe(2);expect(writes).toBe(0);
+});
 async function fits(page:Page){
   const box=await page.getByRole('menu').boundingBox();expect(box).not.toBeNull();
   const viewport=page.viewportSize()!;expect(box!.x).toBeGreaterThanOrEqual(7);expect(box!.y).toBeGreaterThanOrEqual(7);

@@ -3,12 +3,12 @@ import math
 import re
 from fastapi import HTTPException
 
-GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode'}
+GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','privacyMode','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode'}
 
 
 def validate(key, value):
     valid = False
-    if key in {'hoverPreview','queueOpen','autoNext','nativePrepare'}:
+    if key in {'hoverPreview','queueOpen','autoNext','nativePrepare','privacyMode'}:
         valid = isinstance(value,bool)
     elif key == 'queueMode':
         valid = value in ('sequential','random','repeat-one')

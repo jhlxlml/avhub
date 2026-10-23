@@ -36,7 +36,19 @@ try{
   assert.equal(await page.locator('#app-scroll-area').evaluate(element=>element.scrollWidth<=element.clientWidth+1),true);
   await shot('compact-toolbar-dark');
   await summary.getByRole('button',{name:'清除全部筛选',exact:true}).click();await expect(summary).toHaveCount(0);await expect(page.locator('.card')).toHaveCount(6);
-  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await expect(page.getByRole('checkbox',{name:'封面悬停预览',exact:true})).toBeVisible();await shot('directory-background-settings');
+  let permissionReads=0,statusReads=0;
+  const permissionFailure=route=>++permissionReads===1?route.fulfill({status:503,json:{detail:'验收：文件权限暂时不可读'}}):route.continue();
+  const statusFailure=route=>++statusReads===1?route.fulfill({status:503,json:{detail:'验收：目录状态暂时不可读'}}):route.continue();
+  await page.route('**/api/file-permissions?**',permissionFailure);await page.route('**/api/roots/status?**',statusFailure);
+  await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'文件权限暂时不可读'})).toBeVisible();
+  await expect(page.getByRole('alert').filter({hasText:'目录状态暂时不可读'})).toBeVisible();await shot('directory-read-errors');
+  assert.equal(await page.getByRole('dialog').evaluate(el=>el.scrollWidth<=el.clientWidth+1),true);
+  await page.getByRole('button',{name:'重试文件权限',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'文件权限暂时不可读'})).toHaveCount(0);
+  await page.getByRole('button',{name:'重试目录状态',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'目录状态暂时不可读'})).toHaveCount(0);
+  assert.equal(permissionReads,2);assert.equal(statusReads,2);
+  await page.unroute('**/api/file-permissions?**',permissionFailure);await page.unroute('**/api/roots/status?**',statusFailure);
+  await expect(page.getByRole('checkbox',{name:'封面悬停预览',exact:true})).toBeVisible();await shot('directory-background-settings');
   await page.getByRole('tab',{name:'播放偏好',exact:true}).click();await expect(page.getByRole('checkbox',{name:'封面悬停预览',exact:true})).not.toBeVisible();await expect(page.getByRole('checkbox',{name:'MKV 无损播放准备',exact:true})).not.toBeVisible();
   await page.getByText('高级播放设置',{exact:true}).click();await expect(page.getByRole('checkbox',{name:'MKV 无损播放准备',exact:true})).not.toBeChecked();await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await page.getByRole('button',{name:'封面任务',exact:true}).click();const tasks=page.getByRole('dialog',{name:'后台封面任务'});await tasks.getByRole('button',{name:'暂停封面任务',exact:true}).click();await expect(tasks).toContainText('已暂停');await tasks.getByRole('button',{name:'恢复封面任务',exact:true}).click();await page.getByRole('button',{name:'关闭封面任务',exact:true}).click();
@@ -116,9 +128,7 @@ try{
   // read-only. Real grants are tested with owned TEMP samples in file-management.
   await expect(renameGrant).toBeDisabled();
   await shot('directory-permissions-light');
-  await rootSetting.getByRole('button',{name:/^更多目录操作 /}).click();await expect(rootSetting.getByRole('menu')).toBeVisible();
-  await page.keyboard.press('Escape');await expect(rootSetting.getByRole('menu')).toHaveCount(0);await expect(page.getByRole('dialog',{name:'媒体库设置',exact:true})).toBeVisible();
-  await rootSetting.getByRole('button',{name:/^更多目录操作 /}).click();await rootSetting.getByRole('menuitem',{name:/移出媒体库/}).click();
+  await rootSetting.getByRole('button',{name:/^移出媒体库 /}).click();
   const removeDialog=page.getByRole('dialog',{name:'从媒体库移除目录？',exact:true});await expect(removeDialog).toContainText('原视频不会被删除');
   await removeDialog.getByRole('button',{name:'取消',exact:true}).click();await expect(page.locator('.directory-setting-row')).toHaveCount(1);
   const previewSwitch=page.getByRole('checkbox',{name:'封面悬停预览',exact:true});await expect(previewSwitch).toHaveCSS('width','30px');
@@ -204,6 +214,10 @@ try{
   assert.equal(await page.locator('video').evaluate(v=>v.currentSrc),originalPlaybackSource);assert.equal(await page.locator('video').getAttribute('data-queue-reloads'),'0');
   await page.unroute('**/api/media/*/siblings?**',queueRead);
   await page.getByRole('button',{name:'返回媒体库',exact:true}).click();
+  // Returning awaits durable saves and an asynchronous history.go/popstate.
+  // Do not reload the old playback URL before that transition commits.
+  await expect(page.locator('main')).toBeVisible();
+  await expect(page).not.toHaveURL(/[?&]video=/);
   // Presentation-only long paths: no file operation is executed against this fixture.
   const layoutTitle='长标题 · '+'文件名与目录层级验收_'.repeat(16),layoutPath='D:\\'+('长目录层级_'.repeat(6)+'\\').repeat(7)+'原视频.mp4';
   const layoutMedia=async route=>{const response=await route.fetch(),value=await response.json();await route.fulfill({response,json:{...value,items:value.items.map((item,index)=>index===0?{...item,title:layoutTitle,path:layoutPath}:item)}});};
@@ -247,4 +261,7 @@ try{
   assert.deepEqual(await api('/api/file-operations'),operationsBefore);
   assert.deepEqual(fingerprint(),originals);assert.deepEqual(errors,[]);
   console.log('Real Electron second-round refinement passed: wide/compact filters, settings grouping, task pause/resume, atomic batch join, duplicate skip, removal/undo, concurrent-order protection, dark/light layouts and unchanged synthetic sources. Artifacts:',folder);
+}catch(error){
+  if(desktop){const page=desktop.windows()[0];if(page){await page.screenshot({path:path.join(folder,'failure.png')}).catch(()=>{});console.error('Desktop failure state:',JSON.stringify({url:page.url(),body:await page.locator('body').innerText().catch(()=>''),errors}));}}
+  throw error;
 }finally{if(desktop){const stopped=desktop.waitForEvent('close',{timeout:20000});await desktop.evaluate(({app})=>setTimeout(()=>app.quit(),0));await stopped;}}

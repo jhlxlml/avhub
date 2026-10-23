@@ -119,7 +119,7 @@ class DatabaseTiming:
                 self.last_capture=time.monotonic();capture=True
         if capture:
             # Never save a diagnostic file under the SQLite transaction lock.
-            threading.Thread(target=self.on_slow,args=(sample,),name='avhub-slow-query-evidence',daemon=True).start()
+            threading.Thread(target=self.on_slow,args=(dict(evidence),),name='avhub-slow-query-evidence',daemon=True).start()
 
     def report(self):
         with self.lock:

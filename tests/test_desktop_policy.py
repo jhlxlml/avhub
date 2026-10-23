@@ -3,6 +3,14 @@ from unittest.mock import patch
 import test_stability
 from app import main as m
 class DesktopPolicyTests(unittest.TestCase):
+    def test_canonical_brand_is_svg_not_the_frontend_html_fallback(self):
+        response=m.application_brand()
+        self.assertEqual(response.media_type,'image/svg+xml')
+        self.assertEqual(response.headers['cache-control'],'no-cache')
+        self.assertEqual(response.path,m.STATIC/'avhub.svg')
+        self.assertEqual(response.path.read_bytes(),(m.ROOT/'frontend/public/avhub.svg').read_bytes())
+        self.assertIn('/avhub.svg',{route.path for route in m.app.routes})
+
     def test_browser_os_routes_are_retired_and_internal_path_resolution_remains(self):
         routes={route.path for route in m.app.routes}
         for path in ('/api/roots/pick','/api/roots/{root_id}/relocate/pick','/api/screenshots/pick','/api/app-data/reveal','/api/media/{media_id}/native/{action}'):

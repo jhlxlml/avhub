@@ -72,8 +72,8 @@ def assign(db,media_id,title=None,series_id=None):
     db.execute('UPDATE media SET series_id=? WHERE id=?',(chosen,media_id))
 
 
-def listing(db,q='',root_id=None,page=1,size=24):
-    backfill(db)
+def listing(db,q='',root_id=None,page=1,size=24,*,infer=True):
+    if infer:backfill(db)
     condition=" WHERE m.kind='episode'"
     args=[]
     if root_id is not None:condition+=' AND m.root_id=?';args.append(root_id)

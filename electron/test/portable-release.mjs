@@ -102,6 +102,12 @@ try {
   assert.equal(frame.width,640);assert.equal(frame.height,360);assert.ok(frame.decodedFrames>0);assert.equal(sourceDigest(),originalDigest);
   firstFrameSample={navigationToDecodedFrameMs:Math.round(performance.now()-frameStarted),...frame,limitations:['Generated 10-second H.264 MP4; includes automation/navigation overhead; not real-media codec or random-seek acceptance.']};
   await page.getByRole('button',{name:'返回媒体库',exact:true}).click();
+  // Verify the newly shipped privacy preference through the actual packaged UI,
+  // then check that the same SQLite value survives relocation and restart.
+  await page.getByRole('button',{name:'开启隐私模式',exact:true}).click();
+  await expect(page.locator('html')).toHaveAttribute('data-privacy','on');
+  await expect.poll(()=>page.evaluate(async()=>(await(await fetch('/api/preferences')).json()).values.privacyMode)).toBe(true);
+  await expect(page.locator('.card [data-private-media]').first()).toHaveCSS('filter','blur(22px)');
   await page.evaluate(async()=>{await fetch('/api/preferences',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:{librarySort:'modified_asc',resumeBehavior:'resume'}})});});
   // Prepare an explicit next-launch migration using the same validated config
   // format; actual native selection is covered by the desktop IPC test.
@@ -110,6 +116,7 @@ try {
   writeDataLocation(path.join(home,configName),migrationConfig(path.join(home,'AVHub-data'),custom));
   await launch();const info=await page.evaluate(async()=> (await(await fetch('/api/app-info')).json()));assert.equal(info.data_directory,custom);
   const prefs=await page.evaluate(async()=> (await(await fetch('/api/preferences')).json()).values);assert.equal(prefs.librarySort,'modified_asc');assert.equal(prefs.resumeBehavior,'resume');
+  assert.equal(prefs.privacyMode,true);await expect(page.getByRole('button',{name:'关闭隐私模式',exact:true})).toBeVisible();
   assert.ok(existsSync(path.join(home,'AVHub-data/library.db')));assert.ok(existsSync(path.join(custom,'library.db')));
   await close();
   await launch();await close(); // Repeat launch without another migration.

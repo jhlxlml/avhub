@@ -5,7 +5,7 @@ import {initialLibraryWindow} from './windowBounds';
 import {BoundsCalibration} from './boundsCalibration';
 import { loadDesktopIcon } from './appIcon';
 import { permissionAllowed } from './permissionPolicy';
-import {StartupTrace} from './startupTrace';
+import {StartupTrace,rendererStartupStages} from './startupTrace';
 import {LocalExports} from './localExports';
 import {captureChromiumDiagnostics} from './chromiumDiagnostics';
 import { stopOwnedBackend } from './backendShutdown';
@@ -148,6 +148,11 @@ function publishWindowState(window: BrowserWindow) {
 }
 ipcMain.handle('avhub:window-state', event => windowState(trustedWindow(event)));
 ipcMain.handle('avhub:startup-ready',event=>{trustedWindow(event);startupTrace.mark('library-ready');return {ok:true};});
+ipcMain.handle('avhub:startup-progress',(event,stage:unknown)=>{
+  const window=trustedWindow(event);
+  if(window!==mainWindow||!rendererStartupStages.some(value=>value===stage))throw new Error('无效的启动阶段');
+  startupTrace.mark(stage as typeof rendererStartupStages[number]);return {ok:true};
+});
 ipcMain.handle('avhub:window-mode', async(event, value: unknown) => {const window=trustedWindow(event);applyWindowMode(window,value);await waitForWindowPlacement(window);return windowState(window);});
 function applyWindowMode(window:BrowserWindow,value:unknown) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -588,6 +593,17 @@ function createWindow(): BrowserWindow {
   window.webContents.once('did-finish-load',()=>{
     appendDesktopLog('renderer-loaded');startupTrace.mark('renderer-loaded');
   });
+  // Observe slow startup without reloading, hiding it, or widening a deadline.
+  const slowStartup=setTimeout(()=>{
+    if(!window.isDestroyed()&&!startupTrace.snapshot().ready)
+      appendDesktopLog(`startup-slow ${JSON.stringify({...startupTrace.snapshot(),document_loading:window.webContents.isLoadingMainFrame()})}`);
+  },15000);
+  window.once('closed',()=>clearTimeout(slowStartup));
+  window.webContents.on('render-process-gone',(_event,details)=>appendDesktopLog(`renderer-gone reason=${details.reason} exit_code=${details.exitCode}`));
+  window.on('unresponsive',()=>appendDesktopLog('renderer-unresponsive'));
+  window.webContents.on('did-fail-load',(_event,code,_description,_url,isMainFrame)=>{
+    if(isMainFrame)appendDesktopLog(`renderer-document-failed code=${code}`);
+  });
   if (!isPackaged && process.env.AVHUB_SMOKE_TEST === '1') {
     window.webContents.once('did-finish-load', () => {
       setTimeout(() => app.quit(), 300);
@@ -604,7 +620,7 @@ function createWindow(): BrowserWindow {
       if (new URL(destination).origin !== allowedOrigin) event.preventDefault();
     } catch { event.preventDefault(); }
   });
-  void window.loadURL(url);
+  void window.loadURL(url).catch(()=>appendDesktopLog('renderer-document-load-rejected'));
   return window;
 }
 

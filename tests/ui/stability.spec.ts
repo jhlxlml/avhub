@@ -326,7 +326,8 @@ test('duplicate playlist names show a clear conflict message', async ({ page }) 
   await expect(page.getByRole('heading', { name: '片单', exact: true })).toBeVisible();
   await name.fill('片单');
   await page.getByRole('button', { name: '新建', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('已有同名播放列表');
+  await expect(page.getByRole('alert').getByText('已有同名播放列表',{exact:true})).toBeVisible();
+  await expect(page.getByRole('alert').getByRole('button',{name:'刷新列表',exact:true})).toBeEnabled();
 });
 
 test('a slow playlist response cannot replace the list selected afterward', async ({ page, request }) => {
@@ -358,7 +359,7 @@ test('playlist catches HTML even when an outdated service labels it as JSON', as
   }));
   await page.goto('/');
   await page.getByRole('button', { name: '播放列表', exact: true }).click();
-  await expect(page.getByRole('alert')).toHaveText('本地服务与网页版本不匹配，请完全退出并重新启动 AVHub');
+  await expect(page.getByRole('alert').getByText('本地服务与网页版本不匹配，请完全退出并重新启动 AVHub',{exact:true})).toBeVisible();
   await expect(page.getByRole('alert')).not.toContainText('Unexpected token');
 });
 

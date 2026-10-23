@@ -23,6 +23,7 @@ export function HelpPanel({changeBusy,busy}:{changeBusy:(busy:boolean)=>void;bus
     <div role="tabpanel" id={'help-panel-'+section} aria-labelledby={'help-tab-'+section}>
       {section==='guide'&&<div className="help-guide">
         <section className="help-card"><h4><Icon name="folder" size={16}/>开始观看</h4><ol><li>在“媒体目录”中浏览本地文件夹或输入路径，添加一个或多个目录。</li><li>点击“刷新媒体库”扫描。首次扫描需要时间，封面在后台逐步生成。</li><li>使用顶部分类、目录树、搜索和分辨率筛选查找视频，点击封面开始播放。</li></ol></section>
+        <section className="help-card"><h4><Icon name="eyeOff" size={16}/>隐私模式</h4><p>顶栏刷新按钮右侧的眼睛图标可一键模糊封面、片单与队列等预览，并暂停封面悬停视频；关闭后恢复，开关会自动保存。隐私模式不遮蔽正在主动播放的视频，不隐藏标题与路径，也不是文件加密或访问控制；截图文件仍保存原始画面。</p></section>
         <section className="help-card"><h4><Icon name="purePlayback" size={16}/>播放窗口与鼠标</h4><p>{help.windowGuide}</p><p>停在控制栏上时控件保持显示；移出后隐藏控件，但移动中的鼠标仍可见。在画面上停止移动约 400 毫秒后隐藏光标，移回控制区可唤回控件。</p><p>{help.capability}</p></section>
         <section className="help-card"><h4><Icon name="external" size={16}/>下载与升级</h4><p>在“关于”点击“检查更新”后，可查看已提供的便携格式。文件夹 ZIP 需完整解压后运行 AVHub.exe，避免每次启动重新解包；单文件 EXE 启动时先解包。</p><p>升级前关闭旧版，保留 AVHub-data 和 avhub-data-location.json；不要只复制文件夹版中的 EXE。通过 SHA256SUMS.txt 校验下载文件。检查更新不会自动下载或安装。</p></section>
         <section className="help-card"><h4><Icon name="camera" size={16}/>截图与画面</h4><p>播放页按 C 或点击相机图标，直接保存 PNG，不弹保存窗口。默认目录可在“播放偏好 → 视频截图”中设置并保存。</p><p>截图来自当前解码画面，不包含控制栏、外挂文字字幕或显示层缩放与旋转；片源烧录的字幕会保留。目前没有上一帧 / 下一帧功能。</p><p>HDR / 10-bit 截图不保证保留原始色彩与位深；显示缩放不会增加片源本身的细节。</p></section>

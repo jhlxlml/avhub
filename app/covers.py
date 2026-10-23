@@ -3,12 +3,14 @@ import json
 import re
 import time
 import uuid
+import threading
 from pathlib import Path
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
 
 MAX_BYTES=8*1024**2
 MAX_PIXELS=20000000
+reader_lock=threading.RLock()
 
 
 def cleanup(path):
@@ -23,11 +25,12 @@ def owned_path(data,relative):
 
 
 def discard(db,data,relative):
-    if not relative or db.execute('SELECT 1 FROM media WHERE custom_cover=? LIMIT 1',(relative,)).fetchone():return
-    path=owned_path(data,relative)
-    if path:
-        try:path.unlink(missing_ok=True)
-        except OSError:pass  # An active reader must not turn a successful edit into failure.
+    with reader_lock:
+        if not relative or db.execute('SELECT 1 FROM media WHERE custom_cover=? LIMIT 1',(relative,)).fetchone():return
+        path=owned_path(data,relative)
+        if path:
+            try:path.unlink(missing_ok=True)
+            except OSError:pass  # An active reader must not turn a successful edit into failure.
 
 
 def publish(uploaded,data,media_id,connection,ffmpeg,ffprobe,runner,convert):

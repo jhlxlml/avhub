@@ -25,7 +25,7 @@ jobs:
   verify:
     runs-on: windows-2025
     # Includes the added visual/state suite and packaged acceptance on tags.
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       PYTHONUTF8: '1'
     steps:
@@ -122,6 +122,9 @@ jobs:
       - name: Windows short-path screenshot regression
         # Shared renderer tests are harnesses, not browser product acceptance.
         run: python tests/check_path_alias.py --ui --require-alias
+      - name: Remaining renderer regression harnesses
+        # Automatically includes new specs omitted from the focused groups.
+        run: python scripts/test-renderer-remaining.py
       - name: Read-only route recovery and desktop runtime messages
         run: npx playwright test tests/ui/route-recovery.spec.ts tests/ui/native-runtime-message.spec.ts tests/ui/progress-save.spec.ts
       - name: Renderer interaction and theme regression harness
@@ -141,6 +144,12 @@ jobs:
         run: node electron/test/route-recovery.mjs
       - name: Startup trace unit regression
         run: node electron/test/startup-trace.mjs
+      - name: Canonical desktop icon and filter renderer harness
+        run: |
+          node electron/test/icon.mjs
+          npx playwright test tests/ui/brand-filters.spec.ts
+      - name: Real Electron repeated startup with interrupted scans
+        run: node electron/test/startup-restarts.mjs
       - name: Real Electron pure playback pin regression
         run: node electron/test/pure-pin.mjs
       - name: Real Electron mouse side-button seeking
@@ -164,6 +173,10 @@ jobs:
           node electron/test/recycle-shortcuts.mjs --read-delay-ms=6000
       - name: Native external file identity and explicit replacement acceptance
         run: node electron/test/media-identity.mjs
+      - name: Real Electron external removal refresh and restoration
+        run: node electron/test/external-removal.mjs
+      - name: Deferred settings renderer harness
+        run: npx playwright test tests/ui/lazy-settings.spec.ts tests/ui/missing-artwork.spec.ts
       - name: Native text editing menu regression
         run: |
           node electron/test/text-edit-menu-policy.mjs
@@ -175,8 +188,14 @@ jobs:
         run: node electron/test/library-workflows.mjs
       - name: Real Electron library refinement and playlist batches
         run: node electron/test/library-refinement.mjs
+      - name: Real Electron directory removal and permission controls
+        run: node electron/test/directory-controls.mjs
+      - name: Real Electron privacy and bounded resource diagnosis
+        run: node electron/test/privacy-memory.mjs
       - name: Real Electron library visual system and compact layouts
         run: node electron/test/library-polish.mjs
+      - name: Real Electron storage preflight and active original playback
+        run: node electron/test/storage-concurrency.mjs
       - name: Real Electron player visual system and retained source
         run: node electron/test/player-polish.mjs
       - name: Bounded Electron playback scan and thumbnail concurrency smoke
@@ -225,6 +244,9 @@ jobs:
         with:
           name: windows-failure-${{ github.sha }}-${{ github.run_attempt }}
           path: |
+            build/electron-external-removal-*/acceptance.json
+            build/electron-external-removal-*/failure.png
+            build/electron-external-removal-*/profile/desktop.log
             build/backend-tests/*.log
             build/backend-tests/*.json
             build/recycle-shortcuts-*/acceptance.json
@@ -232,6 +254,14 @@ jobs:
             test-results/**
             playwright-report/**
             build/electron-*/**/*.log
+            build/electron-startup-restarts-*/acceptance.json
+            build/electron-startup-restarts-*/failure.png
+            build/electron-storage-concurrency-*/acceptance.json
+            build/electron-storage-concurrency-*/failure.png
+            build/avhub-directory-controls-*/acceptance.json
+            build/avhub-directory-controls-*/*.png
+            build/avhub-privacy-memory-*/acceptance.json
+            build/avhub-privacy-memory-*/failure.png
             build/concurrent-soak-*/soak.json
             build/route-recovery-*/**
             build/startup-failure-*/acceptance.json

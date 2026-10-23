@@ -27,10 +27,42 @@ try{
  for(let i=0;i<items.length;i++)await api(`/api/media/${items[i].id}`,'PATCH',{title:`界面验收 · 示例视频 ${String(i+1).padStart(2,'0')}${i===0?' · 长标题用于核查截断与菜单布局':''}`,kind:'movie'});
  await expect.poll(async()=>(await api('/api/thumbnails')).pending,{timeout:30000}).toBe(0);
  await page.reload();await expect(page.locator('.card')).toHaveCount(12);
+ const refresh=page.getByRole('button',{name:'刷新媒体库',exact:true}),settings=page.getByRole('button',{name:'媒体库设置',exact:true});
+ assert.equal(await refresh.textContent(),'');
+ const refreshBox=await refresh.boundingBox(),settingsBox=await settings.boundingBox();assert.equal(refreshBox.width,settingsBox.width);assert.equal(refreshBox.height,settingsBox.height);
+ const headerBoxes=await page.locator('.header-search>.search-toggle,.header-actions>.ui-icon-button,.header-actions>.scan-recovery').evaluateAll(nodes=>nodes.map(n=>{const r=n.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};}));
+ for(let i=0;i<headerBoxes.length;i++){const b=headerBoxes[i];assert.equal(b.width,32);assert.equal(b.height,32);assert.equal(b.y,headerBoxes[0].y);if(i)assert.ok(Math.abs(b.x-headerBoxes[i-1].x-38)<.1);}
+ const resolutions=page.getByRole('group',{name:'分辨率筛选',exact:true}),allResolutions=resolutions.getByRole('button',{name:'全部分辨率',exact:true});
+ await expect(allResolutions.locator('svg')).toHaveCount(1);assert.equal(await allResolutions.textContent(),'');
+ await resolutions.getByRole('button',{name:'筛选 4K',exact:true}).click();await expect(page.locator('.card')).toHaveCount(0);
+ await allResolutions.click();await expect(allResolutions).toHaveAttribute('aria-pressed','true');await expect(page.locator('.card')).toHaveCount(12);
  await expect(page.locator('.thumbnail-ready').first()).toBeVisible();
  await page.getByRole('button',{name:'收起扫描结果',exact:true}).click();
  const token='polish-retained';await page.locator('.card').first().evaluate((e,t)=>e.dataset.identity=t,token);
  const screenshot=async name=>{await page.mouse.move(0,0);await page.waitForTimeout(200);const file=path.join(folder,`${name}.png`);await page.screenshot({path:file,animations:'disabled'});screenshots.push(file);};
+ // Exercise the desktop scroll container, not just documentElement. Search stays
+ // expanded while resizing across the header's wrapping breakpoint.
+ await page.getByRole('button',{name:'搜索视频',exact:true}).click();
+ for(const tree of [false,true]){
+   if(tree)await page.getByRole('button',{name:'显示目录树',exact:true}).click();
+   for(const width of [1600,1280,1152,1024,1001,1000,960,800]){
+     await desktop.evaluate(({BrowserWindow},width)=>BrowserWindow.getAllWindows()[0].setContentSize(width,900),width);
+     await expect.poll(()=>page.locator('#app-scroll-area').evaluate(e=>e.scrollWidth-e.clientWidth),{message:`Expanded search, tree=${tree}, width=${width}: page must not overflow`}).toBeLessThanOrEqual(1);
+     const outside=await page.locator('main>header .header-actions button,main>header .header-actions input,.media-grid .card').evaluateAll(nodes=>{
+       const edge=document.getElementById('app-scroll-area').getBoundingClientRect();
+       return nodes.filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&(r.left<edge.left-1||r.right>edge.left+document.getElementById('app-scroll-area').clientWidth+1);}).map(n=>n.getAttribute('aria-label')||n.className);
+     });
+     assert.deepEqual(outside,[],`Unreachable content at ${width}, tree=${tree}`);
+     if(width<=1440){
+       const categoriesFit=await page.locator('.primary-nav').evaluate(nav=>{const edge=nav.getBoundingClientRect();return [...nav.children].every(n=>{const r=n.getBoundingClientRect();return r.left>=edge.left-1&&r.right<=edge.right+1;});});
+       assert.equal(categoriesFit,true,`Categories should reflow rather than be squeezed at ${width}`);
+     }
+     await expect(page.locator('.card')).toHaveCount(12);
+     if(width===1024||width===800)await screenshot(`responsive-search-tree-${tree}-${width}`);
+   }
+ }
+ await page.getByRole('button',{name:'隐藏目录树',exact:true}).click();
+ await page.getByRole('button',{name:'收起搜索',exact:true}).click();
  for(const theme of ['dark','light']){
    if(theme==='light')await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();
    for(const width of [1440,1024,800]){

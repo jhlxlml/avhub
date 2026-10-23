@@ -179,9 +179,10 @@ Check the active data directory under Settings → **数据管理** (Data manage
 ## Appearance and cover size
 
 - Use the sun / moon icon in the top bar to switch between light and dark mode. The player header provides the same toggle. Dark remains the default. Transparent controls and popovers over video retain dark, high-contrast styling without altering video colors.
+- The eye icon between Refresh and Theme toggles privacy mode: it blurs covers and other preview images, including playlist and queue artwork, and suspends hover videos. It defaults to off and remembers your choice. Active video, titles, paths and saved screenshots are unchanged. This is not encryption or access control.
 - Click the cover-size icon beside the grid / list switch. Use the slider or preset buttons to choose **Compact, Standard, Comfortable, or Large**. Standard preserves the previous layout; column counts adapt to window width.
 - Sizing applies to ordinary video grids and grouped-series covers, not list rows, individual episode rows, or playback queues. The control is disabled in list mode and retains its selection when returning to the grid.
-- Both preferences are stored in the current library's SQLite database, survive restarts and changing Electron ports, and are included in library backups.
+- Theme, size and privacy preferences are stored in the current library's SQLite database, survive restarts and changing Electron ports, and are included in library backups.
 
 These are display-only settings. They do not change query results, filters, sorting, page size, playback quality, or regenerate artwork. Compact mode may bring more lazy-loaded images into view; larger covers make pages taller and may reveal limited thumbnail resolution. Pagination limits and single-video hover previews remain in place; resizing does not load the entire library.
 

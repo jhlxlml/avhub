@@ -12,6 +12,12 @@ test('resolution filters are separate, request real server filtering and restore
   await request.post('/test/reset');await page.goto('/?sort=name&root=1&page=2');
   const filters=page.getByRole('group',{name:'分辨率筛选',exact:true});
   await expect(filters.getByRole('button')).toHaveCount(7);
+  const all=filters.getByRole('button',{name:'全部分辨率',exact:true});
+  await expect(all.locator('svg')).toHaveCount(1);await expect(all).toHaveText('');
+  await expect(all).toHaveAttribute('aria-pressed','true');await expect(filters.locator('.resolution-filter-label')).toHaveCount(0);
+  const refresh=page.getByRole('button',{name:'刷新媒体库',exact:true});await expect(refresh).toHaveText('');
+  const refreshBox=await refresh.boundingBox(),settingsBox=await page.getByRole('button',{name:'媒体库设置',exact:true}).boundingBox();
+  expect(refreshBox!.width).toBe(settingsBox!.width);expect(refreshBox!.height).toBe(settingsBox!.height);
   await expect(filters.getByRole('button',{name:'筛选 2K',exact:true})).toBeVisible();
   const filterBox=await filters.boundingBox(),viewBox=await page.locator('.library-view-controls').boundingBox();
   expect(filterBox!.x+filterBox!.width).toBeLessThan(viewBox!.x);
@@ -27,6 +33,7 @@ test('resolution filters are separate, request real server filtering and restore
   await expect(page.locator('.card')).toHaveCount(0);
   await page.reload();await expect(filters.getByRole('button',{name:'筛选 4K',exact:true})).toHaveAttribute('aria-pressed','true');
   await filters.getByRole('button',{name:'全部分辨率',exact:true}).click();
+  await expect(all).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('.card').first()).toBeVisible();await expect(page).not.toHaveURL(/resolution=/);
   expect((await request.get('/api/media?resolution=invalid')).status()).toBe(422);
   await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();await page.setViewportSize({width:390,height:820});

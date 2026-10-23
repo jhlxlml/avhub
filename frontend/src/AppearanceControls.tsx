@@ -1,6 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { changeAppearance, coverSizes, useAppearance } from './appearance';
+import {changePrivacy,usePrivacy} from './privacy';
+
+export function PrivacyToggle(){
+  const enabled=usePrivacy(),label=enabled?'关闭隐私模式':'开启隐私模式';
+  return <button type="button" className="ui-icon-button privacy-toggle" aria-label={label} aria-pressed={enabled} title={`${label} · 模糊预览图片，不遮蔽正在播放的视频`} onClick={()=>changePrivacy(!enabled)}><Icon name={enabled?'eyeOff':'eye'}/></button>;
+}
 
 export function ThemeToggle() {
   const {theme}=useAppearance();

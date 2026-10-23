@@ -49,6 +49,14 @@ async function memory(){
 try{
  desktop=await _electron.launch({args:[root],cwd:workspace,env:{...process.env,AVHUB_DATA_DIR:profile,AVHUB_APP_HOME:workspace,AVHUB_PROFILE_PROGRESS:'1',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
  page=await desktop.firstWindow({timeout:50000});page.on('pageerror',e=>report.errors.push(e.message));
+ await page.addInitScript(()=>{
+  window.__usagePointer=[];
+  for(const type of ['pointermove','pointerover','pointerout'])document.addEventListener(type,event=>{
+   const rows=window.__usagePointer;
+   rows.push({type,x:event.clientX,y:event.clientY,target:event.target instanceof Element?event.target.className:'',at:performance.now()});
+   if(rows.length>24)rows.shift();
+  },{passive:true});
+ });
  report.windowPolicy=await desktop.evaluate(({BrowserWindow})=>{const contents=BrowserWindow.getAllWindows()[0].webContents,p=contents.getLastWebPreferences();return{backgroundThrottling:contents.getBackgroundThrottling(),sandbox:p.sandbox,contextIsolation:p.contextIsolation};});
  assert.equal(report.windowPolicy.backgroundThrottling,true);assert.equal(report.windowPolicy.sandbox,true);
  // Keep production's work-area-fitted startup bounds. An oversized test window
@@ -82,6 +90,7 @@ try{
    await expect(page.locator('.card').first()).toBeVisible({timeout:15000});
    const cards=page.locator('.card'),count=await cards.count();
    for(const index of [0,Math.floor(count/2),count-1]){
+     report.stage={cycle:report.cycles.length,phase:'cover-preview',index};
      const cover=cards.nth(index).locator('.cover');await cover.scrollIntoViewIfNeeded();
      await expect.poll(()=>cover.locator('img').evaluate(img=>img.complete&&img.naturalWidth>0),{timeout:15000}).toBe(true);
      await cover.hover();await expect.poll(()=>page.locator('video.hover-preview').evaluateAll(videos=>videos.some(v=>v.readyState>=2&&v.getVideoPlaybackQuality().totalVideoFrames>0)),{timeout:10000}).toBe(true);
@@ -176,7 +185,7 @@ try{
  const wal=path.join(profile,'library.db-wal');report.walBytesAfterExit=existsSync(wal)?statSync(wal).size:0;
 }catch(error){
  report.errors.push(String(error));
- if(page){report.failureEvidence=await page.evaluate(()=>({focused:document.hasFocus(),visible:document.visibilityState,hoveredCovers:document.querySelectorAll('.cover:hover').length,previews:[...document.querySelectorAll('video')].map(v=>({class:v.className,ready:v.readyState,paused:v.paused,error:v.error?.code,frames:v.getVideoPlaybackQuality().totalVideoFrames}))})).catch(()=>null);await page.screenshot({path:path.join(artifact,'failure.png')}).catch(()=>{});}
+ if(page){report.failureEvidence=await page.evaluate(()=>({focused:document.hasFocus(),visible:document.visibilityState,hoveredCovers:document.querySelectorAll('.cover:hover').length,pointerEvents:window.__usagePointer,previews:[...document.querySelectorAll('video')].map(v=>({class:v.className,ready:v.readyState,paused:v.paused,error:v.error?.code,frames:v.getVideoPlaybackQuality().totalVideoFrames}))})).catch(()=>null);await page.screenshot({path:path.join(artifact,'failure.png')}).catch(()=>{});}
  throw error;
 }
 finally{report.sourceUnchanged=JSON.stringify(identity())===JSON.stringify(before);if(desktop)await close().catch(error=>report.errors.push(String(error)));persist();console.log('Desktop usage report:',path.join(artifact,'soak.json'));}

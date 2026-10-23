@@ -5,6 +5,25 @@ from app.db_timing import DatabaseTiming
 
 
 class DatabaseTimingTests(unittest.TestCase):
+    def test_slow_callback_preserves_original_save_correlation_off_the_calling_thread(self):
+        called=threading.Event();received=[];thread_ids=[]
+        def capture(sample):
+            received.append(sample);thread_ids.append(threading.get_ident());called.set()
+        timing=DatabaseTiming(capture)
+        with timing.scope('progress-save'):
+            ticket=timing.begin_serialized()
+            timing.record('serialized',{'lock_wait':.001,'commit':1.2,'total':1.201},
+                {**ticket,'transaction_outcome':'committed','commit_attempted':True,
+                 'commit_started_at_monotonic_ms':1000,'commit_finished_at_monotonic_ms':2200})
+        self.assertTrue(called.wait(2));self.assertNotEqual(thread_ids[0],threading.get_ident())
+        self.assertEqual(received[0]['connection_id'],ticket['connection_id'])
+        self.assertEqual(received[0]['operation'],'progress-save')
+        self.assertEqual(received[0]['commit_finished_at_monotonic_ms'],2200)
+        received[0]['operation']='changed'
+        self.assertEqual(timing.report()['slow_operations'][0]['operation'],'progress-save')
+        # Rate limiting does not lose the original sampled event or spawn again.
+        timing.record('read',{'total':1.1});self.assertEqual(len(received),1)
+
     def test_scope_snapshot_cannot_change_operation_or_correlation(self):
         timing=DatabaseTiming()
         with timing.scope('scan-media') as scope:

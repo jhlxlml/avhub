@@ -3,6 +3,7 @@ import { _electron } from '@playwright/test';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {createHash} from 'node:crypto';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const build = path.join(root, 'build');
@@ -10,6 +11,11 @@ mkdirSync(build, { recursive: true });
 const temporary = mkdtempSync(path.join(build, 'electron-icon-'));
 let desktop;
 try {
+  const manifest=JSON.parse(readFileSync(path.join(root,'electron/assets/icon-manifest.json'),'utf8'));
+  const hash=file=>createHash('sha256').update(readFileSync(path.join(root,file))).digest('hex');
+  assert.equal(hash(manifest.source),manifest.source_sha256);
+  for(const [name,digest] of Object.entries(manifest.files))assert.equal(hash('electron/assets/'+name),digest);
+  assert.match(readFileSync(path.join(root,'frontend/src/AppTools.tsx'),'utf8'),/src="\/avhub\.svg"/);
   const config = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).build;
   assert.equal(config.win.icon, 'electron/assets/avhub.ico');
   const ico = readFileSync(path.join(root, config.win.icon));
@@ -59,7 +65,7 @@ try {
   await desktop.evaluate(({ app }) => app.quit());
   await closed;
   desktop = undefined;
-  console.log('AVHub icon: 7 ICO sizes, native PNG, development/packaged resource paths and desktop startup passed.');
+  console.log('AVHub icon: canonical About SVG/provenance, 7 ICO sizes, native PNG, development/packaged resource paths and desktop startup passed. No EXE was packaged.');
 } finally {
   if (desktop) await desktop.close();
   // Only remove this test's explicitly scoped, randomly generated directory.

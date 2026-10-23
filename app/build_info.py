@@ -9,7 +9,7 @@ PROTOCOL = 2
 try:
     BUILD = json.loads((ROOT / 'app' / 'build-info.json').read_text(encoding='utf-8'))
 except (OSError, ValueError):
-    BUILD = {'version': '0.2.15', 'build_id': 'unbuilt', 'built_at': None}
+    BUILD = {'version': '0.2.16', 'build_id': 'unbuilt', 'built_at': None}
 if not getattr(sys, 'frozen', False):
     files = ['run.py', 'package.json', 'package-lock.json', 'requirements.txt', 'vite.config.ts', 'app/sqlite-runtime.json']
     for directory in ['app', 'frontend/src', 'electron/src']:

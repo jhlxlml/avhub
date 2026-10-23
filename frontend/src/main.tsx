@@ -5,8 +5,8 @@ import {BatchRecycle} from './BatchRecycle';
 import {RecycleRecords} from './RecycleRecords';
 import {RecycleFeedback,RecentRecycle} from './RecentRecycle';
 import { api, checkServiceBuild, json, duration, errorText, views, type View, type Media, type MediaUpdate, type Root, type MediaPage, type PlaylistSource } from './api';
-import { Settings } from './Settings';
 import {AboutHost} from './AppTools';
+import {DeferredSettings} from './DeferredSettings';
 import { Diagnostics } from './Diagnostics';
 import { Button, ContentState, EmptyState, StatusMessage, Toast } from './ui';
 import { episodeLabel, formatLabel,fileSizeLabel,resolutionTiers,resolutionDisplayLabel } from './mediaLabels';
@@ -34,15 +34,23 @@ import { BulkEditor } from './BulkEditor';
 import { SeriesLibrary } from './SeriesLibrary';
 import { pageScrollTop, scrollPageTo } from './pageScroll';
 import { initializeAppearance } from './appearance';
+import {initializePrivacy,usePrivacy} from './privacy';
 import { initializeAutoplay } from './autoplay';
 import { initializeNativePreparation } from './nativePreparation';
-import { CoverSizeControl, ThemeToggle } from './AppearanceControls';
+import { CoverSizeControl, ThemeToggle, PrivacyToggle } from './AppearanceControls';
 import { AutoScrollbars } from './AutoScrollbars';
 import {LibraryPageCache,useLibraryQuery} from './useLibraryQuery';
 import {librarySorts,sortField,isAscending,validSort} from './librarySort';
 import {ResolutionBadge} from './ResolutionBadge';
 import {NativePlayerOverlay} from './NativePlayerOverlay';
 import {readRoute,transientRouteRead} from './routeRecovery';
+import {traceStartup} from './startupProgress';
+// Preserve the existing cascade when the screen code is loaded on demand.
+// Shared theme rules below must win regardless of which dialog opens first.
+import './settings.css';
+import './screenshots.css';
+import './help.css';
+import './native-player.css';
 import './styles.css';
 import './library-performance.css';
 import './design-system.css';
@@ -52,6 +60,7 @@ import './playlists.css';
 import './mira.css';
 
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
+// Keep the event/quit hosts eager; optional screens need not delay the library.
 
 const formats = ['mp4','mkv','avi','mov','m4v','webm','wmv','flv','ts','mts','m2ts'];
 const viewIcons:Record<View,IconName>={all:'library',movies:'film',series:'series',continue:'continue',favorites:'favorite',history:'history'};
@@ -104,6 +113,7 @@ function mediaQuery(filters:Filters) {
 }
 
 function App() {
+  const privacy=usePrivacy();
   const [filters, setFilters] = useState(readFilters);
   const [treeOpen,setTreeOpen]=useState(false);
   useEffect(()=>{savePreference('librarySort',filters.sort);},[filters.sort]);
@@ -143,6 +153,7 @@ function App() {
   const items=library.data?.items??NO_MEDIA,total=library.data?.total??0;
   const loading=!rootsReady||library.loading,requestError=library.error;
   const reportedStartup=useRef(false);
+  useEffect(()=>{if(!reportedStartup.current&&requestError)traceStartup('library-read-error');},[requestError]);
   useEffect(()=>{
     if(!reportedStartup.current && rootsReady && library.data && !loading && !requestError) {
       reportedStartup.current=true;
@@ -187,11 +198,12 @@ function App() {
 
   const reloadRoots = useCallback(async () => {
     const values = await api<Root[]>('/api/roots?check_available=false');
+    traceStartup('roots-ready');
     setRoots(values);
     setFilters(f => f.root && !values.some(r => String(r.id) === f.root) ? { ...f, root: '', folder: '', recursive: true, page: 1 } : f);
     setRevision(x => x + 1);
   }, []);
-  useEffect(() => { void reloadRoots().catch(e => setNotice(errorText(e))).finally(()=>setRootsReady(true)); }, [reloadRoots]);
+  useEffect(() => { void reloadRoots().catch(e => {traceStartup('roots-error');setNotice(errorText(e));}).finally(()=>setRootsReady(true)); }, [reloadRoots]);
   const onScanComplete = useCallback(() => { window.dispatchEvent(new Event('avhub-file-states-changed'));void reloadRoots().catch(e => setNotice(errorText(e))); }, [reloadRoots]);
   const onScanProgress = useCallback(() => setRevision(value => value + 1), []);
   const scan = useScan(onScanComplete, setNotice, onScanProgress);
@@ -323,7 +335,7 @@ function App() {
     </Suspense>}
     <main hidden={Boolean(router.route.mediaId)||routeLoading}>
       <header>
-        <div className="brand"><span className="logo"><Icon name="play" size={20}/></span><div><b>AVHub</b><small>本地视频库</small></div></div>
+        <div className="brand"><span className="logo"><img src="/avhub.svg" alt="" width="32" height="32"/></span><div><b>AVHub</b><small>本地视频库</small></div></div>
         <nav className="primary-nav" aria-label="视频分类">{views.map(v => <button key={v.id}
           className={filters.view === v.id ? 'active' : ''} aria-pressed={filters.view === v.id}
           onClick={() => setFilters(f => ({ ...f, view: v.id, show: '', season: '', page: 1, ...(v.id === 'series' && f.grouped ? {folder:'',recursive:true,format:'',resolution:'',watch:'all' as const,duration:'' as const} : {}) }))}><Icon name={viewIcons[v.id]} size={16}/>{v.label}</button>)}
@@ -340,8 +352,8 @@ function App() {
           </div>
           <ScanRecovery job={scan.job} resume={scan.resume} />
           <ThumbnailTasks status={thumbnails.status} changed={thumbnails.changed}/>
-          <button className="ui-button refresh-library" aria-label={scan.scanning?'正在扫描…':'刷新媒体库'} title={scan.scanning?'正在扫描…':'刷新媒体库'} onClick={() => void scan.start()} disabled={scan.scanning}><Icon name="refresh" className={scan.scanning?'is-spinning':''}/><span>{scan.scanning ? '正在扫描…' : '刷新媒体库'}</span></button>
-          <ThemeToggle/>
+          <button type="button" className="ui-icon-button refresh-library" aria-label={scan.scanning?'正在扫描…':'刷新媒体库'} aria-busy={scan.scanning||undefined} title={scan.scanning?'正在扫描…':'刷新媒体库'} onClick={() => void scan.start()} disabled={scan.scanning}><Icon name="refresh" className={scan.scanning?'is-spinning':''}/></button>
+          <PrivacyToggle/><ThemeToggle/>
           <button className="ui-icon-button" aria-label="媒体库设置" title="媒体库设置" onClick={() => setSettings(true)}><Icon name="settings"/></button></div>
       </header>
       <div className={`app-layout${treeOpen?' with-directory-tree':''}`}>
@@ -375,10 +387,10 @@ function App() {
           </div>
           <div className="library-toolbar-right">
           {!grouped&&<div className="resolution-filter" role="group" aria-label="分辨率筛选">
-            <span className="resolution-filter-label" title="分辨率"><Icon name="resolution" size={18}/></span>
             {['',...resolutionTiers].map(tier=><button key={tier} type="button" aria-label={tier?`筛选 ${resolutionDisplayLabel(tier)}`:'全部分辨率'}
+              className={tier?undefined:'resolution-all'}
               aria-pressed={filters.resolution===tier} title={tier?'按源视频短边分级':'显示所有分辨率，包括未知'}
-              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):'全部'}</button>)}
+              onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):<Icon name="resolution" size={17}/>}</button>)}
           </div>}
           {!grouped&&<label className="resolution-compact" title="分辨率"><Icon name="resolution" size={18}/><select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
             <option value="">全部</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
@@ -390,13 +402,13 @@ function App() {
         </div>
         {advancedOpen && <section id="library-advanced-filters" className="advanced-filters" aria-label="高级筛选">
           {!grouped&&<div className="advanced-filter-fields">
-          <label>视频格式<select aria-label="视频格式" value={filters.format} onChange={event => setFilters(f => ({ ...f, format: event.target.value, page: 1 }))}>
+          <label><span className="advanced-field-label"><Icon name="film" size={16}/>视频格式</span><select aria-label="视频格式" value={filters.format} onChange={event => setFilters(f => ({ ...f, format: event.target.value, page: 1 }))}>
             <option value="">全部格式</option>{formats.map(format => <option key={format} value={format}>{formatLabel(format)}</option>)}
           </select></label>
-          <label>观看状态<select aria-label="观看状态" value={filters.watch} onChange={event => setFilters(f => ({ ...f, watch: event.target.value as Filters['watch'], page: 1 }))}>
+          <label><span className="advanced-field-label"><Icon name="eye" size={16}/>观看状态</span><select aria-label="观看状态" value={filters.watch} onChange={event => setFilters(f => ({ ...f, watch: event.target.value as Filters['watch'], page: 1 }))}>
             <option value="all">全部状态</option><option value="unwatched">未看完</option><option value="watched">已看完</option>
           </select></label>
-          <label>视频时长<select aria-label="视频时长范围" value={filters.duration} onChange={event => setFilters(f => ({ ...f, duration: event.target.value as Filters['duration'], page: 1 }))}>
+          <label><span className="advanced-field-label"><Icon name="continue" size={16}/>视频时长</span><select aria-label="视频时长范围" value={filters.duration} onChange={event => setFilters(f => ({ ...f, duration: event.target.value as Filters['duration'], page: 1 }))}>
             <option value="">不限时长</option><option value="short">短片 · 30 分钟内</option><option value="medium">中等 · 30–90 分钟</option><option value="long">长片 · 90 分钟以上</option>
           </select></label></div>}
           {filterSummary}
@@ -421,7 +433,7 @@ function App() {
               {bulkMode && <label className="bulk-pick"><input type="checkbox" aria-label={`选择 ${m.title}`} checked={picked.includes(m.id)} onChange={event => event.target.checked ? pick([m.id]) : setPicked(current => current.filter(id => id !== m.id))}/></label>}
               <button className="open-video" aria-label={`播放 ${m.title}`} onClick={() => open(m)}>
                 <MediaThumbnail url={m.thumbnail_url} retryKey={revision}/>
-                {previewEnabled && previewId===m.id && !selected && <HoverPreview key={m.id} media={m} />}
+                {previewEnabled && !privacy && previewId===m.id && !selected && <HoverPreview key={m.id} media={m} />}
               </button>
               <button className="star" aria-label={m.favorite ? `取消收藏 ${m.title}` : `收藏 ${m.title}`} aria-pressed={Boolean(m.favorite)}
                 title={m.favorite?'取消收藏':'收藏'} disabled={favoritePending.includes(m.id)} onClick={() => void changeFavorite(m)}><Icon name="favorite" size={16} filled={Boolean(m.favorite)}/></button>
@@ -448,7 +460,7 @@ function App() {
       <RecycleFeedback changed={()=>setRevision(value=>value+1)}/>
       {recycleRecordsOpen&&<RecycleRecords targetId={recycleTarget} close={()=>{setRecycleRecordsOpen(false);setRecycleTarget('');}} changed={()=>{setRevision(value=>value+1);window.dispatchEvent(new Event('avhub-file-states-changed'));}}/>}
       {editingMedia&&<MediaEditDialog media={editingMedia} update={updateMedia} close={()=>setEditingMedia(null)}/>}
-      {settings && <Settings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
+      {settings && <DeferredSettings roots={roots} close={() => setSettings(false)} reload={reloadRoots} scanning={scan.scanning} scan={scan.start} previewEnabled={previewEnabled} changePreview={setPreviewEnabled} thumbnailStatus={thumbnails.status} changeThumbnailStatus={thumbnails.changed} />}
       {playlistsOpen && <Playlists close={() => setPlaylistsOpen(false)} play={playQueue} added={playlistAdded} />}
       {playlistTarget && <Playlists addMedia={playlistTarget} close={() => setPlaylistTarget(null)} play={playQueue} added={playlistAdded} />}
       {playlistBatch&&<Playlists addMediaIds={playlistBatch} close={()=>setPlaylistBatch(null)} play={playQueue} added={message=>{setPicked([]);playlistAdded(message);}}/>}
@@ -461,12 +473,12 @@ function Startup() {
   const [error,setError]=useState('');
   const [attempt,setAttempt]=useState(0);
   useEffect(()=>{
-    let active=true;setError('');
-    void checkServiceBuild().then(initializePreferences).then(()=>{if(active){initializeAppearance();initializeAutoplay();initializeNativePreparation();setReady(true);}}).catch(e=>{if(active)setError(errorText(e));});
+    let active=true;setError('');traceStartup('renderer-starting');
+    void checkServiceBuild().then(()=>{traceStartup('service-verified');return initializePreferences();}).then(()=>{if(active){traceStartup('preferences-ready');initializeAppearance();initializePrivacy();initializeAutoplay();initializeNativePreparation();setReady(true);}}).catch(e=>{if(active){traceStartup('startup-error');setError(errorText(e));}});
     return ()=>{active=false;};
   },[attempt]);
   if(ready)return <App/>;
-  return <div className="empty" role={error?'alert':'status'}>{error||'正在载入本地设置…'}{error&&<><button onClick={()=>setAttempt(value=>value+1)}>重试启动</button><Diagnostics/></>}</div>;
+  return <div className="empty" data-startup-state={error?'error':'loading'} role={error?'alert':'status'}>{error||'正在载入本地设置…'}{error&&<><button onClick={()=>setAttempt(value=>value+1)}>重试启动</button><Diagnostics/></>}</div>;
 }
 const nativeOverlay=new URLSearchParams(location.search).has('nativePlayer')&&Boolean(window.avhubDesktop?.nativePlayer);
 createRoot(document.getElementById('root')!).render(nativeOverlay?<NativePlayerOverlay/>:<><AppConfirmHost/><AutoScrollbars/><WindowChrome/><AboutHost/><div id="app-scroll-area"><Startup/></div></>);

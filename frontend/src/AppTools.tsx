@@ -43,8 +43,9 @@ export function AppDataTools({busy,enabled}:{busy:boolean;enabled:boolean}) {
     <h3><Icon name="database"/>数据目录</h3>
     <p className="dialog-description">这里保存索引、封面、设置与观看记录，不是原视频目录。默认保存在应用旁的 AVHub-data，可选择自定义空目录。</p>
     <code className="app-directory-path" title={info?.data_directory}>{info?.data_directory||'正在读取实际目录…'}</code>
-    <div className="app-tool-actions"><Button icon="folder" disabled={busy||working||!info} onClick={()=>void act('open')}>打开数据目录</Button><Button icon="copy" disabled={busy||working||!info} onClick={()=>void act('copy')}>复制目录路径</Button></div>
-    {location&&<><div className="app-tool-actions"><Button icon="reveal" disabled={busy||working||location.locked} onClick={()=>void chooseLocation('choose')}>自定义数据目录</Button></div>
+    <div className="app-tool-actions app-data-actions"><Button icon="folder" disabled={busy||working||!info} onClick={()=>void act('open')}>打开数据目录</Button><Button icon="copy" disabled={busy||working||!info} onClick={()=>void act('copy')}>复制目录路径</Button>
+      {location&&<Button icon="reveal" disabled={busy||working||location.locked} onClick={()=>void chooseLocation('choose')}>自定义数据目录</Button>}</div>
+    {location&&<>
       <small>默认位置：{location.default}</small>
       {location.next!==location.current&&<div className="data-location-pending"><small>下次启动迁移至</small><code>{location.next}</code></div>}
       {location.locked&&<small>当前由 AVHUB_DATA_DIR 环境变量指定；移除后可在这里更改目录。</small>}</>}
@@ -78,7 +79,7 @@ export function AboutPanel({changeBusy}:{changeBusy?:(busy:boolean)=>void}) {
     }catch(e){setError(errorText(e));}finally{setBusy(false);}
   }
   return <section className="app-about-content" aria-label="关于 AVHub">
-    <h3 className="app-about-brand"><span className="app-about-mark"><Icon name="play" size={22}/></span><span>AVHub<small>本地离线视频库</small></span></h3>
+    <h3 className="app-about-brand"><span className="app-about-mark"><img src="/avhub.svg" alt="" width="42" height="42"/></span><span>AVHub<small>本地离线视频库</small></span></h3>
     <p className="app-about-intro">把分散在不同文件夹的视频整理到一处，轻松浏览、搜索和观看。支持电影与剧集归类、收藏、播放列表，以及自动记住观看进度。</p>
     <div className="app-about-principles"><span><Icon name="shield" size={15}/>默认只读 · 授权整理</span><span><Icon name="quality" size={15}/>原画优先</span><span><Icon name="database" size={15}/>数据保存在本地</span></div>
     <dl className="app-about-info"><div><dt>应用版本</dt><dd className="app-version-check"><span>{CLIENT_BUILD.version}</span><Button icon="refresh" busy={update.checking} onClick={()=>void update.check()}>{update.checking?'检查中…':'检查更新'}</Button></dd></div></dl>

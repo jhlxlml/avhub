@@ -60,6 +60,7 @@ from .native_prepare import NativePrepare,PinnedPreparedResponse
 from .runtime_evidence import RuntimeEvidence
 from . import library_backup
 from . import storage_management
+from . import missing_artwork,artwork_readers
 from .data_jobs import DataJobs, summary as backup_summary
 from . import screenshots
 from . import file_operations
@@ -194,7 +195,10 @@ def connection():
             database_timing.record('serialized',{'lock_wait':acquired-started,'connect':connected-acquired,
                 'transaction':body_end-connected,'commit':committed-body_end,'close':ended-committed,'total':ended-started},
                 {**ticket,'transaction_outcome':outcome,'changed_rows':changed_rows,
-                    'transaction_open_at_commit':transaction_open,'commit_attempted':committing})
+                    'transaction_open_at_commit':transaction_open,'commit_attempted':committing,
+                    'queued_at_monotonic_ms':round(started*1000,3),
+                    'commit_started_at_monotonic_ms':round(body_end*1000,3) if committing else None,
+                    'commit_finished_at_monotonic_ms':round(committed*1000,3) if committing else None})
 
 
 @contextmanager
@@ -520,13 +524,25 @@ def reconcile_scan_presence(root_id,found):
             return result.rowcount
 
 
+def scan_index_batch(paths):
+    """At most 128 candidate paths, including records owned by an old root.
+
+    Exact path lookup preserves relocation/nested-root reconciliation without
+    retaining a whole-library dictionary or a long-lived WAL read transaction.
+    """
+    if not paths:return {}
+    if len(paths)>128:raise ValueError('Scan index batch exceeds limit')
+    with read_connection() as db:
+        return {row['path']:dict(row) for row in db.execute(
+            'SELECT path,id,root_id,modified,size,missing,thumbnail,duration,source_identity,file_state FROM media WHERE path IN ('+
+            ','.join('?' for _ in paths)+')',paths)}
+
+
 def run_scan(entries: list[dict], manager: ScanManager):
     with read_connection() as db:
         # Registration/relocation already stores canonical absolute paths. Do
         # not re-resolve every offline root before processing the first video.
         all_roots = [(row['id'], Path(row['path'])) for row in db.execute("SELECT id,path FROM roots")]
-        existing = {row['path']: dict(row) for row in db.execute(
-            "SELECT path,id,root_id,modified,size,missing,thumbnail,duration,source_identity,file_state FROM media")}
     index = RootPathIndex(all_roots)
     manager.update(state='running')
 
@@ -554,7 +570,7 @@ def run_scan(entries: list[dict], manager: ScanManager):
                     walk_error(exc)
                     return False
 
-            def process(path, resolved):
+            def process(path, resolved, existing):
                 if manager.cancelled.is_set(): return
                 try:
                     updated = scan_file(entry['id'], path, manager.cancelled, existing, resolved, thumbnails=thumbnails)
@@ -574,20 +590,25 @@ def run_scan(entries: list[dict], manager: ScanManager):
                     # Prune it here instead of traversing it repeatedly for every ancestor.
                     dirs[:] = [name for name in dirs if plain_path(Path(directory)/name)
                         and index.owner((Path(directory) / name).resolve()) in (None, entry['id'])]
-                    for name in files:
-                        if manager.cancelled.is_set(): break
-                        path = Path(directory) / name
-                        if path.suffix.lower() not in VIDEO_EXTENSIONS: continue
-                        if not plain_path(path):continue
-                        resolved = path.resolve()
-                        if index.owner(resolved) not in (None, entry['id']): continue
-                        found.add(str(resolved))
-                        manager.discovered()
-                        manager.update(current=str(path))
-                        pending.add(executor.submit(process, path, str(resolved)))
-                        while len(pending) >= workers * 2 and not manager.cancelled.is_set():
-                            done, pending = wait(pending, timeout=.2, return_when=FIRST_COMPLETED)
-                            for future in done: future.result()
+                    for offset in range(0,len(files),128):
+                        if manager.cancelled.is_set():break
+                        candidates=[]
+                        for name in files[offset:offset+128]:
+                            if manager.cancelled.is_set():break
+                            path=Path(directory)/name
+                            if path.suffix.lower() not in VIDEO_EXTENSIONS or not plain_path(path):continue
+                            resolved=path.resolve()
+                            if index.owner(resolved) in (None,entry['id']):candidates.append((path,str(resolved)))
+                        existing=scan_index_batch([resolved for _,resolved in candidates])
+                        for path,resolved in candidates:
+                            if manager.cancelled.is_set():break
+                            found.add(resolved)
+                            manager.discovered()
+                            manager.update(current=str(path))
+                            pending.add(executor.submit(process,path,resolved,existing))
+                            while len(pending)>=workers*2 and not manager.cancelled.is_set():
+                                done,pending=wait(pending,timeout=.2,return_when=FIRST_COMPLETED)
+                                for future in done:future.result()
                 if manager.cancelled.is_set():
                     for future in pending: future.cancel()
                 else:
@@ -781,16 +802,82 @@ class StorageCleanupInput(BaseModel):
 
 @app.get('/api/storage')
 def storage_status(rollback_days:Annotated[int|None,Query(ge=7,le=3650)]=None):
-    with playback.lock,DB_READ_GATE.read():
-        return storage_management.public(storage_management.plan(DATA,DB,rollback_days,set(playback.sessions)))
+    return storage_management.public(storage_snapshot(rollback_days))
+
+
+def storage_snapshot(rollback_days):
+    with playback.lock:active=set(playback.sessions)
+    # Keep restore exclusion, but never hold playback controls across inventory
+    # traversal or immutable rollback SQLite reads.
+    with DB_READ_GATE.read():return storage_management.plan(DATA,DB,rollback_days,active)
 
 @app.post('/api/storage/cleanup')
 def storage_cleanup(value:StorageCleanupInput):
-    with scanner.lock,playback.lock,thumbnail_service.mutation(),DB_READ_GATE.write(),DB_LOCK:
+    preview=storage_snapshot(value.rollback_days)
+    if not hmac.compare_digest(preview['cleanup']['token'],value.token):raise HTTPException(409,'可清理内容已变化，请刷新预览后再确认')
+    # Cache candidates exclude every indexed source. Keep DB publication and
+    # restore fenced, without serializing unrelated original-file Range reads
+    # on file_service.lock for the whole deletion batch.
+    with scanner.lock,playback.lock,thumbnail_service.mutation(),DB_READ_GATE.read(),DB_LOCK,artwork_readers.lock:
         scanner.require_idle()
-        preview=storage_management.plan(DATA,DB,value.rollback_days,set(playback.sessions))
-        if preview['cleanup']['token']!=value.token:raise HTTPException(409,'可清理内容已变化，请刷新预览后再确认')
+        if data_jobs.active:raise HTTPException(409,'请先完成数据备份或恢复任务')
+        with closing(sqlite3.connect(DB.absolute().as_uri()+'?mode=ro',uri=True)) as db:
+            db.execute('BEGIN')
+            storage_management.validate(DATA,db,preview,set(playback.sessions))
         return storage_management.clean(DATA,preview)
+
+
+class MissingArtworkCleanupInput(BaseModel):
+    token:str=Field(pattern=r'^[a-f0-9]{64}$')
+    media_ids:list[Annotated[int,Field(ge=1)]]=Field(min_length=1,max_length=48)
+    page:int=Field(default=1,ge=1)
+    page_size:int=Field(default=24,ge=1,le=48)
+
+
+def active_artwork_media(db):
+    # Caller holds playback/preparation/file locks; no extra DB/read-gate nesting.
+    now=time.monotonic()
+    ids=set(file_service.readers)|set(file_service.pending)
+    ids.update(value[0] for value in file_service.activities.values() if value[1]>now)
+    if thumbnail_service.current:ids.add(thumbnail_service.current)
+    sources={str(job.get('source')) for job in native_prepare.jobs.values() if job.get('state') in ('running','waiting','validating')}
+    for session in playback.sessions.values():
+        source=getattr(getattr(session,'indexed',None),'source',None)
+        if source:sources.add(str(source))
+        if session.process and isinstance(session.process.args,(tuple,list)):sources.update(str(arg) for arg in session.process.args)
+    if sources:
+        ids.update(row['id'] for row in db.execute("SELECT id,path FROM media WHERE missing=1 AND file_state='normal'") if row['path'] in sources)
+    return ids
+
+
+@app.get('/api/storage/missing-artwork')
+def missing_artwork_status(page:Annotated[int,Query(ge=1)]=1,page_size:Annotated[int,Query(ge=1,le=48)]=24):
+    return storage_management.public(missing_artwork_snapshot(page,page_size))
+
+
+def missing_artwork_snapshot(page,page_size):
+    with playback.lock,native_prepare.lock,file_service.lock,read_connection() as db:
+        active=active_artwork_media(db)
+    # Slow/offline filesystem checks must not hold the playback control locks.
+    with read_connection() as db:
+        db.execute('BEGIN')
+        return missing_artwork.preview(DATA,db,page,page_size,active)
+
+
+@app.post('/api/storage/missing-artwork/cleanup')
+def missing_artwork_cleanup(value:MissingArtworkCleanupInput):
+    # Expensive root enumeration and rollback DB reads are preflight, not
+    # playback-control critical sections. Revalidate their evidence below.
+    report=missing_artwork_snapshot(value.page,value.page_size)
+    if not hmac.compare_digest(report['token'],value.token):raise HTTPException(409,'失效封面或目录状态已变化，请刷新预览后重新选择')
+    # Keep restoration exclusive but allow concurrent original-file Range reads.
+    # DB_LOCK protects backup snapshots; the artwork pin fence protects covers.
+    with scanner.lock,playback.lock,native_prepare.lock,thumbnail_service.mutation(),file_service.lock,DB_READ_GATE.read(),DB_LOCK,artwork_readers.lock:
+        scanner.require_idle();file_service.require_idle()
+        if data_jobs.active:raise HTTPException(409,'请先完成数据备份或恢复任务')
+        with connection() as db:
+            missing_artwork.validate_snapshot(DATA,db,report,value.media_ids,active_artwork_media(db))
+            return missing_artwork.clean(DATA,db,report,value.media_ids)
 class PlaybackInput(BaseModel):
     client_token: str | None = Field(default=None, pattern=r'^[a-f0-9]{32}$')
     start: float = Field(default=0, ge=0, allow_inf_nan=False)
@@ -817,7 +904,7 @@ class PlaylistMoveInput(BaseModel):
 
 @app.get('/api/preferences')
 def get_preferences():
-    with connection() as db:
+    with read_connection() as db:
         rows=db.execute('SELECT key,value FROM preferences WHERE key IN ('+','.join('?' for _ in GLOBAL_KEYS)+')',tuple(GLOBAL_KEYS))
         values={}
         for row in rows:
@@ -827,7 +914,7 @@ def get_preferences():
 
 @app.get('/api/preferences/subtitle/{media_id}')
 def get_subtitle_preference(media_id:int):
-    with connection() as db:
+    with read_connection() as db:
         row=db.execute('SELECT value FROM preferences WHERE key=?',(f'subtitle.{media_id}',)).fetchone()
         try:value=validate_preference(f'subtitle.{media_id}',json.loads(row['value'])) if row else None
         except (HTTPException,ValueError,TypeError):value=None
@@ -915,7 +1002,7 @@ def health():
 def diagnostics():
     result=diagnostics_report(DATA,DB,BUILD,bool(SESSION_TOKEN),FROZEN,
                               {name:executable(name) for name in ['ffmpeg','ffprobe']},playback)
-    with connection() as db:
+    with read_connection() as db:
         result['thumbnail_jobs']={row['state']:row['count'] for row in db.execute('SELECT state,COUNT(*) AS count FROM thumbnail_jobs GROUP BY state')}
     result['database_timing']=database_timing.report()
     result['database_write_queue']=DB_LOCK.status()
@@ -1758,7 +1845,8 @@ def set_media_playback_state(media_id:int,body:MediaPlaybackStateInput):
 def next_episode(media_id: int, scope: Literal['series', 'directory'] | None = None):
     if scope is not None:
         return {'next': media_siblings(media_id, page=None, page_size=1, scope=scope)['next']}
-    with connection() as db:
+    with read_connection() as db:
+        db.execute('BEGIN')
         current = db.execute("SELECT id,title,kind,season,episode,series_id,root_id FROM media WHERE id=? AND missing=0", (media_id,)).fetchone()
         if not current: raise HTTPException(404, "视频不存在或已离线")
         if current["kind"] != "episode" or current["episode"] is None:
@@ -1774,7 +1862,7 @@ def next_episode(media_id: int, scope: Literal['series', 'directory'] | None = N
 
 @app.get('/api/media/{media_id}/random')
 def random_next(media_id:int,playlist_id:int|None=None,scope:Literal['series','directory']='directory'):
-    with connection() as db:
+    with read_connection() as db:
         db.execute('BEGIN')
         current=db.execute('SELECT * FROM media WHERE id=? AND missing=0',(media_id,)).fetchone()
         if not current:raise HTTPException(404,'视频不存在或已离线')
@@ -1810,12 +1898,22 @@ def batch_media(body: BulkInput):
 
 @app.get('/api/series')
 def grouped_series(q: str = '', root_id: int | None = None, page: int = Query(1,ge=1),page_size: int = Query(24,ge=1,le=96)):
-    with connection() as db:return series_library.listing(db,q,root_id,page,page_size)
+    # Old/restored indexes can still need an actual migration. Only that
+    # exceptional repair joins the writer queue; ordinary browsing stays read-only.
+    with read_connection() as db:
+        repair=db.execute("SELECT 1 FROM media INDEXED BY media_series_unassigned WHERE kind='episode' AND series_id IS NULL LIMIT 1").fetchone()
+    if repair:
+        with connection() as db:series_library.backfill(db)
+    with read_connection() as db:
+        db.execute('BEGIN')
+        return series_library.listing(db,q,root_id,page,page_size,infer=False)
 
 
 @app.get('/api/series/{series_id}')
 def series_detail(series_id:int,season:str|None=None,root_id:int|None=None,page:int=Query(1,ge=1),page_size:int=Query(48,ge=1,le=96)):
-    with connection() as db:return series_library.detail(db,series_id,season,page,page_size,row_dict,root_id)
+    with read_connection() as db:
+        db.execute('BEGIN')
+        return series_library.detail(db,series_id,season,page,page_size,row_dict,root_id)
 
 
 class SeriesTitleInput(BaseModel):
@@ -1992,7 +2090,7 @@ def clear_history(media_id: int):
 
 @app.get("/api/playlists")
 def playlists():
-    with connection() as db: return [dict(x) for x in db.execute("SELECT p.*,COUNT(i.media_id) AS count FROM playlists p LEFT JOIN playlist_items i ON p.id=i.playlist_id GROUP BY p.id ORDER BY p.created_at DESC")]
+    with read_connection() as db: return [dict(x) for x in db.execute("SELECT p.*,COUNT(i.media_id) AS count FROM playlists p LEFT JOIN playlist_items i ON p.id=i.playlist_id GROUP BY p.id ORDER BY p.created_at DESC")]
 
 @app.post("/api/playlists", status_code=201)
 def create_playlist(body: PlaylistCreateInput):
@@ -2000,7 +2098,7 @@ def create_playlist(body: PlaylistCreateInput):
 
 @app.get("/api/playlists/{playlist_id}")
 def playlist_detail(playlist_id: int, page: int | None = Query(None, ge=1), page_size: int = Query(40, ge=1, le=100), q: str = ''):
-    with connection() as db:
+    with read_connection() as db:
         db.execute('BEGIN')
         if isinstance(page,int): return playlist_page_query(db, playlist_id, row_dict, page, page_size, q)
         playlist = db.execute("SELECT * FROM playlists WHERE id=?", (playlist_id,)).fetchone()
@@ -2105,7 +2203,7 @@ def move_playlist_item(playlist_id: int, media_id: int, body: PlaylistMoveInput)
 @app.get('/api/playlists/{playlist_id}/queue')
 def playlist_queue(playlist_id: int, media_id: int | None = None, page: int | None = Query(None, ge=1),
                    page_size: int = Query(40, ge=1, le=100), q: str = '', shuffle: bool = False):
-    with connection() as db:
+    with read_connection() as db:
         db.execute('BEGIN')
         if media_id is None:
             summary = playlist_summary(db,playlist_id)
@@ -2138,9 +2236,9 @@ def thumbnail_unchanged(request, headers):
 
 @app.get("/thumbs/{media_id}")
 def get_thumb(media_id: int, v: str | None = None, request: Request = None):
-    # Open while holding the DB lock so a simultaneous reset cannot remove the
-    # selected cache file before the response gets its own reader handle.
-    with connection() as db:
+    # Restore fence first, then the cover handle fence; never the writer queue.
+    # Discard cannot unlink between selecting a cover and opening its handle.
+    with read_connection() as db,covers.reader_lock:
         custom=db.execute('SELECT custom_cover,updated_at FROM media WHERE id=?',(media_id,)).fetchone()
         # Only current, version-addressed application artwork may be reused.
         # Missing/stale/invalid versions still revalidate; errors never cache.
@@ -2152,9 +2250,15 @@ def get_thumb(media_id: int, v: str | None = None, request: Request = None):
                 try:source=path.open('rb')
                 except OSError:pass
     if source:
+        released=False
+        release_lock=threading.Lock()
         def release():
-            source.close()
-            with connection() as db:covers.discard(db,DATA,custom['custom_cover'])
+            nonlocal released
+            with release_lock:
+                if released:return
+                released=True
+                source.close()
+                with read_connection() as db:covers.discard(db,DATA,custom['custom_cover'])
         def chunks():
             try:
                 while block:=source.read(65536):yield block
@@ -2163,17 +2267,17 @@ def get_thumb(media_id: int, v: str | None = None, request: Request = None):
         if thumbnail_unchanged(request,headers):
             release();return Response(status_code=304,headers=headers)
         return StreamingResponse(chunks(),media_type='image/jpeg',headers=headers,background=BackgroundTask(release))
-    with connection() as db:
+    with read_connection() as db,artwork_readers.lock:
         row = db.execute("SELECT thumbnail,updated_at FROM media WHERE id=?", (media_id,)).fetchone()
-    if not row or not row['thumbnail']:
-        raise HTTPException(404, '预览图缓存已失效，请刷新媒体库', headers={'Cache-Control':'no-store'})
-    path = THUMBS / f"{media_id}.jpg"
-    if not valid_thumbnail(path): raise HTTPException(404, '预览图尚未生成或缓存已失效，请刷新媒体库',headers={'Cache-Control':'no-store'})
-    try:info=path.stat()
-    except OSError:raise HTTPException(404,'预览图缓存已失效，请刷新媒体库',headers={'Cache-Control':'no-store'})
-    headers=thumbnail_headers(thumbnail_cache_policy(v,row['updated_at']),info)
-    if thumbnail_unchanged(request,headers):return Response(status_code=304,headers=headers)
-    return FileResponse(path, media_type='image/jpeg', headers=headers,stat_result=info)
+        if not row or not row['thumbnail']:
+            raise HTTPException(404, '预览图缓存已失效，请刷新媒体库', headers={'Cache-Control':'no-store'})
+        path = THUMBS / f"{media_id}.jpg"
+        if not valid_thumbnail(path): raise HTTPException(404, '预览图尚未生成或缓存已失效，请刷新媒体库',headers={'Cache-Control':'no-store'})
+        try:info=path.stat()
+        except OSError:raise HTTPException(404,'预览图缓存已失效，请刷新媒体库',headers={'Cache-Control':'no-store'})
+        headers=thumbnail_headers(thumbnail_cache_policy(v,row['updated_at']),info)
+        if thumbnail_unchanged(request,headers):return Response(status_code=304,headers=headers)
+        return artwork_readers.PinnedArtworkResponse(path, media_type='image/jpeg', headers=headers,stat_result=info)
 
 @app.api_route("/media/{media_id}/file", methods=["GET", "HEAD"])
 def media_file(media_id: int):
@@ -2442,6 +2546,10 @@ def prioritize_seek(token:str,value:SeekInput):return playback.seek(token,value.
 STATIC = ROOT / "app" / "static"
 if STATIC.exists():
     app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
+    @app.get("/avhub.svg", include_in_schema=False)
+    def application_brand():
+        return FileResponse(STATIC / "avhub.svg", media_type="image/svg+xml", headers={"Cache-Control": "no-cache"})
+
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"])
     def api_not_found(path: str):
         raise HTTPException(404, "API 接口不存在")

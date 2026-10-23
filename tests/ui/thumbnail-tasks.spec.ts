@@ -21,8 +21,8 @@ test('metadata completes while covers run; directory controls unlock and tasks p
   await page.getByRole('button',{name:'关闭封面任务',exact:true}).click();
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   await expect(page.getByRole('button',{name:'浏览本地文件夹',exact:true})).toBeEnabled();
-  const rootRow=page.locator('.root-list>div').filter({hasText:path});await rootRow.getByRole('button',{name:/^更多目录操作 /}).click();
-  await expect(rootRow.getByRole('menuitem',{name:/移出媒体库/})).toBeEnabled();await page.keyboard.press('Escape');
+  const rootRow=page.locator('.root-list>div').filter({hasText:path});
+  await expect(rootRow.getByRole('button',{name:/^移出媒体库 /})).toBeEnabled();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   await page.reload();await icon.click();
   await expect(tasks.getByRole('button',{name:'恢复封面任务',exact:true})).toBeVisible();

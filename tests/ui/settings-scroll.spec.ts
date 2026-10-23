@@ -5,6 +5,8 @@ for(const theme of ['dark','light'])for(const size of [{width:390,height:650},{w
   await request.patch('/api/preferences',{data:{values:{appearance:{theme,coverSize:'standard'}}}});
   await page.setViewportSize(size);await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'媒体库设置',exact:true}),body=dialog.locator('.settings-content'),close=dialog.getByRole('button',{name:'关闭设置',exact:true});
+  // Wait for the lazy panel, not its short-lived loading dialog.
+  await expect(dialog.locator('.settings-workspace')).toBeVisible();
   const before=await close.boundingBox();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
   if(size.width<820){
     const tabs=page.getByRole('tablist',{name:'设置分类',exact:true});await expect(tabs).toHaveCSS('overflow-x','auto');

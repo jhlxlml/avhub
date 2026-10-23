@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('avhubDesktop', {
   revealExport:(id:string)=>ipcRenderer.invoke('avhub:reveal-export',id),
   openRelease:(tag:string,format?:'folder'|'single')=>ipcRenderer.invoke('avhub:open-release',tag,format),
   startupReady:()=>ipcRenderer.invoke('avhub:startup-ready'),
+  startupProgress:(stage:string)=>ipcRenderer.invoke('avhub:startup-progress',stage),
   onMouseSeek:(callback:(direction:'back'|'forward')=>void)=>{
     const listener=(_event:Electron.IpcRendererEvent,direction:unknown)=>{if(direction==='back'||direction==='forward')callback(direction);};
     ipcRenderer.on('avhub:mouse-seek',listener);return()=>{ipcRenderer.removeListener('avhub:mouse-seek',listener);};

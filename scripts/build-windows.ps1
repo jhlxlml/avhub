@@ -1,7 +1,18 @@
-param([switch]$SkipDependencyInstall)
+param([switch]$SkipDependencyInstall, [string]$CandidateDirectory)
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 Set-Location $projectRoot
+$artifactDirectory = Join-Path $projectRoot 'dist\electron'
+if ($CandidateDirectory) {
+    $artifactDirectory = [System.IO.Path]::GetFullPath((Join-Path $projectRoot $CandidateDirectory))
+    $candidateRoot = (Join-Path $projectRoot 'build') + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $artifactDirectory.StartsWith($candidateRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Local candidates must use a new directory inside the project build folder.'
+    }
+    if (Test-Path -LiteralPath $artifactDirectory) {
+        throw 'Candidate directory already exists. Choose a new directory; existing artifacts are preserved.'
+    }
+}
 
 if ($env:OS -ne 'Windows_NT') { throw 'This portable application must be built on Windows.' }
 if (-not (Test-Path 'bin\ffmpeg.exe') -or -not (Test-Path 'bin\ffprobe.exe')) {
@@ -54,12 +65,16 @@ if ($LASTEXITCODE -ne 0) { throw 'FastAPI backend packaging failed.' }
 python scripts/verify-bundled-sqlite.py
 if ($LASTEXITCODE -ne 0) { throw 'Bundled SQLite verification failed; refusing to package desktop assets.' }
 
-npm run package:windows
+if ($CandidateDirectory) {
+    npm run package:windows -- "--config.directories.output=$artifactDirectory"
+} else {
+    npm run package:windows
+}
 if ($LASTEXITCODE -ne 0) { throw 'Electron Windows portable packaging failed.' }
-python scripts/folder-portable.py
+python scripts/folder-portable.py --directory $artifactDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Folder portable ZIP creation failed.' }
 
-$artifact = Get-ChildItem 'dist\electron\AVHub-portable-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$artifact = Get-ChildItem -LiteralPath $artifactDirectory -Filter 'AVHub-portable-*.exe' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $artifact) { throw 'Portable EXE was not found after the build.' }
 Write-Host "AVHub portable build: $($artifact.FullName)"
 Write-Host 'Data defaults to AVHub-data beside the EXE; custom locations are supported in Settings.'
