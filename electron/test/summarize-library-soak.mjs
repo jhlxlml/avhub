@@ -1,9 +1,15 @@
 // Read-only report analysis. Does not launch the app or touch source media.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {classifyChromiumWaits} from './chromium-cycle-observer.mjs';
+import {summarizeMemoryResources} from './memory-resource-summary.mjs';
 const file=process.argv[2];assert.ok(file,'Provide library-soak.json');
 const report=JSON.parse(readFileSync(file,'utf8'));
 const samples=report.samples??[],playbacks=report.playbacks??[];
+const chromiumCycles=playbacks.filter(row=>row.engine==='chromium'&&Array.isArray(row.events));
+const waitingByPhase=chromiumCycles.length?chromiumCycles.reduce((counts,row)=>{
+  const value=classifyChromiumWaits(row.events);for(const key of Object.keys(counts))counts[key]+=value[key];return counts;
+},{startup:0,playback:0,seek:0}):null;
 const quantile=(values,fraction)=>{
   const sorted=values.filter(Number.isFinite).sort((a,b)=>a-b);
   return sorted.length?sorted[Math.floor((sorted.length-1)*fraction)]:null;
@@ -29,16 +35,17 @@ for(let start=0;start<=(samples.at(-1)?.elapsedMs??-1);start+=600000){
   tenMinuteWindows.push({fromMinute:start/60000,toMinute:Math.min(start+600000,report.elapsedMs)/60000,samples:rows.length,rendererMiB:range(values('Tab')),gpuProcessMiB:range(values('GPU'))});
 }
 console.log(JSON.stringify({
-  build:report.build??null,seconds:report.seconds,elapsedSeconds:(report.elapsedMs??0)/1000,
+  build:report.build??null,seconds:report.seconds,passes:report.passes??null,completedPasses:report.completedPasses??null,elapsedSeconds:(report.elapsedMs??0)/1000,
   totalElapsedSeconds:(report.totalElapsedMs??report.elapsedMs??0)/1000,instrumentation:report.instrumentation??null,
   targetReached:report.targetReached===true,cleanExit:report.cleanExit===true,
   sourceIdentityVerified:report.sourceIdentityVerified??'not recorded by this harness revision',
   samples:samples.length,playbackCycles:playbacks.length,errors:report.errors??[],
   memory:{renderer:memory('Tab'),gpuProcess:memory('GPU'),main:memory('Browser')},
   rendererCounters:{documents:range(samples.map(sample=>sample.dom?.documents)),nodes:range(samples.map(sample=>sample.dom?.nodes)),listeners:range(samples.map(sample=>sample.dom?.jsEventListeners)),embedderHeapBytes:range(samples.map(sample=>sample.heapUsage?.embedderHeapUsedSize)),privateMiB:range(samples.flatMap(sample=>(sample.processes??[]).filter(process=>process.type==='Tab').map(process=>process.privateKB==null?null:process.privateKB/1024)))},
+  resources:summarizeMemoryResources(samples),idleResources:summarizeMemoryResources(report.idleSamples??[]),
   tenMinuteWindows,
   network:network.enabled===false?{enabled:false,completed:null,cacheHits:null,notModified:null,transferBytes:null,failed:null,transferredMiB:null,cacheHitRatio:null}:{...network,transferredMiB:(network.transferBytes??0)/1024**2,cacheHitRatio:network.completed?(network.cacheHits??0)/network.completed:null},
-  playback:{openMs:range(playbacks.map(value=>value.openMs)),firstFrameMs:range(playbacks.map(value=>value.firstFrameMs)),warmFirstFrameMs:range(playbacks.slice(1).map(value=>value.firstFrameMs)),seekMs:range(playbacks.map(value=>value.seekMs)),sourceLoads:[...new Set(playbacks.map(value=>value.sourceLoads))],bufferingEvents:playbacks.reduce((sum,value)=>sum+(value.bufferingEvents??0),0),maxDropped:quantile(playbacks.map(value=>value.dropped),1),maxDecoderDropped:quantile(playbacks.map(value=>value.decoderDropped),1),windowsAfterClose:playbacks.map(value=>value.windowsAfterClose),lifecycle},
+  playback:{openMs:range(playbacks.map(value=>value.openMs)),firstFrameMs:range(playbacks.map(value=>value.firstFrameMs)),warmFirstFrameMs:range(playbacks.slice(1).map(value=>value.firstFrameMs)),seekMs:range(playbacks.map(value=>value.seekMs)),seekTargetErrorSeconds:range(playbacks.map(value=>Number.isFinite(value.target)&&Number.isFinite(value.position)?Math.abs(value.position-value.target):null)),sourceLoads:[...new Set(playbacks.map(value=>value.sourceLoads))],bufferingEvents:playbacks.reduce((sum,value)=>sum+(value.bufferingEvents??0),0),waitingByPhase,maxDropped:quantile(playbacks.map(value=>value.dropped),1),maxDecoderDropped:quantile(playbacks.map(value=>value.decoderDropped),1),windowsAfterClose:playbacks.map(value=>value.windowsAfterClose),lifecycle},
   idle:{requestedSeconds:report.idleSeconds??0,samples:idle},
   timing:report.timing??null,
   limitations:['Sampled working set is not a leak-proof bound; GPU working set is not VRAM.','Memory windows may overlap for runs shorter than ten minutes. No forced GC or cache reset.','Null means unavailable, not zero. This summary never upgrades a partial run to passed.'],

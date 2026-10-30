@@ -28,6 +28,34 @@ test('cleanup preview explicitly confirms and refuses stale contents',async({pag
   await expect(page.getByRole('alert')).toContainText('可清理内容已变化');expect(calls).toBe(1);await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();
 });
 
+test('bounded cleanup reports remaining items and requires another explicit confirmation',async({page})=>{
+  let calls=0;
+  await page.route('**/api/storage',route=>route.fulfill({json:{total_bytes:12,categories:{thumbnails:{bytes:12,files:2}},cleanup:{files:calls?1:2,bytes:6,rollback_files:0,rollback_days:null,token:'a'.repeat(64),protected_note:'原视频和手动封面不清理'}}}));
+  await page.route('**/api/storage/cleanup',route=>{calls++;return route.fulfill({json:{removed:1,freed_bytes:6,skipped:0,remaining:1,stopped_reason:'清理期间引用已变化，已停止'}});});
+  await page.goto('/');await page.getByRole('button',{name:'媒体库设置'}).click();await page.getByRole('tab',{name:'数据管理'}).click();
+  await page.getByRole('button',{name:'清理已预览内容'}).click();await page.getByRole('dialog',{name:'清理已预览内容？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
+  await expect(page.getByRole('region',{name:'应用存储'})).toContainText('尚有 1 项未处理');
+  await expect(page.getByRole('region',{name:'应用存储'})).toContainText('引用已变化');
+  await expect(page.getByRole('button',{name:'清理已预览内容'})).toBeEnabled();expect(calls).toBe(1);
+});
+
+test('failed restore evidence is detached without deleting it when another preview is opened',async({page,request})=>{
+  const payload=await(await request.get('/api/backup')).body();let identity='',cancels=0;
+  page.on('response',async r=>{if(r.url().endsWith('/api/data-jobs/inspect'))identity=(await r.json()).id;});
+  await page.goto('/');await page.getByRole('button',{name:'媒体库设置'}).click();await page.getByRole('tab',{name:'数据管理'}).click();
+  const input=page.getByLabel('选择备份文件');await input.setInputFiles({name:'first.db',mimeType:'application/octet-stream',buffer:payload});
+  await page.getByRole('button',{name:'校验并预览备份'}).click();await expect(page.getByRole('region',{name:'备份恢复预览'})).toBeVisible();await expect.poll(()=>identity).not.toBe('');
+  const old=identity;
+  await page.route(`**/api/data-jobs/${old}/restore`,route=>route.fulfill({status:202,json:{id:old,kind:'restore',state:'failed',stage:'review',done:0,total:0,cancellable:false,error:'恢复暂存已保留供核查',result:null}}));
+  await page.route(`**/api/data-jobs/${old}/cancel`,route=>{cancels++;return route.fulfill({status:409,json:{detail:'恢复暂存不能删除'}});});
+  await page.getByRole('button',{name:'恢复所选备份'}).click();await page.getByRole('dialog',{name:'恢复所选备份？',exact:true}).getByRole('button',{name:'确认',exact:true}).click();
+  await expect(page.getByRole('region',{name:'媒体库备份'}).getByRole('alert')).toContainText('已保留供核查');
+  await expect(page.getByRole('button',{name:'关闭设置'})).toBeEnabled();
+  await input.setInputFiles({name:'second.db',mimeType:'application/octet-stream',buffer:payload});
+  await page.getByRole('button',{name:'校验并预览备份'}).click();await expect(page.getByRole('region',{name:'备份恢复预览'})).toBeVisible();
+  expect(identity).not.toBe(old);expect(cancels).toBe(0);
+});
+
 test('backup cancellation is explicit and busy settings cannot dismiss',async({page})=>{
   let cancelled=false;
   const value=()=>({id:'a'.repeat(32),kind:'backup',state:cancelled?'cancelled':'running',stage:cancelled?'cancelled':'checksumming',done:2,total:10,cancellable:!cancelled,error:'',result:null});

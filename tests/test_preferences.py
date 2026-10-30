@@ -65,15 +65,39 @@ class PortableStateTests(unittest.TestCase):
                     self.assertEqual(json.loads(db.execute("SELECT value FROM preferences WHERE key='appearance'").fetchone()[0]),value)
 
     def test_invalid_appearance_batch_is_atomic(self):
-        for value in (None,True,'light',{}, {'theme':'system','coverSize':'standard'},
+        for value in (None,True,'light',{}, {'theme':'automatic','coverSize':'standard'},
                       {'theme':'light','coverSize':'huge'}, {'theme':'light','coverSize':190},
                       {'theme':'light','coverSize':'standard','path':'C:/bad'}):
             with self.assertRaises(HTTPException):
                 m.set_preferences(m.PreferencesInput(values={'hoverPreview':True,'appearance':value}))
             self.assertEqual(m.get_preferences()['values'],{})
 
+    def test_extended_theme_settings_are_portable_and_legacy_payload_still_round_trips(self):
+        for theme in ('dark','light','system'):
+            for palette in ('violet','blue','teal','amber','graphite','custom'):
+                value={'theme':theme,'coverSize':'comfortable','palette':palette,'accent':'#AABBCC','background':'warm','emphasis':'soft'}
+                m.set_preferences(m.PreferencesInput(values={'appearance':value}))
+                self.assertEqual(m.get_preferences()['values']['appearance'],value)
+        legacy={'theme':'light','coverSize':'large'}
+        m.set_preferences(m.PreferencesInput(values={'appearance':legacy}))
+        self.assertEqual(m.get_preferences()['values']['appearance'],legacy)
+
+    def test_invalid_theme_colors_and_unknown_fields_are_rejected_atomically(self):
+        for change in ({'accent':'red'},{'accent':'#fff'},{'accent':'url(x)'},{'accent':'#12345678'},{'accent':None},{'palette':'other'},{'background':[]},{'emphasis':'high'},{'css':'color:red'}):
+            with self.assertRaises(HTTPException):
+                m.set_preferences(m.PreferencesInput(values={'hoverPreview':True,'appearance':{'theme':'system','coverSize':'standard',**change}}))
+            self.assertEqual(m.get_preferences()['values'],{})
+
+    def test_theme_write_receipt_reports_the_durable_value_when_a_stale_write_is_ignored(self):
+        latest={'theme':'light','coverSize':'large','palette':'teal','accent':'#18766e','background':'cool','emphasis':'soft'}
+        first=m.set_preferences(m.PreferencesInput(values={'appearance':latest},updated_at=2000))
+        self.assertEqual(first['appearance'],latest)
+        old=m.set_preferences(m.PreferencesInput(values={'appearance':{'theme':'dark','coverSize':'standard'}},updated_at=1000))
+        self.assertEqual(old['appearance'],latest)
+        self.assertEqual(m.get_preferences()['values']['appearance'],latest)
+
     def test_appearance_is_included_in_database_backup(self):
-        value={'theme':'light','coverSize':'large'}
+        value={'theme':'system','coverSize':'large','palette':'custom','accent':'#178c7a','background':'warm','emphasis':'soft'}
         m.set_preferences(m.PreferencesInput(values={'appearance':value}))
         response=m.create_backup()
         try:

@@ -1,0 +1,13 @@
+AVHub local Render API acceptance build
+
+Launch Start-render-acceptance.cmd, then choose MPV and the D3D11 trial in playback settings.
+Data is isolated in AVHub-data-acceptance beside this EXE.
+MPV handles codecs, pixel formats, bit depths, missing colour tags, file rotation and pixel aspect ratios.
+There is no test-sample whitelist, fixed 8K/256 MiB limit or single-monitor gate.
+Actual texture dimensions, available GPU memory and decoder capabilities still apply.
+PQ/HLG use matching BT.2020 HDR texture declarations and extended F16 canvas presentation. HDR is allowed, with physical display and dynamic metadata fidelity unverified.
+Dynamic resolution changes and physical HDR/mixed-DPI display behaviour are not certified.
+This is not a production release or certification for every computer, codec or display.
+Launching AVHub.exe directly keeps the ordinary packaged render gate closed.
+Use the existing original-quality player to leave this trial; never replace an existing media library/data folder with this test folder.
+See resources/licenses and resources/backend/_internal/licenses for application/backend notices, resources/backend/_internal/app/static/third-party for frontend notices, and resources/native-render/materials for native runtime provenance.

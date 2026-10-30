@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "scope": "New native runtime build preparation only; current application binary is unchanged",
+  "opus": {
+    "revision": "a8b2545eec71e0f53ecead2d583e7b6baa42684d",
+    "modelFeatures": {
+      "deep-plc": "disabled",
+      "dred": "disabled",
+      "osce": "disabled"
+    },
+    "mesonAdditionalOptions": [
+      "-Ddnn-debug-float=disabled",
+      "-Dpfa=disabled",
+      "-Dfloat-approx=false"
+    ],
+    "cmakeHarnessOptions": [
+      "-DOPUS_DEEP_PLC=OFF",
+      "-DOPUS_DRED=OFF",
+      "-DOPUS_OSCE=OFF",
+      "-DOPUS_PFA=OFF",
+      "-DOPUS_FLOAT_APPROX=OFF"
+    ],
+    "standardOpusDecoderRetained": true,
+    "evidenceReport": "docs/playback-refactor/31-opus-model-free-build.md"
+  },
+  "buildVerified": false,
+  "distributionReady": false
+}

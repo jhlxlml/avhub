@@ -31,12 +31,15 @@ test('sampler is bounded, stop is idempotent and listeners/callbacks are release
   Object.assign(globalThis,{window:{},document:{visibilityState:'visible',hasFocus:()=>true},
    requestAnimationFrame:()=>8,cancelAnimationFrame:id=>{assert.equal(id,8);animationCancelled++;},
    setInterval:callback=>{tick=callback;return 9;},clearInterval:id=>{assert.equal(id,9);cleared++;}});
-  startSteadyFrames({currentTime:3,paused:false,seeking:false,readyState:4,
+  startSteadyFrames({currentTime:3,paused:false,seeking:false,readyState:4,playbackRate:1,
+   buffered:{length:2,start:n=>[0,2.5][n],end:n=>[2,5][n]},videoWidth:1920,videoHeight:1080,error:null,
    getVideoPlaybackQuality:()=>({totalVideoFrames:40,droppedVideoFrames:1}),
    requestVideoFrameCallback:()=>7,cancelVideoFrameCallback:id=>{assert.equal(id,7);cancelled++;},
    addEventListener:(name,callback)=>handlers.set(name,callback),removeEventListener:(name,callback)=>{assert.equal(handlers.get(name),callback);handlers.delete(name);}});
   for(let n=0;n<400;n++)tick();
   const result=window.__steadyFrames.stop();assert.equal(window.__steadyFrames.stop(),result);
+  assert.deepEqual({ahead:result.samples[0].ahead,rate:result.samples[0].rate,error:result.samples[0].error,
+   width:result.samples[0].width,height:result.samples[0].height},{ahead:2,rate:1,error:null,width:1920,height:1080});
   assert.equal(result.samples.length,256);assert.ok(result.omitted>0);assert.equal(handlers.size,0);
   assert.deepEqual([cleared,cancelled,animationCancelled],[1,1,1]);
  }finally{for(const [name,descriptor] of original){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}}

@@ -131,3 +131,36 @@ class StorageConcurrencyTests(unittest.TestCase):
         self.assertNotEqual(report['cleanup']['token'],storage.plan(self.folder,m.DB)['cleanup']['token'])
         result=storage.clean(self.folder,report)
         self.assertEqual(result['removed'],0);self.assertTrue(self.orphan.exists())
+
+    def test_batches_release_controls_and_writer_between_deletions(self):
+        for number in range(100,105):(self.thumbs/f'{number}.jpg').write_bytes(b'cache')
+        token=m.storage_status()['cleanup']['token'];checks=[]
+        def yielded():
+            def controls():
+                with m.playback.lock,m.DB_LOCK:checks.append(True)
+            worker=threading.Thread(target=controls);worker.start();worker.join(.5)
+            self.assertFalse(worker.is_alive(),'locks must be released before yielding')
+        with patch.object(storage,'CLEAN_BATCH_FILES',1),patch.object(storage,'yield_batch',side_effect=yielded):
+            result=m.storage_cleanup(m.StorageCleanupInput(token=token))
+        self.assertEqual(result['remaining'],0);self.assertEqual(result['removed'],6);self.assertGreater(len(checks),1)
+
+    def test_new_source_between_batches_stops_before_that_source_is_deleted(self):
+        self.orphan.unlink()
+        for number in (100,101):(self.thumbs/f'{number}.jpg').write_bytes(b'cache')
+        protected=self.thumbs/'101.jpg';token=m.storage_status()['cleanup']['token']
+        def yielded():
+            with m.connection() as db:db.execute('UPDATE media SET path=? WHERE id=1',(str(protected),))
+        with patch.object(storage,'CLEAN_BATCH_FILES',1),patch.object(storage,'yield_batch',side_effect=yielded):
+            result=m.storage_cleanup(m.StorageCleanupInput(token=token))
+        self.assertEqual(result['removed'],1);self.assertEqual(result['remaining'],1)
+        self.assertIn('stopped_reason',result);self.assertTrue(protected.exists())
+
+    def test_request_budget_returns_partial_progress_and_fresh_confirmation_is_required(self):
+        for number in range(100,105):(self.thumbs/f'{number}.jpg').write_bytes(b'cache')
+        token=m.storage_status()['cleanup']['token']
+        with patch.object(storage,'CLEAN_BATCH_FILES',1),patch.object(storage,'CLEAN_REQUEST_SECONDS',0):
+            result=m.storage_cleanup(m.StorageCleanupInput(token=token))
+        self.assertEqual(result['removed'],1);self.assertEqual(result['remaining'],5)
+        with self.assertRaises(HTTPException):m.storage_cleanup(m.StorageCleanupInput(token=token))
+        fresh=m.storage_status()['cleanup']['token'];result=m.storage_cleanup(m.StorageCleanupInput(token=fresh))
+        self.assertEqual(result['remaining'],0);self.assertEqual(result['removed'],5)

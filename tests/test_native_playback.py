@@ -1,7 +1,7 @@
 import unittest
 from contextlib import contextmanager
 from fastapi import HTTPException
-from app.native_playback import NativeReadLeases,verify_original_color,probe_original_color
+from app.native_playback import NativeReadLeases
 import threading
 
 
@@ -20,22 +20,6 @@ class Service:
 
 
 class NativeLeasesTest(unittest.TestCase):
-    def test_old_index_colour_probe_is_bounded_and_fails_closed(self):
-        calls=[]
-        def run(command,timeout):calls.append((command,timeout));return 0,b'{"streams":[{"codec_name":"h264","pix_fmt":"yuv420p"}]}',b''
-        self.assertEqual(probe_original_color('original.mkv',run,'trusted-ffprobe')['bit_depth'],8)
-        self.assertEqual(calls[0][1],5);self.assertIn('%+#32',calls[0][0]);self.assertNotIn('-show_format',calls[0][0])
-        for result in [(1,b'',b''),(0,b'{}',b''),(0,b'bad json',b'')]:
-            with self.assertRaises(HTTPException):probe_original_color('original.mkv',lambda *args:result,'trusted-ffprobe')
-        def timeout(*args):raise TimeoutError()
-        with self.assertRaises(HTTPException):probe_original_color('original.mkv',timeout,'trusted-ffprobe')
-
-    def test_unverified_colour_never_assumes_sdr_eight_bit(self):
-        valid={'verified':True,'pix_fmt':'yuv420p','bit_depth':8,'transfer':'bt709'}
-        verify_original_color(valid)
-        for value in [{},{**valid,'verified':False},{**valid,'pix_fmt':''},{**valid,'bit_depth':True},{**valid,'bit_depth':10},{**valid,'transfer':'smpte2084'},{**valid,'dynamic_hdr':True}]:
-            with self.assertRaises(HTTPException):verify_original_color(value)
-
     def test_non_expiring_reader_and_exact_owner_release(self):
         service=Service();leases=NativeReadLeases(service)
         self.assertEqual(leases.acquire('owner',4,lambda _: 'indexed path'),'indexed path')
@@ -62,6 +46,10 @@ class NativeLeasesTest(unittest.TestCase):
             self.assertEqual(validate('mpvWindowMode',value),value)
         for value in ['auto','external',{},True,None,1]:
             with self.assertRaises(HTTPException):validate('mpvWindowMode',value)
+        for value in (True, False):
+            self.assertEqual(validate('nativeRenderEnabled',value),value)
+        for value in (1,'true',None,{}):
+            with self.assertRaises(HTTPException):validate('nativeRenderEnabled',value)
 
     def test_late_acquisition_after_cancellation_is_rejected(self):
         service=Service();leases=NativeReadLeases(service)

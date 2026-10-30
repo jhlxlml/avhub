@@ -71,7 +71,7 @@ test('cover resizing changes columns only, retaining cards, lazy loading, querie
 test('appearance survives reload and a new browser context without localStorage',async({page,browser,request,baseURL})=>{
   await ready(page);await page.getByRole('button',{name:'切换至浅色模式',exact:true}).click();await size(page,'舒适');
   await expect.poll(async()=>{const data=await(await request.get('/api/preferences')).json();return data.values.appearance;})
-    .toEqual({theme:'light',coverSize:'comfortable'});
+    .toEqual({theme:'light',coverSize:'comfortable',palette:'violet',accent:'#4f46c7',background:'neutral',emphasis:'soft'});
   await page.reload();await expect(page.locator('html')).toHaveAttribute('data-theme','light');
   await expect(page.locator('html')).toHaveAttribute('data-cover-size','comfortable');
   const fresh=await browser.newPage();

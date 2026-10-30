@@ -66,6 +66,32 @@ class ScreenshotTests(unittest.TestCase):
         for metadata in (b'',b'123',b'12345'):
             with self.assertRaises(HTTPException):self.upload(original[:33]+chunk(b'cICP',metadata)+original[33:])
 
+    def test_native_sixteen_bit_png_preserves_samples_and_color_tags(self):
+        for color,channels in ((2,3),(6,4)):
+            raw=(b'\0'+bytes(range(channels*2))*7)*5
+            payload=(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',7,5,16,color,0,0,0))+
+                     chunk(b'cICP',bytes([1,1,0,1]))+chunk(b'sBIT',bytes([10]*channels))+chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b''))
+            saved=self.upload(payload)
+            self.assertEqual(Path(saved['path']).read_bytes(),payload)
+            self.assertEqual((saved['width'],saved['height']),(7,5))
+
+    def test_sixteen_bit_png_must_match_its_declared_row_size(self):
+        for raw in (b'\0'+b'\0'*4,b'\0'+b'\0'*1000000):
+            payload=(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1,1,16,6,0,0,0))+
+                     chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b''))
+            with self.assertRaises(HTTPException):self.upload(payload)
+        self.assert_no_images()
+
+    def test_significant_bit_metadata_has_strict_size_values_order_and_uniqueness(self):
+        original=png(1,1)
+        for bits in (b'',b'\x08'*3,b'\x00\x08\x08\x08',b'\x09'*4):
+            with self.subTest(bits=bits), self.assertRaises(HTTPException):
+                self.upload(original[:33]+chunk(b'sBIT',bits)+original[33:])
+        valid=chunk(b'sBIT',b'\x08'*4)
+        for invalid in (original[:33]+valid+valid+original[33:],original[:-12]+valid+original[-12:]):
+            with self.assertRaises(HTTPException):self.upload(invalid)
+        self.assert_no_images()
+
     def test_custom_directory_and_shortcut_persist_with_fresh_store(self):
         directory=self.folder/'custom';directory.mkdir()
         saved=m.save_screenshot_settings(m.ScreenshotSettingsInput(directory=str(directory),shortcut='C'))

@@ -6,7 +6,7 @@ import {
   ExternalLink,Trash2,SquarePen,Download,Upload,Save,ShieldCheck,Database,SkipBack,
   SkipForward,ChevronsLeft,ChevronsRight,Info,TriangleAlert,ArrowLeft,Captions,Ellipsis,
   SquarePlay,PanelLeftClose,Pin,Minus,Square,Sun,Moon,GalleryHorizontalEnd,Shuffle,ArrowRight,
-  ArrowDownWideNarrow,ArrowUpNarrowWide,CircleHelp,Keyboard,Monitor,Mouse,ChevronsDownUp,Activity,
+  ArrowDownWideNarrow,ArrowUpNarrowWide,CircleHelp,Keyboard,Monitor,Mouse,ChevronsDownUp,Activity,Palette,
 } from 'lucide-react';
 
 // One offline, tree-shaken family. Stable names are shared by both playback engines.
@@ -25,7 +25,7 @@ const icons={
   subtitles:Captions,more:Ellipsis,purePlayback:SquarePlay,exitPurePlayback:PanelLeftClose,
   pin:Pin,minimize:Minus,windowMaximize:Square,windowRestore:Copy,sun:Sun,moon:Moon,
   coverSize:GalleryHorizontalEnd,shuffle:Shuffle,sortAsc:ArrowUpNarrowWide,
-  sortDesc:ArrowDownWideNarrow,help:CircleHelp,keyboard:Keyboard,resolution:Monitor,mouse:Mouse,collapseAll:ChevronsDownUp,activity:Activity,
+  sortDesc:ArrowDownWideNarrow,help:CircleHelp,keyboard:Keyboard,resolution:Monitor,mouse:Mouse,collapseAll:ChevronsDownUp,activity:Activity,palette:Palette,
 } as const;
 export type IconName=keyof typeof icons;
 export function Icon({name,size=18,filled=false,className=''}:{name:IconName;size?:number;filled?:boolean;className?:string}) {

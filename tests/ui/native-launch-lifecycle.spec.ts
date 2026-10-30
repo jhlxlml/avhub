@@ -1,5 +1,6 @@
 // Renderer-only lifecycle race harness; not native decoding/performance acceptance.
 import {test,expect} from '@playwright/test';
+import {revealPlayerControls} from './player-pointer';
 test.beforeEach(async({page,request})=>{
  await request.post('/test/reset');
  await request.patch('/api/preferences',{data:{values:{playerEngine:'mpv',resumeBehavior:'restart',autoNext:true,queueMode:'repeat-one'}}});
@@ -13,6 +14,10 @@ test.beforeEach(async({page,request})=>{
    onNativeState:callback=>{(window as any).__emitNativeState=callback;return()=>{};},
    nativePlayer:async(action:string,input:any)=>{
     (window as any).__launchCommands.push({action,input});
+     const closeDelay=Number(Reflect.get(window,'__closeDelay')??0);
+     if(action==='close'&&closeDelay){Reflect.set(window,'__closeStarted',true);await new Promise(resolve=>setTimeout(resolve,closeDelay));}
+    if(action==='status')return {available:!(window as any).__nativeUnavailable};
+    if(action==='snapshot'&&(window as any).__snapshotPosition!==undefined)return {session:'launch-fixture',properties:{'time-pos':(window as any).__snapshotPosition}};
     if(action==='open'){
      const delay=(window as any).__nextOpenDelay;if(delay){(window as any).__nextOpenDelay=0;await new Promise(resolve=>setTimeout(resolve,delay));}
      await new Promise(resolve=>setTimeout(resolve,50));
@@ -26,6 +31,101 @@ test.beforeEach(async({page,request})=>{
    },
   } as any;
  });
+});
+
+test('quit during native Back waits for the same close task instead of flushing a closing session',async({page})=>{
+ await page.addInitScript(()=>Object.assign(window,{__independent:true,__suppressEarlyEvents:true,__closeDelay:300}));
+ await page.goto('/?video=3');await expect(page.locator('.native-embedded-caption')).toContainText('MPV');
+ await page.getByRole('button',{name:'返回媒体库',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'__closeStarted'))).toBe(true);
+ const result=await page.evaluate(async()=>{
+  const tasks:Promise<boolean>[]=[];window.dispatchEvent(new CustomEvent('avhub-before-quit',{detail:tasks}));
+  const saved=await Promise.all(tasks);
+  return {saved,commands:(Reflect.get(window,'__launchCommands') as {action:string}[]).map(command=>command.action)};
+ });
+ expect(result.saved.every(value=>value!==false)).toBe(true);
+ expect(result.commands.filter(action=>action==='close')).toHaveLength(1);
+ expect(result.commands).not.toContain('flush');
+});
+
+for(const mode of ['embedded','independent'])test(`${mode} retry resumes the most recent native position instead of the initial start`,async({page})=>{
+ await page.addInitScript(mode=>Object.assign(window,{__independent:mode==='independent',__recovery:true,__uniqueOpen:true,__suppressEarlyEvents:true}),mode);
+ await page.goto('/?video=3');await expect(page.locator('.native-embedded-caption')).toContainText('MPV');
+ await page.evaluate(mode=>{
+  (window as any).__emitNativeState({session:'launch-fixture',presentation:mode,revision:1,phase:'error',error:'测试解码异常',properties:{'time-pos':12}});
+  (window as any).__snapshotPosition=17;
+ },mode);
+ await page.getByRole('button',{name:'重试原生播放',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).__launchCommands.filter((v:any)=>v.action==='open').length)).toBe(2);
+ expect(await page.evaluate(()=>(window as any).__launchCommands.filter((v:any)=>v.action==='open')[1].input.start)).toBe(17);
+});
+
+test('explicit engine round-trip keeps the current position and original quality without changing global defaults',async({page,request})=>{
+ await request.patch('/api/preferences',{data:{values:{playerEngine:'chromium',resumeBehavior:'restart',autoNext:false}}});
+ await page.addInitScript(()=>{Object.assign(window,{__independent:true,__recovery:true,__suppressEarlyEvents:true});});
+ const attempts:any[]=[];page.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/api/media/2/playback'))attempts.push(r.postDataJSON());});
+ await page.goto('/?video=2');
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&!v.paused&&v.currentTime>.2)).toBe(true);
+ await page.locator('video').evaluate((v:HTMLVideoElement)=>{v.currentTime=2;});
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>!v.seeking&&v.readyState>=2&&v.currentTime>=2)).toBe(true);
+ await page.locator('.playback-diagnostics summary').click();
+ await page.getByRole('button',{name:'使用 MPV 原画播放',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'正在独立窗口播放',exact:true})).toBeVisible();
+ const open=await page.evaluate(()=>(window as any).__launchCommands.find((c:any)=>c.action==='open'));
+ expect(open.input.mediaId).toBe(2);expect(open.input.start).toBeGreaterThanOrEqual(2);expect(open.input.start).toBeLessThan(5);
+ expect((await(await request.get('/api/preferences')).json()).values.playerEngine).toBe('chromium');
+ // The stub does not own a real decoder; simulate its durable close position.
+ await request.put('/api/media/2/progress',{data:{progress:4,watched:false,updated_at:Date.now()+1000}});
+ await page.getByRole('button',{name:'切换现有播放器',exact:true}).click();
+ await expect.poll(()=>attempts.length).toBe(2);
+ expect(attempts[1]).toMatchObject({start:4,prefer_original:true,force_transcode:false,quality:'auto'});
+ expect(attempts[1].allow_video_transcode).not.toBe(true);expect(attempts[1].allow_audio_transcode).not.toBe(true);
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.currentTime>=4)).toBe(true);
+ expect((await(await request.get('/api/preferences')).json()).values.resumeBehavior).toBe('restart');
+});
+
+test('failed progress save blocks engine hand-off and keeps the current player',async({page,request})=>{
+ await request.patch('/api/preferences',{data:{values:{playerEngine:'chromium',resumeBehavior:'restart',autoNext:false}}});
+ await page.goto('/?video=2');
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.currentTime>.2)).toBe(true);
+ await page.route('**/api/media/2/progress',route=>route.fulfill({status:503,json:{detail:'isolated progress failure'}}));
+ await page.locator('.playback-diagnostics summary').click();await page.getByRole('button',{name:'使用 MPV 原画播放',exact:true}).click();
+ await expect(page.getByText(/进度未保存：/)).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).__launchCommands.filter((c:any)=>c.action==='open').length)).toBe(0);
+ await expect(page.locator('video')).toHaveCount(1);await expect(page.getByRole('button',{name:'使用 MPV 原画播放',exact:true})).toBeEnabled();
+});
+
+test('unsaved speed preference blocks engine hand-off instead of silently reverting playback settings',async({page,request})=>{
+ await request.patch('/api/preferences',{data:{values:{playerEngine:'chromium',resumeBehavior:'restart',autoNext:false,playbackSpeed:1}}});
+ await page.goto('/?video=2');
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.currentTime>.2)).toBe(true);
+ await page.route('**/api/preferences',route=>route.request().method()==='PATCH'?route.fulfill({status:503,json:{detail:'isolated preference failure'}}):route.continue());
+ await revealPlayerControls(page);await page.getByRole('button',{name:'倍速',exact:true}).click();await page.getByRole('combobox',{name:'倍速',exact:true}).selectOption('1.5');
+ await page.locator('.playback-diagnostics summary').click();await page.getByRole('button',{name:'使用 MPV 原画播放',exact:true}).click();
+ await expect(page.getByText('暂未切换播放器：播放设置尚未保存',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).__launchCommands.filter((c:any)=>c.action==='open').length)).toBe(0);
+ expect((await(await request.get('/api/preferences')).json()).values.playbackSpeed).toBe(1);
+});
+
+test('unavailable native runtime does not offer an unusable original-quality hand-off',async({page,request})=>{
+ await request.patch('/api/preferences',{data:{values:{playerEngine:'chromium',resumeBehavior:'restart',autoNext:false}}});
+ await page.addInitScript(()=>{(window as any).__nativeUnavailable=true;});await page.goto('/?video=2');
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.currentTime>.2)).toBe(true);
+ await page.locator('.playback-diagnostics summary').click();await expect(page.getByRole('button',{name:'使用 MPV 原画播放',exact:true})).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).__launchCommands.some((c:any)=>c.action==='status'))).toBe(true);
+});
+
+test('engine hand-off protects unsaved media edits and cancellation leaves the draft intact',async({page,request})=>{
+ await request.patch('/api/preferences',{data:{values:{playerEngine:'chromium',resumeBehavior:'restart',autoNext:false}}});
+ await page.goto('/?video=2');
+ await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.currentTime>.2)).toBe(true);
+ await page.locator('.media-editor summary').click();await page.getByRole('textbox',{name:'显示标题',exact:true}).fill('未保存的本次草稿');
+ await page.locator('.playback-diagnostics summary').click();await page.getByRole('button',{name:'使用 MPV 原画播放',exact:true}).click();
+ const confirmation=page.getByRole('dialog',{name:'放弃未保存的修改？',exact:true});await expect(confirmation).toBeVisible();
+ await confirmation.getByRole('button',{name:'取消',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'显示标题',exact:true})).toHaveValue('未保存的本次草稿');
+ expect(await page.evaluate(()=>(window as any).__launchCommands.filter((c:any)=>c.action==='open').length)).toBe(0);
+ await expect(page.getByRole('button',{name:'使用 MPV 原画播放',exact:true})).toBeEnabled();
 });
 
 test('retry hand-off keeps Back disabled until the replacement session attaches, then returns cleanly',async({page})=>{

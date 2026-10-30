@@ -3,7 +3,7 @@
 ## 当前定位
 
 Windows Electron 的可选播放引擎，不是新增网页版，也不是默认替换现有播放器。
-在设置 → 播放偏好选择 MPV 后，仅之后打开的视频使用原生解码；默认使用播放页内嵌的原生视频区域，也可选择独立 MPV 窗口。独立窗口的交互与验收边界见 [独立窗口说明](MPV-INDEPENDENT-ACCEPTANCE.md)。原有 Chromium
+在设置 → 播放偏好选择 MPV 后，仅之后打开的视频使用原生解码；首次启用且没有窗口偏好时推荐独立窗口，已有 MPV 用户及明确保存过的选择保留，也可选择播放页内嵌区域。独立窗口的交互与验收边界见 [独立窗口说明](MPV-INDEPENDENT-ACCEPTANCE.md)。正式化推进及最新生命周期验收见 [正式化清单](MPV-PRODUCTION-READINESS.md)。原有 Chromium
 原文件直放 / 无损封装保持不变；失败不会自动降画质、静默转换音轨或反复切引擎。
 媒体页可明确选择“切换现有播放器”，关闭原生进程后再切回，并重新读取已保存进度。
 
@@ -25,15 +25,18 @@ npm run prepare:mpv
 npm run electron:dev
 ```
 
-准备脚本只在主动执行时联网。下载官方 mpv GitHub CI 的完整 Windows x64 构建，
+准备脚本只在主动执行且缺少有效缓存时联网；`npm run prepare:mpv -- -Offline` 禁止联网。
+下载官方 mpv GitHub CI 的完整 Windows x64 构建，
 校验固定归档 SHA-256 后，还分别核对 EXE 与许可文件摘要，只提取 `mpv.exe` 和
 `LICENSE.GPL` 到忽略提交的 `bin/mpv/`。唯一输入清单为 `electron/mpv-runtime.json`。
 应用启动、播放不联网、不搜索 PATH、不接受渲染器自定义可执行文件或命令行。
 缺失运行库时显示不可用，现有播放器不受影响。
+已有运行库文件内容不匹配时拒绝覆盖；下载先暂存校验再发布，ZIP 仅按清单读取，不全量解压。
+当前工具不会自动升级到另一个版本，避免覆盖正在使用或用户已有的运行库。
 
 当前试用运行库：
 
-- 上游提交：`7c4f662c0`，官方工作流运行 `38598545310`。
+- 上游提交：`7c4f662c088d55fdb4f7049e9226de061ecad8c5`，官方工作流运行 `38598545310`。
 - 资产：`mpv-v0.41.0-dev-g7c4f662c0-38598545310-x86_64-w64-mingw32-full.zip`。
 - 归档 SHA-256：`0c310aa06b77bbf603ca99b024f0cbd5d85bbceb4c106235373d844dbda941ec`。
 - 提取 EXE SHA-256：`b294a778f57b2d706e9a3c65a912130e3f5544a8b34708b67a47b59a6cbb6ff2`。
@@ -49,6 +52,10 @@ npm run electron:dev
 `node scripts/check-mpv-readiness.mjs --release` 在当前状态下**必须失败**，列出剩余发布门槛。
 这不是替代许可审查或可视验收的自动签字。普通 CI 仅验证清单、控制队列和渲染器交互，
 不因此声称已在云端验证原生 D3D11 合成或将运行库加入正式包。
+发布检查会核对 `electron/mpv-distribution.json` 的材料状态、绑定运行库的摘要及实际文件，
+不能只修改 `distributionReady` 就通过；`--release` 不能与跳过运行库验证的 `--manifest-only` 合用。
+版权与构建脚本的固定提交快照见 [来源材料](../third_party/mpv/README.md)；固定版本候选
+的实测与限制见 [正式化清单](MPV-PRODUCTION-READINESS.md)。
 
 ## 架构与安全边界
 

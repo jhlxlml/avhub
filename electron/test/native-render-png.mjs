@@ -1,0 +1,9 @@
+// Diagnostic real-libmpv PNG, retained only in this owned test directory.
+import assert from 'node:assert/strict';import path from 'node:path';import {createRequire} from 'node:module';import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';import {setTimeout as delay} from 'node:timers/promises';
+const root=path.resolve(import.meta.dirname,'../..'),require=createRequire(import.meta.url),{RenderHostClient}=require('../../electron/dist/renderHostClient.js'),folder=mkdtempSync(path.join(root,'build/native-render-png-'));
+const client=new RenderHostClient({root,host:path.join(root,'build/native-render/AVHubNativeRender.exe'),dll:path.join(root,'build/libmpv-d3d11-input/runtime/libmpv-2.dll'),manifest:path.join(root,'build/native-render/runtime.json')},{drain:async()=>{}});
+try{await client.open({path:path.join(root,'build/libmpv-render-spike/samples/Precision-SDR10-1024x256.mkv'),contract:{width:1024,height:256,depth:10,primaries:'bt709',transfer:'bt709',matrix:'bt709',range:'tv',hdr:false},startSec:0,autoplay:false});
+ for(let i=0;i<100;i++){const s=await client.snapshot();if(s.frame.waiting)await client.acknowledge(s.frame.serial);if(s.loaded&&s.properties['video-params'])break;await delay(20);}
+ const file=path.join(folder,'frame.png');await client.captureOwnedPng(file);const png=readFileSync(file),chunks=[];for(let at=8;at<png.length;){const length=png.readUInt32BE(at),type=png.subarray(at+4,at+8).toString();chunks.push({type,length,...(type==='IHDR'?{width:png.readUInt32BE(at+8),height:png.readUInt32BE(at+12),depth:png[at+16],color:png[at+17],interlace:png[at+20]}:{})});at+=12+length;}
+ writeFileSync(path.join(folder,'report.json'),JSON.stringify({file,chunks},null,2));console.log(JSON.stringify({file,chunks}));assert.equal(png[24],16);
+}finally{await client.close();}

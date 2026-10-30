@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "archiveSha256": "0c310aa06b77bbf603ca99b024f0cbd5d85bbceb4c106235373d844dbda941ec",
+  "exeSha256": "b294a778f57b2d706e9a3c65a912130e3f5544a8b34708b67a47b59a6cbb6ff2",
+  "licenseSha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6",
+  "notices": {"state": "pending", "files": []},
+  "correspondingSources": {"state": "pending", "files": []},
+  "buildMaterials": {"state": "pending", "files": []},
+  "desktopAcceptance": {"state": "pending", "files": []},
+  "packagedAcceptance": {"state": "pending", "files": []}
+}

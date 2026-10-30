@@ -37,6 +37,10 @@ try{
  const api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();},{url,method,body});
  if(!index){await api('/api/roots','POST',{path:media});await api('/api/scan','POST');
  await expect.poll(async()=>(await api('/api/scan')).state,{timeout:30000}).toBe('completed');}
+ if(process.env.AVHUB_TEST_EMPTY_NATIVE_METADATA==='1'){
+  assert.equal(index,undefined,'metadata mutation is restricted to owned generated fixtures');
+  const cleared=spawnSync('python',['-c',"import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); db.execute(\"UPDATE media SET video_color='{}',video_codec=NULL\"); db.commit(); db.close()",path.join(data,'library.db')],{windowsHide:true,timeout:10000});assert.equal(cleared.status,0,String(cleared.stderr));
+ }
  await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true}}});
  await page.reload();await (index?page.locator('.open-video').first():page.getByRole('button',{name:'播放 A',exact:true})).click();
  await expect(page.getByText('MPV · 原文件直接播放',{exact:true})).toBeVisible({timeout:30000});

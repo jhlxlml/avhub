@@ -4,6 +4,7 @@ import {LibraryPageCache} from './libraryCache';
 export {LibraryPageCache} from './libraryCache';
 
 type Snapshot<T>={url:string;revision:number;data?:T;error:string;pending:boolean};
+type QueryIdentity={url:string|null;revision:number};
 // Only a matching query may supply content. A slow old response can never
 // relabel another classification, directory or search result as current.
 export function useLibraryQuery<T>(url:string|null,revision:number,cache:LibraryPageCache,search:string,retry=0) {
@@ -27,14 +28,20 @@ export function useLibraryQuery<T>(url:string|null,revision:number,cache:Library
       setSnapshot({url,revision,data:entry.data,error:'',pending:false});return;
     }
     const controller=new AbortController();
-    setSnapshot({url,revision,data:entry?.data,error:'',pending:true});
+    setSnapshot(current=>({url,revision,data:entry?.data??(current?.url===url&&current.revision===revision?current.data:undefined),error:'',pending:true}));
     const load=async()=>{
       try {
-        const result=await api<T>(url,{signal:controller.signal});
-        if(controller.signal.aborted)return;
-        cache.put(url,revision,result);
-        setSnapshot({url,revision,data:result,error:'',pending:false});
-      }catch(e){if(!controller.signal.aborted)setSnapshot({url,revision,data:entry?.data,error:errorText(e),pending:false});}
+        while(!controller.signal.aborted){
+          const generation=cache.generation;
+          const result=await api<T>(url,{signal:controller.signal});
+          if(controller.signal.aborted)return;
+          // A read started before a committed mutation may contain old values,
+          // even when URL/revision still match. Fetch a post-write snapshot.
+          if(generation!==cache.generation)continue;
+          cache.put(url,revision,result);
+          setSnapshot({url,revision,data:result,error:'',pending:false});return;
+        }
+      }catch(e){if(!controller.signal.aborted)setSnapshot(current=>({url,revision,data:current?.url===url&&current.revision===revision?current.data:entry?.data,error:errorText(e),pending:false}));}
     };
     // Classification, pagination and directory changes are immediate. Only
     // text editing needs debounce; never apply it to every query transition.
@@ -48,10 +55,11 @@ export function useLibraryQuery<T>(url:string|null,revision:number,cache:Library
     const timer=window.setTimeout(()=>setFeedback(identity),180);
     return()=>clearTimeout(timer);
   },[identity,loading]);
-  const update=useCallback((change:(value:T|undefined)=>T|undefined)=>{
+  const update=useCallback((change:(value:T|undefined)=>T|undefined,expected?:QueryIdentity)=>{
     setSnapshot(current=>{
       const {url:key,revision:version}=active.current;
       if(!key)return current;
+      if(expected&&(expected.url!==key||expected.revision!==version))return current;
       const valid=current?.url===key&&current.revision===version;
       const entry=cache.get<T>(key,version);
       const next=change(valid?current.data:entry?.data);
@@ -60,5 +68,7 @@ export function useLibraryQuery<T>(url:string|null,revision:number,cache:Library
       return {url:key,revision:version,data:next,error:valid?current.error:'',pending:valid?current.pending:false};
     });
   },[cache]);
-  return {data,loading,error,showLoading:loading&&feedback===identity,update};
+  const context=()=>({...active.current});
+  const isCurrent=(expected:QueryIdentity)=>expected.url===active.current.url&&expected.revision===active.current.revision;
+  return {data,loading,error,showLoading:loading&&feedback===identity,update,context,isCurrent};
 }

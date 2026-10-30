@@ -1,0 +1,274 @@
+{
+  "schema": 1,
+  "status": "incomplete-materials",
+  "archiveSha256": "a49811c0752c108b8260636f9c6f6fcb97406641c98b30f1e7b500dfb20177de",
+  "sourceCommit": "41f6a645068483470267271e1d09966ca3b9f413",
+  "exeSha256": "3ad8364b572bffc7980c5c4bb11b952b2dd2429c203971ebed890d214b6e07c1",
+  "binaryCatalog": "ci/mpv-stable-candidate.json",
+  "recipeReference": "third_party/mpv/upstream-stable/ci/build-mingw64.sh",
+  "scope": "Runtime file classification plus explicit static recipe dependencies; not a complete transitive SBOM. Recipe versions are not proof of shipped binary versions.",
+  "transitiveDependenciesVerified": false,
+  "distributionReady": false,
+  "components": [
+    {
+      "id": "mpv",
+      "linkage": "program",
+      "files": [
+        "mpv.exe"
+      ],
+      "sourceRepository": "https://github.com/mpv-player/mpv",
+      "revision": "41f6a645068483470267271e1d09966ca3b9f413",
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "archive-collected-unreviewed",
+      "notices": "partial"
+    },
+    {
+      "id": "ffmpeg",
+      "linkage": "dynamic",
+      "files": [
+        "avcodec-62.dll",
+        "avdevice-62.dll",
+        "avfilter-11.dll",
+        "avformat-62.dll",
+        "avutil-60.dll",
+        "swresample-6.dll",
+        "swscale-9.dll"
+      ],
+      "sourceRepository": "https://github.com/FFmpeg/FFmpeg",
+      "revision": "1fcb201ab10cbc98d931e340da6ace292e82b1e1",
+      "reportedVersion": "git-2025-12-21-1fcb201",
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "archive-collected-unreviewed",
+      "notices": "missing"
+    },
+    {
+      "id": "libass",
+      "linkage": "dynamic",
+      "files": [
+        "libass-9.dll"
+      ],
+      "sourceRepository": "https://github.com/libass/libass",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "dav1d",
+      "linkage": "dynamic",
+      "files": [
+        "libdav1d.dll"
+      ],
+      "sourceRepository": "https://code.videolan.org/videolan/dav1d",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "freetype",
+      "linkage": "dynamic",
+      "files": [
+        "libfreetype-6.dll"
+      ],
+      "sourceRepository": "https://download.savannah.gnu.org/releases/freetype/",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": "2.14.1",
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "fribidi",
+      "linkage": "dynamic",
+      "files": [
+        "libfribidi-0.dll"
+      ],
+      "sourceRepository": "https://github.com/fribidi/fribidi",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": "1.0.16",
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "gcc-runtime",
+      "linkage": "dynamic",
+      "files": [
+        "libgcc_s_seh-1.dll",
+        "libssp-0.dll",
+        "libstdc++-6.dll"
+      ],
+      "sourceRepository": null,
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "harfbuzz",
+      "linkage": "dynamic",
+      "files": [
+        "libharfbuzz-0.dll"
+      ],
+      "sourceRepository": "https://github.com/harfbuzz/harfbuzz",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": "12.2.0",
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "libiconv",
+      "linkage": "dynamic",
+      "files": [
+        "libiconv-2.dll"
+      ],
+      "sourceRepository": "https://ftpmirror.gnu.org/gnu/libiconv/",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": "1.18",
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "lcms2",
+      "linkage": "dynamic",
+      "files": [
+        "liblcms2.dll"
+      ],
+      "sourceRepository": "https://github.com/mm2/Little-CMS",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "libplacebo",
+      "linkage": "dynamic",
+      "files": [
+        "libplacebo-358.dll"
+      ],
+      "sourceRepository": "https://code.videolan.org/videolan/libplacebo",
+      "revision": null,
+      "reportedVersion": "v7.358.0",
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "shaderc",
+      "linkage": "dynamic",
+      "files": [
+        "libshaderc_shared.dll"
+      ],
+      "sourceRepository": "https://github.com/google/shaderc",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "spirv-cross",
+      "linkage": "dynamic",
+      "files": [
+        "libspirv-cross-c-shared.dll"
+      ],
+      "sourceRepository": "https://github.com/KhronosGroup/SPIRV-Cross",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "mingw-w64-runtime",
+      "linkage": "dynamic",
+      "files": [
+        "libwinpthread-1.dll"
+      ],
+      "sourceRepository": null,
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "vulkan-loader",
+      "linkage": "dynamic",
+      "files": [
+        "vulkan-1.dll"
+      ],
+      "sourceRepository": "https://github.com/KhronosGroup/Vulkan-Loader",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "zlib",
+      "linkage": "dynamic",
+      "files": [
+        "zlib1.dll"
+      ],
+      "sourceRepository": "https://zlib.net/fossils/",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": "1.3.1",
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "luajit",
+      "linkage": "static-from-recipe",
+      "files": [
+        "mpv.exe"
+      ],
+      "sourceRepository": "https://github.com/LuaJIT/LuaJIT",
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    },
+    {
+      "id": "mujs",
+      "linkage": "static-from-recipe",
+      "files": [
+        "mpv.exe"
+      ],
+      "sourceRepository": null,
+      "revision": null,
+      "reportedVersion": null,
+      "recipeVersion": null,
+      "licenseReview": "pending",
+      "correspondingSource": "missing",
+      "notices": "missing"
+    }
+  ]
+}

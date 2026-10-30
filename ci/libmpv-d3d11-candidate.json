@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "status": "m2-d3d11-capability-probe-only",
+  "sourceCommit": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+  "releaseTag": "2026-10-25-baa3e11d42",
+  "url": "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-10-25-baa3e11d42/mpv-dev-x86_64-20261025-git-baa3e11d42.7z",
+  "archiveSha256": "eac3f092757b3c741d13322ea9884de23f10f09abe16bfe191f04da5680f57f1",
+  "dllSha256": "ea82215b32d8e5c8ed8e41b97659a5bf7c0ed0d1861d1baa61e6a6500a8ffe74",
+  "dllSize": 122210816,
+  "platform": "windows-x64",
+  "license": "GPL build; dependency notices and corresponding build/source materials pending review",
+  "distributionReady": false,
+  "files": [
+    {
+      "name": "include/mpv/client.h",
+      "size": 86136,
+      "sha256": "3da9b8c61c3fb4e2d76bd248cebf72f3ee830331411b71a76adbd5e05660cc50"
+    },
+    {
+      "name": "include/mpv/render.h",
+      "size": 34869,
+      "sha256": "f2550aa29b2e9b20988bd954b4383e9fa05fd9e40d1669fbc6edf2afac603f15"
+    },
+    {
+      "name": "include/mpv/render_gl.h",
+      "size": 7328,
+      "sha256": "48662c0ed9872a14dd9e1684105c97f69f94a0414709c254c5d372adc41d2e69"
+    },
+    {
+      "name": "include/mpv/stream_cb.h",
+      "size": 9589,
+      "sha256": "188e58b6d14383e15a5dffdc4ecebbdfbf2e412b9c099ff21b571f747a8ce32d"
+    },
+    {
+      "name": "libmpv.dll.a",
+      "size": 53308,
+      "sha256": "bef1b89f534bc86b33135e1f04fa2d5064b9d48b5de8bc9866665bbf43def793"
+    },
+    {
+      "name": "libmpv-2.dll",
+      "size": 122210816,
+      "sha256": "ea82215b32d8e5c8ed8e41b97659a5bf7c0ed0d1861d1baa61e6a6500a8ffe74"
+    }
+  ],
+  "buildContext": "https://github.com/zhongfly/mpv-winbuild/actions/runs/40191236015",
+  "renderApiCommit": "4255130de410e0cbdab694b951085409d466b704",
+  "supplementalHeader": {
+    "url": "https://raw.githubusercontent.com/mpv-player/mpv/baa3e11d42cb7978da634a8a6a3a55fe074d01be/include/mpv/render_d3d11.h",
+    "path": "third_party/libmpv-render-d3d11/render_d3d11.h",
+    "sha256": "7b880453ee3c780b0d0f1c3f8ecaa1d23b289522f4c687e6857c8475f4a3f6fb",
+    "size": 4413,
+    "reason": "Fixed build archive omits this installed header; fetched from exact matching source, ISC-style notice included"
+  }
+}

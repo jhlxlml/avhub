@@ -1,6 +1,7 @@
 """Pin generated cover paths from response construction through disconnect."""
 import threading
 import weakref
+from contextlib import contextmanager
 from pathlib import Path
 from starlette.responses import FileResponse
 
@@ -13,6 +14,21 @@ def key(path):return str(Path(path).resolve()).casefold()
 
 def active(path):
     with lock:return bool(_readers.get(key(path)))
+
+
+@contextmanager
+def pin(paths):
+    """Protect a snapshot's paths without retaining one OS handle per image."""
+    tokens={key(path) for path in paths}
+    with lock:
+        for token in tokens:_readers[token]=_readers.get(token,0)+1
+    try:yield
+    finally:
+        with lock:
+            for token in tokens:
+                count=_readers[token]-1
+                if count:_readers[token]=count
+                else:del _readers[token]
 
 
 class PinnedArtworkResponse(FileResponse):

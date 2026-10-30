@@ -51,13 +51,13 @@ def validate_png(path):
     try:
         with path.open('rb') as image:
             if image.read(8)!=b'\x89PNG\r\n\x1a\n':raise ValueError()
-            width=height=expected=inflated=0;decoder=None;seen_idat=False;ended_idat=False
+            width=height=expected=inflated=depth=color=0;decoder=None;seen_idat=False;ended_idat=False;seen_sbit=False
             while True:
                 header=image.read(8)
                 if len(header)!=8:raise ValueError()
                 length,kind=struct.unpack('>I4s',header)
                 if kind==b'IEND' and length:raise ValueError()
-                if length>MAX_BYTES or kind not in (b'IHDR',b'IDAT',b'IEND',b'sRGB',b'gAMA',b'cHRM',b'pHYs',b'cICP'):raise ValueError()
+                if length>MAX_BYTES or kind not in (b'IHDR',b'IDAT',b'IEND',b'sRGB',b'gAMA',b'cHRM',b'pHYs',b'cICP',b'sBIT'):raise ValueError()
                 # Native MPV PNGs preserve CICP color metadata. Validate its
                 # fixed size and CRC without stripping tags or re-encoding.
                 if kind==b'cICP' and (length!=4 or seen_idat):raise ValueError()
@@ -66,8 +66,19 @@ def validate_png(path):
                 if kind==b'IHDR':
                     if width or length!=13:raise ValueError()
                     content=image.read(13);width,height,depth,color,compression,filtering,interlace=struct.unpack('>IIBBBBB',content)
-                    if not width or not height or width*height>MAX_PIXELS or depth!=8 or color not in (2,6) or compression or filtering or interlace:raise ValueError()
-                    expected=height*(1+width*(3 if color==2 else 4));decoder=zlib.decompressobj();crc=zlib.crc32(content,zlib.crc32(kind));length=0
+                    if not width or not height or width*height>MAX_PIXELS or depth not in (8,16) or color not in (2,6) or compression or filtering or interlace:raise ValueError()
+                    # Native SDR10 captures use 16-bit PNG. Validate bounded
+                    # raw rows and preserve the uploaded bytes; never quantize
+                    # them to fit the browser's historical 8-bit screenshot.
+                    expected=height*(1+width*(3 if color==2 else 4)*(depth//8));decoder=zlib.decompressobj();crc=zlib.crc32(content,zlib.crc32(kind));length=0
+                elif kind==b'sBIT':
+                    # MPV records the source precision (e.g. 10 significant
+                    # bits in a 16-bit RGB PNG). Keep it, but validate ordering,
+                    # exact channel count and the PNG sample-depth bounds.
+                    if seen_idat or seen_sbit or length!=(3 if color==2 else 4):raise ValueError()
+                    content=image.read(length)
+                    if len(content)!=length or any(value<1 or value>depth for value in content):raise ValueError()
+                    seen_sbit=True;crc=zlib.crc32(content,zlib.crc32(kind));length=0
                 else:
                     if kind==b'IDAT':
                         if ended_idat:raise ValueError()

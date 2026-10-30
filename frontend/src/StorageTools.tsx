@@ -23,8 +23,8 @@ export function StorageTools({busy,changeBusy,scanning,enabled}:{busy:boolean;ch
     if(plan.rollback_files>0&&!await confirmAction('删除旧回滚数据库？',`其中包含 ${plan.rollback_files} 个旧恢复前数据库，删除后不可恢复。`,'建议先保存完整备份。确认删除这些副本吗？'))return;
     changeBusy(true);setError('');setNotice('');
     try{
-      const result=await api<{removed:number;freed_bytes:number;skipped:number}>('/api/storage/cleanup',json('POST',{token:plan.token,rollback_days:plan.rollback_days}));
-      setNotice(`已清理 ${result.removed} 个文件，约 ${size(result.freed_bytes)}${result.skipped?`；${result.skipped} 个占用或已变化的文件已跳过`:''}。派生缓存不可撤销，但可重新生成。`);
+      const result=await api<{removed:number;freed_bytes:number;skipped:number;remaining?:number;stopped_reason?:string}>('/api/storage/cleanup',json('POST',{token:plan.token,rollback_days:plan.rollback_days}));
+      setNotice(`已清理 ${result.removed} 个文件，约 ${size(result.freed_bytes)}${result.skipped?`；${result.skipped} 个占用或已变化的文件已跳过`:''}。${result.remaining?`本次已分批暂停，尚有 ${result.remaining} 项未处理；${result.stopped_reason||'为保持界面响应，已限制单次清理时长'}。请核对新预览后继续。`:'派生缓存不可撤销，但可重新生成。'}`);
       await preview();
     }catch(e){setError(errorText(e));}finally{changeBusy(false);}
   }

@@ -1,5 +1,4 @@
 import {app,BaseWindow,BrowserWindow,screen,dialog,type IpcMainInvokeEvent} from 'electron';
-import {existsSync} from 'node:fs';
 import {stat,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
@@ -13,8 +12,9 @@ import {startupFailure} from './nativeFailure';
 import {ownedRendererExited} from './processLiveness';
 import {IndependentPlayer} from './independentPlayer';
 import {captureNativeFrame} from './nativeCapture';
+import {NativeRuntime} from './nativeRuntime';
 
-type Dependencies={origin:()=>string;token:()=>string;runtime:()=>string;data:()=>string;main:()=>BrowserWindow|null;icon:()=>Electron.NativeImage;log:(text:string)=>void;mode:(value:{purePlayback?:boolean;alwaysOnTop?:boolean;videoAspectRatio?:number})=>unknown;windowAction:(value:string)=>unknown;settled:()=>Promise<void>;windowState:()=>{purePlayback:boolean;alwaysOnTop:boolean;maximized:boolean;fullScreen:boolean}};
+type Dependencies={origin:()=>string;token:()=>string;runtime:()=>string;runtimeManifest?:()=>string|undefined;data:()=>string;main:()=>BrowserWindow|null;icon:()=>Electron.NativeImage;log:(text:string)=>void;mode:(value:{purePlayback?:boolean;alwaysOnTop?:boolean;videoAspectRatio?:number})=>unknown;windowAction:(value:string)=>unknown;settled:()=>Promise<void>;windowState:()=>{purePlayback:boolean;alwaysOnTop:boolean;maximized:boolean;fullScreen:boolean}};
 type Active={client:MpvClient;host:BaseWindow;overlay:BrowserWindow;mediaId:number;title:string;owner:string;closing:boolean;saveError:string;heartbeat:ReturnType<typeof setInterval>;persist:Promise<unknown>;pure:boolean;normal:Electron.Rectangle|null;normalMaximized:boolean;expanded:Electron.Rectangle|null;screenshotBusy:boolean;audioRevision:number;speedRevision:number;savedAudio:number;savedSpeed:number;publishTimer?:ReturnType<typeof setTimeout>;disposeWindows?:()=>void;subtitleAppearance:SubtitleAppearance;styleRevision:number;savedStyle:number;subtitlePicking:boolean;geometryGuardUntil:number;operations:Set<Promise<unknown>>};
 const finite=(value:unknown,min:number,max:number)=>typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max;
 
@@ -115,10 +115,12 @@ export class NativePlayer {
   private pendingOpen:Promise<unknown>|null=null;
   private shuttingDown=false;
   private independent:IndependentPlayer;
+  private runtime:NativeRuntime;
   constructor(private deps:Dependencies){
+    this.runtime=new NativeRuntime(deps.runtime,deps.runtimeManifest?.());
     this.independent=new IndependentPlayer({...deps,api:(route,method,body)=>this.api(route,method,body),send:(channel,value)=>{try{const main=deps.main();if(main&&!main.isDestroyed())main.webContents.send(channel,value);}catch{deps.log('native-independent-notification-unavailable');}}});
   }
-  status(){return {available:process.platform==='win32'&&existsSync(this.deps.runtime()),active:Boolean(this.active)||this.independent.hasSession,engine:'mpv',experimental:true,packaged:app.isPackaged};}
+  async status(force=false){return {...await this.runtime.check(force),active:Boolean(this.active)||this.independent.hasSession,engine:'mpv',experimental:true,packaged:app.isPackaged,recommendedWindowMode:'independent'};}
   private async api(route:string,method='GET',body?:unknown,timeoutMs=10000){
     const response=await fetch(this.deps.origin()+route,{method,headers:{'X-AVHub-Token':this.deps.token(),...(body!==undefined?{'Content-Type':'application/json'}:{})},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeoutMs),redirect:'error'});
     const result=await response.json() as Record<string,any>;
@@ -139,6 +141,10 @@ export class NativePlayer {
   private async handleInvoke(event:IpcMainInvokeEvent,action:unknown,input:unknown){
     this.trusted(event);
     if(action==='status')return this.status();
+    if(action==='appearance'){
+      if(BrowserWindow.fromWebContents(event.sender)!==this.deps.main())throw new Error('仅媒体库窗口可同步原生配色');
+      return this.independent.updateAppearance(input);
+    }
     if(this.independent.hasSession&&action!=='open'){
       if(BrowserWindow.fromWebContents(event.sender)!==this.deps.main())throw new Error('独立播放器仅接受媒体库操作');
       if(action==='recover'&&this.pendingOpen)throw new Error('原生播放正在启动，请稍后重试');
@@ -158,6 +164,8 @@ export class NativePlayer {
       if(this.active&&this.active!==this.failedStartup)throw new Error('请先关闭当前原生播放器');
       const rect=value.viewport===undefined?undefined:nativeViewport(value.viewport);
       const pending=(async()=>{
+        const runtime=await this.status(true);
+        if(!runtime.available)throw new Error(`${runtime.reason}；${app.isPackaged?'请使用包含完整 MPV 运行库的桌面包，或选择现有播放器，无需运行开发脚本':'可运行 npm run prepare:mpv 后重新检测'}`);
         // Retrying a failed startup must retry its retained cleanup first,
         // even if the user has since changed the preferred window mode.
         if(this.active&&this.active===this.failedStartup){try{await this.close(true);}catch(cleanup){throw startupFailure(this.failedStartupError??new Error('原生会话清理未完成'),cleanup);}}
@@ -251,11 +259,11 @@ export class NativePlayer {
       if(active.subtitlePicking)throw new Error('请选择或取消当前字幕文件');
       active.subtitlePicking=true;
       try{
-        const result=await dialog.showOpenDialog(this.embedded.has(active)?this.deps.main()!:active.overlay,{title:'加载外挂字幕',properties:['openFile'],filters:[{name:'字幕文件',extensions:['srt','ass','ssa','vtt']}]});
+        const result=await dialog.showOpenDialog(this.embedded.has(active)?this.deps.main()!:active.overlay,{title:'加载外挂字幕',properties:['openFile'],filters:[{name:'字幕文件',extensions:['srt','ass','ssa','vtt','sup']}]});
         if(result.canceled||!result.filePaths[0])return {cancelled:true};
         if(this.active!==active||active.closing||active.overlay.isDestroyed())throw new Error('原生播放会话已关闭');
         const selected=await realpath(result.filePaths[0]),info=await stat(selected);
-        if(!path.isAbsolute(selected)||!['.srt','.ass','.ssa','.vtt'].includes(path.extname(selected).toLowerCase())||!info.isFile()||info.size>16*1024**2)throw new Error('请选择不超过 16 MB 的 SRT、ASS、SSA 或 VTT 字幕');
+        if(!path.isAbsolute(selected)||!['.srt','.ass','.ssa','.vtt','.sup'].includes(path.extname(selected).toLowerCase())||!info.isFile()||(path.extname(selected).toLowerCase()!=='.sup'&&info.size>16*1024**2))throw new Error('请选择 SRT、ASS、SSA、VTT 或 SUP 字幕；文字字幕不得超过 16 MiB');
         await active.client.command(['sub-add',selected,'select']);
         const item=await this.api(`/api/media/${active.mediaId}`),known=item.external_subtitles?.find((value:any)=>path.resolve(value.path).toLowerCase()===selected.toLowerCase());
         const memory=this.trackMemory.get(active);
@@ -382,7 +390,8 @@ export class NativePlayer {
   }
   private async open(mediaId:number,start:number,viewport?:NativeViewport){
     if(this.opening)throw new Error('原生播放器正在启动');
-    if(!this.status().available)throw new Error(app.isPackaged?'当前桌面包未提供可用的 MPV 运行库，请在播放偏好选择现有播放器；无需执行开发脚本':'尚未准备 MPV 运行库，请运行 scripts/prepare-mpv.ps1；现有播放器仍可使用');
+    const runtime=await this.status();
+    if(!runtime.available)throw new Error(runtime.reason);
     if(this.active===this.failedStartup&&this.active){try{await this.close(true);}catch(cleanup){throw startupFailure(this.failedStartupError??new Error('原生会话清理未完成'),cleanup);}}
     if(this.active)throw new Error('请先关闭当前原生播放窗口');
     this.opening=true;const owner=randomBytes(16).toString('hex');let active:Active|undefined;const ownedWindows:BaseWindow[]=[];

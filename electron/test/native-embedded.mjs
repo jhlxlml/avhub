@@ -6,7 +6,10 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {nativeVisualEvidence} from './native-visual-evidence.mjs';
+import {candidateRuntime} from './native-candidate-input.mjs';
 const root=path.resolve(import.meta.dirname,'../..');mkdirSync(path.join(root,'build'),{recursive:true});
+const spike=process.env.AVHUB_M2_SPIKE==='1';
+const candidate=spike?candidateRuntime(root,'stable-0.41.0'):null;
 const data=mkdtempSync(path.join(root,'build','native-embedded-')),media=path.join(data,'media');mkdirSync(media);
 const index=process.argv[2],mediaId=Number(process.argv[3]);let source=path.join(media,'Embedded sample.mkv');
 if(index){
@@ -27,7 +30,27 @@ const generated=spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','l
 const identity=()=>({hash:createHash('sha256').update(readFileSync(source)).digest('hex'),mtime:statSync(source).mtimeMs}),before=identity();
 let desktop;const errors=[];
 try{
-  desktop=await _electron.launch({args:[root,'--no-sandbox'],cwd:data,env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'1'},timeout:60000});
+  const env={...process.env,AVHUB_DATA_DIR:data,AVHUB_APP_HOME:data,AVHUB_HEADLESS_TEST:spike?'0':'1'};
+  if(spike){delete env.ELECTRON_RUN_AS_NODE;delete env.NODE_OPTIONS;}
+  desktop=await _electron.launch({args:spike?[root]:[root,'--no-sandbox'],cwd:data,env,timeout:60000});
+  if(spike){
+    process.env.AVHUB_REQUIRE_VISIBLE_NATIVE='1';
+    process.env.AVHUB_NATIVE_LAYER_DIAGNOSTIC='1';
+    await desktop.evaluate((_,{root,candidate})=>{
+      const load=process.getBuiltinModule('module').createRequire(root+'/package.json');
+      const {MpvClient}=load(root+'/electron/dist/mpvClient.js'),start=MpvClient.prototype.start;
+      MpvClient.prototype.start=function(...args){args[0]=candidate.executable;return start.apply(this,args);};
+    },{root,candidate});
+    const environment=await desktop.evaluate(async({app,BrowserWindow,screen})=>({
+      commandLine:process.argv,gpu:await app.getGPUInfo('complete'),features:app.getGPUFeatureStatus(),
+      displays:screen.getAllDisplays().map(d=>({scale:d.scaleFactor,bounds:d.bounds,frequency:d.displayFrequency})),
+      preferences:BrowserWindow.getAllWindows().map(w=>w.webContents.getLastWebPreferences())
+    }));
+    writeFileSync(path.join(data,'m2-environment.json'),JSON.stringify({candidate,environment},null,2));
+    assert.equal(environment.gpu.auxAttributes.sandboxed,true,'M2 requires the real GPU sandbox');
+    assert.match(environment.gpu.auxAttributes.glImplementationParts,/angle=d3d11/,'M2 hardware path must initialize');
+    console.log('M2 evidence directory:',data);
+  }
   const page=await desktop.firstWindow();page.on('pageerror',error=>errors.push(error.message));
   await desktop.evaluate(({BrowserWindow})=>{const main=BrowserWindow.getAllWindows()[0];main.show();main.focus();});
   await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
@@ -40,6 +63,11 @@ try{
   await page.goto(new URL(`/?video=${item.id}`,page.url()).href);
   await expect(page.getByText('MPV · 原文件直接播放',{exact:true})).toBeVisible({timeout:30000});
   const overlay=desktop.windows().find(w=>w.url().includes('nativePlayer='));assert.ok(overlay);overlay.on('pageerror',error=>errors.push(error.message));
+  if(spike){
+    const preferences=await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().map(w=>w.webContents.getLastWebPreferences()));
+    writeFileSync(path.join(data,'m2-window-preferences.json'),JSON.stringify(preferences,null,2));
+    for(const p of preferences){assert.equal(p.sandbox,true);assert.equal(p.contextIsolation,true);assert.equal(p.nodeIntegration,false);}
+  }
   const state=()=>overlay.evaluate(()=>window.avhubDesktop.nativePlayer('snapshot'));
   await expect.poll(async()=>(await state()).phase,{timeout:20000}).toBe('ready');assert.equal((await state()).embedded,true);
   const session=(await state()).session;

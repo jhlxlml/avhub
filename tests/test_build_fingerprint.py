@@ -1,4 +1,5 @@
 import json
+import os
 import runpy
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ class NestedUIBuildFingerprintTests(unittest.TestCase):
                 'run.py': '# fixture', 'package.json': '{"version":"0.2.14"}',
                 'vite.config.ts': 'export default {}', 'app/sqlite-runtime.json': '{}',
                 'package-lock.json':'{"lockfileVersion":3}', 'requirements.txt':'fastapi==0.1',
+                'scripts/frontend-notices.mjs':'export function frontendNotices(){}',
                 'frontend/src/main.tsx': 'export const main=1',
                 'frontend/src/components/ui/button.tsx': 'export const button=1',
                 'frontend/src/lib/utils.ts': 'export const cn=1',
@@ -42,12 +44,21 @@ class NestedUIBuildFingerprintTests(unittest.TestCase):
                 return loaded['build_id']
 
             first = capture()
+            frozen_time='2026-10-29T12:35:36.395Z'
+            command=['node',str(root/'scripts/write-build-info.mjs')]
+            subprocess.run(command,cwd=root,env={**os.environ,'AVHUB_BUILD_TIMESTAMP':frozen_time},check=True,capture_output=True,timeout=15)
+            frozen=(root/'app/build-info.json').read_bytes()
+            self.assertEqual(json.loads(frozen)['built_at'],frozen_time)
+            self.assertEqual(json.loads(frozen)['build_id'],first)
+            invalid=subprocess.run(command,cwd=root,env={**os.environ,'AVHUB_BUILD_TIMESTAMP':'not-a-timestamp'},capture_output=True,timeout=15)
+            self.assertNotEqual(invalid.returncode,0)
+            self.assertEqual((root/'app/build-info.json').read_bytes(),frozen)
             (root / 'frontend/src/components/ui/button.tsx').write_text('export const button=2')
             second = capture()
             self.assertNotEqual(first, second)
             (root / 'app/static/assets/generated.css').write_text('body{color:blue}')
             self.assertEqual(second, capture())
-            for relative in ('package-lock.json','requirements.txt','frontend/public/fonts/owned.woff2'):
+            for relative in ('package-lock.json','requirements.txt','frontend/public/fonts/owned.woff2','scripts/frontend-notices.mjs'):
                 previous=capture()
                 with (root/relative).open('a',encoding='utf-8') as file:file.write('\nchanged')
                 self.assertNotEqual(previous,capture(),relative)

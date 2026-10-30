@@ -11,7 +11,7 @@ try:
 except (OSError, ValueError):
     BUILD = {'version': '0.2.16', 'build_id': 'unbuilt', 'built_at': None}
 if not getattr(sys, 'frozen', False):
-    files = ['run.py', 'package.json', 'package-lock.json', 'requirements.txt', 'vite.config.ts', 'app/sqlite-runtime.json']
+    files = ['run.py', 'package.json', 'package-lock.json', 'requirements.txt', 'vite.config.ts', 'scripts/frontend-notices.mjs', 'app/sqlite-runtime.json']
     for directory in ['app', 'frontend/src', 'electron/src']:
         candidates = (ROOT / directory).iterdir() if directory == 'app' else (ROOT / directory).rglob('*')
         files += [item.relative_to(ROOT).as_posix() for item in candidates

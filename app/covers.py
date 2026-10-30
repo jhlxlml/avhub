@@ -7,6 +7,7 @@ import threading
 from pathlib import Path
 from fastapi import HTTPException
 from starlette.concurrency import run_in_threadpool
+from . import artwork_readers
 
 MAX_BYTES=8*1024**2
 MAX_PIXELS=20000000
@@ -29,6 +30,7 @@ def discard(db,data,relative):
         if not relative or db.execute('SELECT 1 FROM media WHERE custom_cover=? LIMIT 1',(relative,)).fetchone():return
         path=owned_path(data,relative)
         if path:
+            if artwork_readers.active(path):return
             try:path.unlink(missing_ok=True)
             except OSError:pass  # An active reader must not turn a successful edit into failure.
 

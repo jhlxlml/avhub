@@ -1,4 +1,4 @@
-name: Windows desktop CI and release
+name: Windows desktop regression
 
 on:
   push:
@@ -24,7 +24,7 @@ concurrency:
 jobs:
   verify:
     runs-on: windows-2025
-    # Includes the added visual/state suite and packaged acceptance on tags.
+    # Source regressions only. Desktop artifacts and Releases are prepared locally.
     timeout-minutes: 60
     env:
       PYTHONUTF8: '1'
@@ -47,11 +47,6 @@ jobs:
         env:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: python -c "import runpy,os,json;runpy.run_path('scripts/ci-prepare.py')['validate_release'](os.environ.get('RELEASE_TAG') or 'v'+json.load(open('package.json'))['version'])"
-      - name: Require successful exact-commit release candidate
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: python scripts/check-release-candidate.py
       - name: Prepare pinned FFmpeg
         run: python scripts/ci-prepare.py
       - name: Prepare and verify pinned private SQLite
@@ -89,7 +84,45 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/native-coordination.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/playback-clock.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/native-recovery.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/independent-coordination.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/native-theme.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/native-runtime.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/mpv-readiness.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/mpv-candidate-materials.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/playback-engine.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            node --test electron/test/mpv-engine.test.mjs
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/source-contract.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/display-contract.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/hdr-math.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/hdr-color-reference.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/soak-summary.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/resource-convergence.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/command-bridge.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/win32-handle-owner.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/runtime-attestation.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-api/cohort-evidence.test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/render-api/native-budget-test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/native-track-memory.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -101,7 +134,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/chromium-diagnostics.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --test --test-timeout=10000 electron/test/media-memory-barrier.test.mjs electron/test/playback-timeline.test.mjs electron/test/steady-frame-observation.test.mjs
+          node --test --test-timeout=10000 electron/test/media-memory-barrier.test.mjs electron/test/playback-timeline.test.mjs electron/test/steady-frame-observation.test.mjs electron/test/chromium-library-cycle.test.mjs electron/test/stylesheet-ownership.test.mjs electron/test/memory-resource-probe.test.mjs electron/test/theme-palette.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --test --test-timeout=10000 electron/test/file-preview.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -177,6 +210,8 @@ jobs:
         run: node electron/test/external-removal.mjs
       - name: Deferred settings renderer harness
         run: npx playwright test tests/ui/lazy-settings.spec.ts tests/ui/missing-artwork.spec.ts
+      - name: Theme appearance renderer harness
+        run: npx playwright test tests/ui/themes.spec.ts tests/ui/appearance.spec.ts tests/ui/style-ownership.spec.ts
       - name: Native text editing menu regression
         run: |
           node electron/test/text-edit-menu-policy.mjs
@@ -190,6 +225,8 @@ jobs:
         run: node electron/test/library-refinement.mjs
       - name: Real Electron directory removal and permission controls
         run: node electron/test/directory-controls.mjs
+      - name: Real Electron theme preview, persistence and media identity
+        run: node electron/test/themes.mjs
       - name: Real Electron privacy and bounded resource diagnosis
         run: node electron/test/privacy-memory.mjs
       - name: Real Electron library visual system and compact layouts
@@ -201,43 +238,6 @@ jobs:
       - name: Bounded Electron playback scan and thumbnail concurrency smoke
         # One minute CI smoke; manual endurance default is ten minutes.
         run: node electron/test/concurrent-soak.mjs 60
-      - name: Package only tags or explicit manual runs
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1 -SkipDependencyInstall
-      - name: Actual portable EXE acceptance
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
-        run: node electron/test/portable-release.mjs
-      - name: Actual extracted folder ZIP acceptance
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
-        run: node electron/test/portable-release.mjs --folder
-      - name: Checksums and source manifest
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
-        run: python scripts/ci-artifacts.py
-      - name: Save packaged startup and decoded-frame measurements
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: windows-acceptance-timings-${{ github.sha }}
-          path: |
-            build/recycle-shortcuts-*/acceptance.json
-            build/portable-release-test-*/startup-timings.json
-            build/folder-release-test-*/startup-timings.json
-            build/concurrent-soak-*/soak.json
-          if-no-files-found: error
-          retention-days: 14
-      - name: Save verified release files
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && !inputs.mpv_validation)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: windows-portable-${{ github.sha }}
-          path: |
-            dist/electron/AVHub-portable-*-x64.exe
-            dist/electron/AVHub-folder-portable-*-x64.zip
-            dist/electron/SHA256SUMS.txt
-            dist/electron/release-build.json
-          if-no-files-found: error
-          retention-days: 14
-          compression-level: 0
       - name: Save failure diagnostics
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -260,6 +260,8 @@ jobs:
             build/electron-storage-concurrency-*/failure.png
             build/avhub-directory-controls-*/acceptance.json
             build/avhub-directory-controls-*/*.png
+            build/theme-desktop-*/acceptance.json
+            build/theme-desktop-*/*.png
             build/avhub-privacy-memory-*/acceptance.json
             build/avhub-privacy-memory-*/failure.png
             build/concurrent-soak-*/soak.json
@@ -315,6 +317,19 @@ jobs:
           node electron/test/native-startup-recovery.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/native-app-flow.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-theme.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-engine.mjs
+      - name: Prepare fixed MPV candidate in isolated directory
+        run: npm run prepare:mpv -- -Candidate
+      - name: Fixed MPV candidate application compatibility (not distribution approval)
+        env:
+          AVHUB_TEST_MPV_CANDIDATE: stable-0.41.0
+        run: |
+          node electron/test/native-engine.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node electron/test/native-independent.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
@@ -326,28 +341,12 @@ jobs:
             build/native-app-flow-*/failure.json
             build/native-embedded-*/acceptance.json
             build/native-embedded-*/failure.txt
+            build/native-theme-*/acceptance.json
+            build/native-theme-*/*.png
+            build/native-engine-*/acceptance.json
+            build/native-engine-*/*.png
+            build/native-independent-*/acceptance.json
+            build/native-independent-*/failure.json
+            build/native-independent-*/runtime-subject.json
           if-no-files-found: warn
 
-  publish:
-    needs: verify
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && github.repository == 'jhlxlml/avhub'
-    runs-on: windows-2025
-    timeout-minutes: 20
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.13.11'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: windows-portable-${{ github.sha }}
-          path: dist/electron
-      - name: Verify and publish without a personal token
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PYTHONUTF8: '1'
-        run: python scripts/publish-release.py --publish --ci

@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "scope": "Exact support-runtime source inputs; official HTTPS metadata observed 2026-10-28; not binary reproducibility or legal certification",
+  "dscSignaturesVerified": false,
+  "distributionReady": false,
+  "sources": [
+    {
+      "id": "gcc-mingw-w64",
+      "version": "26.1",
+      "baseUrl": "https://archive.ubuntu.com/ubuntu/pool/universe/g/gcc-mingw-w64/",
+      "dsc": {
+        "name": "gcc-mingw-w64_26.1.dsc",
+        "sha256": "9cc5a84101b1c1641c001b43e457ea710619c5c8301151f0080a917e9fe64272",
+        "size": 6777
+      },
+      "archives": [
+        {
+          "sha256": "57ad0cef766683b97b37de82a16a5b69f81a28c1469512832f557bca2506c8ef",
+          "size": 34428,
+          "name": "gcc-mingw-w64_26.1.tar.xz"
+        }
+      ]
+    },
+    {
+      "id": "mingw-w64",
+      "version": "11.0.1-3build1",
+      "baseUrl": "https://archive.ubuntu.com/ubuntu/pool/universe/m/mingw-w64/",
+      "dsc": {
+        "name": "mingw-w64_11.0.1-3build1.dsc",
+        "sha256": "a9c601ae428084b0d4d1685e41fad9d5aaa4c67ab8a3ac99d3dae0ec2999db4f",
+        "size": 2737
+      },
+      "archives": [
+        {
+          "sha256": "3f66bce069ee8bed7439a1a13da7cb91a5e67ea6170f21317ac7f5794625ee10",
+          "size": 10057401,
+          "name": "mingw-w64_11.0.1.orig.tar.bz2"
+        },
+        {
+          "sha256": "2d0fbff66504777860c5970b2dd1699159721d030566e928e2b730abb3e049e2",
+          "size": 269,
+          "name": "mingw-w64_11.0.1.orig.tar.bz2.asc"
+        },
+        {
+          "sha256": "8c182708e1b329bb6d5b6ea95f5cafeb7681027604b89dfb3e2031a73bc90576",
+          "size": 108804,
+          "name": "mingw-w64_11.0.1-3build1.debian.tar.xz"
+        }
+      ]
+    },
+    {
+      "id": "gcc-13",
+      "version": "13.2.0-6ubuntu1",
+      "baseUrl": "https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/gcc-13/13.2.0-6ubuntu1/",
+      "dsc": {
+        "name": "gcc-13_13.2.0-6ubuntu1.dsc",
+        "sha256": "49a7446a379bfa3efeafcbf7fd6fd812d7319f516aceba1806777d9c53bf4472",
+        "size": 27688
+      },
+      "archives": [
+        {
+          "sha256": "84d4bbded73e549b2af0411691cbd7bea6a86e15796881a92518fb741cdaad2f",
+          "size": 92596024,
+          "name": "gcc-13_13.2.0.orig.tar.gz"
+        },
+        {
+          "sha256": "03d3cd0699bf75c3629af27e17b0799b933a9031e14863a08e7f31a5897634bf",
+          "size": 1654360,
+          "name": "gcc-13_13.2.0-6ubuntu1.debian.tar.xz"
+        }
+      ]
+    }
+  ]
+}

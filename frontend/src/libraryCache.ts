@@ -2,6 +2,7 @@ export type LibraryEntry<T>={data:T;time:number;revision:number};
 
 export class LibraryPageCache {
   private entries=new Map<string,LibraryEntry<unknown>>();
+  generation=0;
   constructor(readonly limit=24,readonly freshMs=20000,readonly retainMs=120000){}
   get<T>(key:string,revision:number):LibraryEntry<T>|undefined {
     const entry=this.entries.get(key);
@@ -14,6 +15,6 @@ export class LibraryPageCache {
     this.entries.delete(key);this.entries.set(key,{data,time,revision});
     while(this.entries.size>this.limit)this.entries.delete(this.entries.keys().next().value!);
   }
-  clear(){this.entries.clear();}
+  clear(){this.entries.clear();this.generation++;}
   get size(){return this.entries.size;}
 }

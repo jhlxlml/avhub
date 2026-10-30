@@ -15,5 +15,7 @@ assert.equal(summarizeNoInspector({...fixture,cycles:[row(1000),row(2000),{...ro
 const tail=summarizeNoInspector({...fixture,workloadMs:3610000,cycles:[...fixture.cycles,row(3609000)]}).tenMinuteWindows.at(-1);
 assert.equal(tail.partial,true);assert.ok(tail.toMinute<61,'a final in-flight cycle is labelled as a partial window, not a full extra ten minutes');
 const legacy=summarizeNoInspector({completed:true,cleanExit:true,cycles:[{afterClose:point()}]});assert.equal(legacy.accepted,false);assert.equal(legacy.durationReached,null);assert.deepEqual(legacy.tenMinuteWindows,[]);
+assert.equal(legacy.playback.waitingByPhase,null);assert.equal(legacy.resources.samples,0);
+assert.equal(legacy.resources.caches.images.count.max,null);
 assert.equal(summarizeNoInspector({...fixture,workloadMs:1000,idle:[{elapsedMs:3600000,...point()}]}).durationReached,false,'idle cannot satisfy the active target');
 console.log('No-inspector report contract passed: active duration, confirmed exit, missing data, warm cycles and time windows.');

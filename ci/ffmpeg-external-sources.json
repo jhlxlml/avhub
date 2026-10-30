@@ -1,0 +1,175 @@
+{
+  "schema": 1,
+  "scope": "Upstream source review for selected existing static CLI dependencies, not complete corresponding-source certification",
+  "libraries": [
+    {
+      "name": "x264",
+      "reportedVersion": "v0.165.3223",
+      "repository": "https://code.videolan.org/videolan/x264.git",
+      "revision": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "runtimePrefix": "0480cb0",
+      "license": "COPYING"
+    },
+    {
+      "name": "x265",
+      "reportedVersion": "4.3-45-g116b875",
+      "repository": "https://github.com/Multicorewareinc/x265.git",
+      "revision": "116b87573ed0cec20b75ccacd5641bf06f6e57bd",
+      "runtimePrefix": "116b875",
+      "license": "COPYING"
+    },
+    {
+      "name": "rubberband",
+      "reportedVersion": "v4.0.0",
+      "repository": "https://github.com/breakfastquay/rubberband.git",
+      "revision": "1d95888bec3ae0a17c0c4af791810d5a63f6bc35",
+      "tag": "v4.0.0",
+      "license": "COPYING"
+    },
+    {
+      "name": "AMF",
+      "reportedVersion": "v1.5.2-2-gc35f613",
+      "repository": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git",
+      "revision": "c35f613aea2e5057a688c979e75b1cf24253297e",
+      "reportedCommitPrefix": "c35f613",
+      "license": "LICENSE.txt",
+      "archivePaths": [
+        "LICENSE.txt",
+        "amf/public/include"
+      ],
+      "archiveScope": "SDK headers consumed by FFmpeg; not the full SDK or installed vendor GPU driver"
+    },
+    {
+      "name": "fribidi",
+      "reportedVersion": "v1.0.16-19-gc928e4c",
+      "repository": "https://github.com/fribidi/fribidi.git",
+      "revision": "c928e4c77549de59e057f72bbbec1e38ce8b43bd",
+      "reportedCommitPrefix": "c928e4c",
+      "license": "COPYING"
+    },
+    {
+      "name": "harfbuzz",
+      "reportedVersion": "14.4.0-108-g64e2b532",
+      "repository": "https://github.com/harfbuzz/harfbuzz.git",
+      "revision": "64e2b53235aa33b5bad5442449a092b5729be66a",
+      "reportedCommitPrefix": "64e2b532",
+      "license": "COPYING"
+    },
+    {
+      "name": "libass",
+      "reportedVersion": "0.17.5-8-gb2fe9d8",
+      "repository": "https://github.com/libass/libass.git",
+      "revision": "b2fe9d8770678a7b5271387d38c20657ebf3429a",
+      "reportedCommitPrefix": "b2fe9d8",
+      "license": "COPYING"
+    },
+    {
+      "name": "libwebp",
+      "reportedVersion": "v1.6.0-249-g1f34635",
+      "repository": "https://github.com/webmproject/libwebp.git",
+      "revision": "1f346354b670aeb804cb68fcd7e1718a1b8ea555",
+      "reportedCommitPrefix": "1f34635",
+      "license": "COPYING"
+    },
+    {
+      "name": "openal-soft",
+      "reportedVersion": "1.25.2-48-g7532541",
+      "repository": "https://github.com/kcat/openal-soft.git",
+      "revision": "7532541b537a4c03b2066277bfbe77150f147bfa",
+      "reportedCommitPrefix": "7532541",
+      "license": "COPYING"
+    },
+    {
+      "name": "opus",
+      "reportedVersion": "v1.6.1-68-g503d81b1",
+      "repository": "https://github.com/xiph/opus.git",
+      "revision": "503d81b138d76621aae4b12786e90de48aa8db3a",
+      "reportedCommitPrefix": "503d81b1",
+      "license": "COPYING"
+    },
+    {
+      "name": "SDL",
+      "reportedVersion": "release-2.32.0-234-gb90ac9502",
+      "repository": "https://github.com/libsdl-org/SDL.git",
+      "revision": "b90ac95029d801c5abc59472ba8e2200dff31e1e",
+      "reportedCommitPrefix": "b90ac9502",
+      "license": "LICENSE.txt"
+    },
+    {
+      "name": "speex",
+      "reportedVersion": "Speex-1.2.1-51-g0589522",
+      "repository": "https://github.com/xiph/speex.git",
+      "revision": "05895229896dc942d453446eba6f9f5ddcf95422",
+      "reportedCommitPrefix": "0589522",
+      "license": "COPYING"
+    },
+    {
+      "name": "srt",
+      "reportedVersion": "v1.5.7-7-gcae8f62",
+      "repository": "https://github.com/Haivision/srt.git",
+      "revision": "cae8f624a5a777066d12512f7b60debc260bdfa5",
+      "reportedCommitPrefix": "cae8f62",
+      "license": "LICENSE"
+    },
+    {
+      "name": "vidstab",
+      "reportedVersion": "v1.1.2-214-ge2445c4",
+      "repository": "https://github.com/georgmartius/vid.stab.git",
+      "revision": "e2445c4081658318223762a696eb1c645c2d7168",
+      "reportedCommitPrefix": "e2445c4",
+      "license": "LICENSE"
+    },
+    {
+      "name": "vmaf",
+      "reportedVersion": "v3.2.0-13-gf85a8536",
+      "repository": "https://github.com/Netflix/vmaf.git",
+      "revision": "f85a853692a8c730d0270cd733c8bb30b5b93b7c",
+      "reportedCommitPrefix": "f85a8536",
+      "license": "LICENSE"
+    },
+    {
+      "name": "vorbis",
+      "reportedVersion": "v1.3.7-37-g1b75110b",
+      "repository": "https://github.com/xiph/vorbis.git",
+      "revision": "1b75110b5a2754ba1931d82dd83cb822b266a21d",
+      "reportedCommitPrefix": "1b75110b",
+      "license": "COPYING"
+    },
+    {
+      "name": "vpx",
+      "reportedVersion": "v1.17.0-57-gd2413e2ca",
+      "repository": "https://github.com/webmproject/libvpx.git",
+      "revision": "d2413e2ca11039724ca33bb4d661ca2c94cb501e",
+      "reportedCommitPrefix": "d2413e2ca",
+      "license": "LICENSE"
+    },
+    {
+      "name": "zimg",
+      "reportedVersion": "release-3.0.6-253-g67e0603",
+      "repository": "https://github.com/sekrit-twc/zimg.git",
+      "revision": "67e0603271c080e22c8429856dd4a8a56587e61e",
+      "reportedCommitPrefix": "67e0603",
+      "license": "COPYING"
+    },
+    {
+      "name": "AviSynthPlus",
+      "reportedVersion": "v3.7.5-383-g5c82777b",
+      "repository": "https://github.com/AviSynth/AviSynthPlus.git",
+      "revision": "5c82777b374bdef16e13007a11e77d735ac1e4eb",
+      "reportedCommitPrefix": "5c82777b",
+      "license": "distrib/docs/english/source/avisynthdoc/license.rst"
+    },
+    {
+      "name": "ffnvcodec",
+      "reportedVersion": "n13.1.15.0-1-geddcea9",
+      "repository": "https://github.com/FFmpeg/nv-codec-headers.git",
+      "revision": "eddcea9e27f6b772057c9b3f87de2cc1737faffc",
+      "reportedCommitPrefix": "eddcea9",
+      "license": "include/ffnvcodec/nvEncodeAPI.h",
+      "licenseScope": "Full original header containing license, not a standalone COPYING file"
+    }
+  ],
+  "allExternalLibrariesCovered": false,
+  "vendorPatchesAndBuildRecipesVerified": false,
+  "distributionReady": false
+}

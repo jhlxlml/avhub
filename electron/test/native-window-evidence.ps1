@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$HostHandle,[string]$ControlHandle)
+param([Parameter(Mandatory=$true)][string]$HostHandle,[string]$ControlHandle,[switch]$SkipForeground)
 $ErrorActionPreference = 'Stop'
 Add-Type -TypeDefinition @'
 using System;
@@ -17,6 +17,7 @@ public static class AVHubWindowEvidence {
   [DllImport("user32.dll")] public static extern long GetWindowLongPtrW(IntPtr hwnd, int index);
   [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassNameW(IntPtr hwnd, StringBuilder value, int count);
   [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr hwnd);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr hwnd, uint command);
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr hwnd);
   [DllImport("user32.dll")] public static extern int GetWindowRgn(IntPtr hwnd, IntPtr region);
@@ -45,4 +46,5 @@ public static class AVHubWindowEvidence {
 '@
 $nativeHandle = [IntPtr]::new([long]::Parse($HostHandle))
 $controlEvidence = if ($ControlHandle) { [AVHubWindowEvidence]::Read([IntPtr]::new([long]::Parse($ControlHandle))) } else { $null }
-[pscustomobject]@{hostWindow=[AVHubWindowEvidence]::Read($nativeHandle);children=[AVHubWindowEvidence]::Children($nativeHandle);controlsWindow=$controlEvidence} | ConvertTo-Json -Depth 6 -Compress
+$foregroundEvidence = if (!$SkipForeground) { [AVHubWindowEvidence]::Read([AVHubWindowEvidence]::GetForegroundWindow()) } else { $null }
+[pscustomobject]@{hostWindow=[AVHubWindowEvidence]::Read($nativeHandle);children=[AVHubWindowEvidence]::Children($nativeHandle);controlsWindow=$controlEvidence;foregroundWindow=$foregroundEvidence} | ConvertTo-Json -Depth 6 -Compress

@@ -5,6 +5,8 @@ import re
 import sqlite3
 import stat
 import zipfile
+import tempfile
+import shutil
 from contextlib import closing
 from pathlib import Path
 
@@ -43,11 +45,28 @@ def digest(path,check=lambda:None):
     return result.hexdigest()
 
 
-def create(destination,snapshot,data,include_thumbnails,valid_image,progress=lambda *args:None,check=lambda:None,build=None):
+def create(destination,snapshot,data,include_thumbnails,valid_image,progress=lambda *args:None,check=lambda:None,build=None,
+           open_image=None,reserve=None):
+    # Never checksum a mutable shared thumbnail and then reopen it for ZIP.
+    # Capture one handle at a time; the private copies remain immutable through
+    # hashing/packing. No DB/publication mutex is held while copying bytes.
+    reserved=0
+    def capacity(size):
+        nonlocal reserved
+        if reserved+size>MAX_ARCHIVE*2+MAX_DATABASE:raise ValueError('备份临时空间超出上限')
+        if shutil.disk_usage(destination.parent).free<128*1024**2+size:raise ValueError('磁盘剩余空间不足，备份已取消，请至少保留 128 MB')
+        if reserve:reserve(size)
+        reserved+=size
+    with tempfile.TemporaryDirectory(prefix='.backup-images-',dir=destination.parent) as folder:
+        return _create(destination,snapshot,data,Path(folder),include_thumbnails,valid_image,progress,check,build,open_image,capacity)
+
+
+def _create(destination,snapshot,data,staging,include_thumbnails,valid_image,progress,check,build,open_image,reserve):
     if snapshot.stat().st_size>MAX_DATABASE:raise ValueError('数据库超过 512 MB，无法创建受支持的备份')
     entries={'library.db':snapshot}
     with closing(sqlite3.connect(snapshot)) as db:
-        for media_id,cover,thumbnail in db.execute('SELECT id,custom_cover,thumbnail FROM media'):
+        for row in db.execute('SELECT id,custom_cover,thumbnail,path,size,modified FROM media'):
+            media_id,cover,thumbnail,*_=row
             check()
             if cover:
                 if not IMAGE_NAME.fullmatch(cover) or not cover.startswith('covers/'):
@@ -55,11 +74,14 @@ def create(destination,snapshot,data,include_thumbnails,valid_image,progress=lam
                 file=data/cover
                 if file.is_symlink() or not file.resolve().is_relative_to(data.resolve()) or not file.is_file() or file.stat().st_size>8*1024**2 or not valid_image(file) or not bounded_jpeg(file):
                     raise ValueError('手动封面缺失或不可读取，完整备份已取消')
-                entries[cover]=file
+                if cover not in entries:entries[cover]=capture(file,staging/cover,row,open_image,check,reserve)
             name=f'thumbnails/{media_id}.jpg'
             file=data/name
             if include_thumbnails and thumbnail and file.is_file() and file.stat().st_size<=8*1024**2 and not file.is_symlink() and file.resolve().is_relative_to(data.resolve()) and valid_image(file) and bounded_jpeg(file):
-                entries[name]=file;db.execute('UPDATE media SET thumbnail=? WHERE id=?',(name,media_id))
+                captured=capture(file,staging/name,row,open_image,check,reserve)
+                if captured:
+                    entries[name]=captured;db.execute('UPDATE media SET thumbnail=? WHERE id=?',(name,media_id))
+                else:db.execute('UPDATE media SET thumbnail=NULL WHERE id=?',(media_id,))
             else:db.execute('UPDATE media SET thumbnail=NULL WHERE id=?',(media_id,))
         db.commit()
     if len(entries)>MAX_ENTRIES-1 or sum(file.stat().st_size for file in entries.values())>MAX_ARCHIVE:
@@ -69,6 +91,7 @@ def create(destination,snapshot,data,include_thumbnails,valid_image,progress=lam
         records[name]={'size':file.stat().st_size,'sha256':digest(file,check)};progress('checksumming',number,len(entries))
     manifest={'format':'avhub-library','version':1,'thumbnails':include_thumbnails,'build':build,'files':records}
     if len(json.dumps(manifest).encode())>MAX_MANIFEST:raise ValueError('备份清单过大，请减少缩略图')
+    reserve(sum(record['size'] for record in records.values())+len(json.dumps(manifest).encode())+len(entries)*256)
     with zipfile.ZipFile(destination,'w',compression=zipfile.ZIP_STORED,allowZip64=True) as archive:
         archive.writestr('manifest.json',json.dumps(manifest,ensure_ascii=False))
         progress('packing',0,len(entries))
@@ -79,7 +102,21 @@ def create(destination,snapshot,data,include_thumbnails,valid_image,progress=lam
     if destination.stat().st_size>MAX_ARCHIVE:raise ValueError('备份包超过 2 GB，请不包含缩略图后重试')
 
 
-def unpack(uploaded,staging,validate_database,valid_image,progress=lambda *args:None,check=lambda:None):
+def capture(file,target,row,opener,check,reserve):
+    with opener(file,row) if opener else file.open('rb') as source:
+        if source is None:return None
+        target.parent.mkdir(parents=True,exist_ok=True)
+        total=0
+        with target.open('xb') as output:
+            for chunk in iter(lambda:source.read(1024*1024),b''):
+                check();total+=len(chunk)
+                if total>8*1024**2:raise ValueError('封面大小变化或超过 8 MB，备份已取消')
+                reserve(len(chunk));output.write(chunk)
+    if not bounded_jpeg(target):raise ValueError('封面在备份期间变化或无效，请重试')
+    return target
+
+
+def unpack(uploaded,staging,validate_database,valid_image,progress=lambda *args:None,check=lambda:None,reserve=lambda size:None):
     # Staging is a newly-created private application directory, never a root path.
     try:
         with zipfile.ZipFile(uploaded) as archive:
@@ -110,7 +147,7 @@ def unpack(uploaded,staging,validate_database,valid_image,progress=lambda *args:
                         check()
                         total+=len(chunk)
                         if total>limit or total>info.file_size:raise ValueError('备份文件解压超出声明大小')
-                        output.write(chunk);checksum.update(chunk)
+                        reserve(len(chunk));output.write(chunk);checksum.update(chunk)
                 if total!=expected['size'] or checksum.hexdigest()!=expected.get('sha256'):raise ValueError('备份校验失败，文件可能损坏')
                 if name!='library.db' and (not valid_image(target) or not bounded_jpeg(target)):raise ValueError('备份含无效或超大图片')
                 progress('validating',number,len(entries))

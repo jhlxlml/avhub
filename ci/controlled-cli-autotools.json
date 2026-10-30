@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "host": "Ubuntu 24.04 x86_64",
+  "packages": [
+    {
+      "package": "autoconf",
+      "version": "2.71-3",
+      "architecture": "all",
+      "sha256": "cc3f9f7a1e576173fb59c36652c0a67c6426feae752b352404ba92dfcb1b26c9",
+      "size": 338946,
+      "filename": "pool/main/a/autoconf/autoconf_2.71-3_all.deb",
+      "source": "autoconf",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "automake",
+      "version": "1:1.16.5-1.3ubuntu1",
+      "architecture": "all",
+      "sha256": "5ae9a98e73545002cd891f028859941af2a3c760cb6190e635c7ef36953912de",
+      "size": 558172,
+      "filename": "pool/main/a/automake-1.16/automake_1.16.5-1.3ubuntu1_all.deb",
+      "source": "automake-1.16",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "autotools-dev",
+      "version": "20220109.1",
+      "architecture": "all",
+      "sha256": "d909f0327b09d9a9136239caca975df89782fa28efd721c4eb4caea422d3fc5a",
+      "size": 44886,
+      "filename": "pool/main/a/autotools-dev/autotools-dev_20220109.1_all.deb",
+      "source": "autotools-dev",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "libtool",
+      "version": "2.4.7-7build1",
+      "architecture": "all",
+      "sha256": "9d1d707179675d38e024bb13613b1d99e0d33fa6c45e5f3bcba19340781781d3",
+      "size": 166404,
+      "filename": "pool/main/libt/libtool/libtool_2.4.7-7build1_all.deb",
+      "source": "libtool",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "m4",
+      "version": "1.4.19-4build1",
+      "architecture": "amd64",
+      "sha256": "30ea715845a1863abd55d11e47ab91513130bf347852d4cdeae69e9d98fa795c",
+      "size": 243640,
+      "filename": "pool/main/m/m4/m4_1.4.19-4build1_amd64.deb",
+      "source": "m4",
+      "digestProvenance": "Existing Ubuntu APT index"
+    }
+  ]
+}

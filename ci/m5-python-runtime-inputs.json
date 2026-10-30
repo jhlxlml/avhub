@@ -1,0 +1,292 @@
+{
+  "schema": 1,
+  "scope": "Python source identity of the verified reusable M5 backend; external frontend/build metadata are refreshed separately",
+  "baselineApplicationBuild": "acb9a1e222cdad4e",
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "size": 38,
+      "sha256": "a7d2f3830d38e43e1a54108ea2023205032bc96f2f72ba794d8a81076fc3c7dc"
+    },
+    {
+      "path": "app/artwork_readers.py",
+      "size": 1493,
+      "sha256": "145577240be05e4e0463f4f4986643ef161e97c4b9be5b3697b46bdd49c0672e"
+    },
+    {
+      "path": "app/build_info.py",
+      "size": 1331,
+      "sha256": "5733ee975f7b11f98a4f282d11004199e60a08a23fa57803eae08685dc78a57e"
+    },
+    {
+      "path": "app/cache_owner.py",
+      "size": 1421,
+      "sha256": "bcec95326384ec89f5d05bb326667dc5e06b7e7e7b7b640c29f3a0c9360da5ac"
+    },
+    {
+      "path": "app/covers.py",
+      "size": 5015,
+      "sha256": "2b5ce19dbb1fd7ba7dbe011d42fdb49a9fa971dfd2c90a708b2ff574961a3287"
+    },
+    {
+      "path": "app/data_jobs.py",
+      "size": 12874,
+      "sha256": "54951cb011091eaf260acc3e7ef622b4dbd2fcd3df89d723ba4b6a0e64f1f75c"
+    },
+    {
+      "path": "app/data_migration.py",
+      "size": 8514,
+      "sha256": "d6432448faebcb847849f2d8941134d8e400e96b960af3d09562862e22c2b629"
+    },
+    {
+      "path": "app/db_lifecycle.py",
+      "size": 2843,
+      "sha256": "f4792965527083c620a9a83a788087eab3203dadbe7cb043e160f52450fcd51f"
+    },
+    {
+      "path": "app/db_timing.py",
+      "size": 8242,
+      "sha256": "99a3db90e2ba12f7a08c94a4ceb7be736dd674ead60702b7ea7cbe0e95a2cfc6"
+    },
+    {
+      "path": "app/db_write_gate.py",
+      "size": 3150,
+      "sha256": "5ca445725e8b68daa5cb5551a059076a6024974f3e747b8987fe555cd4a1ff7d"
+    },
+    {
+      "path": "app/diagnostics.py",
+      "size": 1730,
+      "sha256": "d4358f2e49b6e80b42710aa7c4b872d0bc7b8fbe5e3beaa4fd756b6670cd5e4e"
+    },
+    {
+      "path": "app/file_operations.py",
+      "size": 29716,
+      "sha256": "3ec0d726ab437c888c3bdb0bb286a1870afa25f7208d245455bc912ec65e022e"
+    },
+    {
+      "path": "app/folders.py",
+      "size": 1051,
+      "sha256": "3dcfe7abd8e255b7f0b6891f3bdf8ac09388263e949358c0b9c6013110d09ad4"
+    },
+    {
+      "path": "app/hls_cache.py",
+      "size": 2427,
+      "sha256": "4919b1f7e3a53998064a372eb00e63addb0d4eec9ffddacd121ae5e9e381babc"
+    },
+    {
+      "path": "app/indexed_remux.py",
+      "size": 12894,
+      "sha256": "d34b72a33e6d20d7e86a62983805efbed09cc6f29f1cd8f6c2745c22f2843b26"
+    },
+    {
+      "path": "app/indexed_ts.py",
+      "size": 13592,
+      "sha256": "75cf337594ccfb2c84a2a069a2c81daed22b09a576b62421a4296122a68ccdc8"
+    },
+    {
+      "path": "app/library_backup.py",
+      "size": 10928,
+      "sha256": "4e8c4420ddc254d217a37b3b68757a8be18a2e2c26df044cc5b95888aa1763ad"
+    },
+    {
+      "path": "app/library_metadata.py",
+      "size": 4435,
+      "sha256": "5053535a0b5d5309ef89f8d5d86c7287e791aad3526b75b5208e08a05109017d"
+    },
+    {
+      "path": "app/local_security.py",
+      "size": 2085,
+      "sha256": "583cbe63b1e88fcf1f49f8c2949db066b09dcd82f28a65f862995ea1eaa98a15"
+    },
+    {
+      "path": "app/main.py",
+      "size": 150376,
+      "sha256": "39c8d2405354f7453c61d49549fbf72bc5960cc46fd754db9c838cb884ff2f55"
+    },
+    {
+      "path": "app/media_delivery.py",
+      "size": 8469,
+      "sha256": "20e99ff4917e127932758cdefeed3d4d9e9e186a0a7e3d947674733ac23a814e"
+    },
+    {
+      "path": "app/media_identity.py",
+      "size": 10267,
+      "sha256": "d22acd6c83cd1919391a63542a05e5a80cdf5b37ffe29ecb0eafaaa6cab9e858"
+    },
+    {
+      "path": "app/media_order.py",
+      "size": 2253,
+      "sha256": "6f9d5b98918833c53be106130b532a1d7f1b141cfeb806eb6f85ed13ea7e230b"
+    },
+    {
+      "path": "app/media_playback_state.py",
+      "size": 2394,
+      "sha256": "f8804197a7724209cbe6c1074eea673addfac9394cfec5acf8729f21780197a2"
+    },
+    {
+      "path": "app/media_search.py",
+      "size": 1074,
+      "sha256": "c9c2fd77655cda381ea0906c04fd4e65b7bd837a3f9c6bb4ec51b3ff0a0d7e53"
+    },
+    {
+      "path": "app/missing_artwork.py",
+      "size": 8731,
+      "sha256": "29da7c2404fedc2cac41197bb6590bfc9f3c2b4ca8148a872d1b3116d4a51ba4"
+    },
+    {
+      "path": "app/mp4_timeline.py",
+      "size": 9412,
+      "sha256": "eed22eac9c3152acd9182bd8b2392e5835e6e6ae1e7d564b2d6ca990f34626b7"
+    },
+    {
+      "path": "app/native_playback.py",
+      "size": 8141,
+      "sha256": "d77dfd060a66e057b6d659b613c16c19cfe08868fba160ae6ea323b12967a303"
+    },
+    {
+      "path": "app/native_prepare.py",
+      "size": 17869,
+      "sha256": "03c67f895e3737c0f21d76e920dd141162f5aadfffccbcb25066c66260e857ab"
+    },
+    {
+      "path": "app/native_window.py",
+      "size": 8295,
+      "sha256": "7493db33c017da06f02d0a09b6fef015d3e56afc7dfc585b44fd54b4cf84835a"
+    },
+    {
+      "path": "app/packet_probe.py",
+      "size": 2507,
+      "sha256": "902688a59a8c7a5159f0befc144417fcb1a9f00ec9c07fa9f74db15f49cb68ce"
+    },
+    {
+      "path": "app/path_index.py",
+      "size": 878,
+      "sha256": "edd6d2f6d2a30eccf697a43b5e5cd9e9bac04cc275810bc7aa2080d74f6f1906"
+    },
+    {
+      "path": "app/playback.py",
+      "size": 30025,
+      "sha256": "2d40bd91ecb118ff088bd8b1126ff1a106e0c20ce371e3d269e6dd38450db601"
+    },
+    {
+      "path": "app/playback_queue.py",
+      "size": 1455,
+      "sha256": "a5a7c5cb97b09cee970f9528a98aad85ab06f46f30ba61cdffb7792630edc246"
+    },
+    {
+      "path": "app/playlist_mutations.py",
+      "size": 6226,
+      "sha256": "bd90c3dfc610391461e025d776b8be0e4cc195efd17fefcbebbd7f07b9766545"
+    },
+    {
+      "path": "app/playlist_pages.py",
+      "size": 5475,
+      "sha256": "18ca58f48f6033ee26ecd7b17e4f6044bcb2c58aa5e93aa63886dbc3dcf4ab04"
+    },
+    {
+      "path": "app/preferences.py",
+      "size": 4564,
+      "sha256": "f21ceab0d9ac0e52db54ab6b99a4c6288830094f207918618fc85a1e265c5e74"
+    },
+    {
+      "path": "app/process_owner.py",
+      "size": 3348,
+      "sha256": "7edf9b412d81cf54f003cea6ed930953b7fe15b62ed424cb9b371f070f4eecc9"
+    },
+    {
+      "path": "app/progress_timing.py",
+      "size": 1780,
+      "sha256": "f12c2c0bcd02001f5ad5a6ce01e2be6e82da116389b2aa552cd12cd258ce11db"
+    },
+    {
+      "path": "app/publication_gate.py",
+      "size": 4625,
+      "sha256": "c2d6d527cced46def587dc893a5f7ca49996048f3332cfea067ad5688287f26f"
+    },
+    {
+      "path": "app/read_budget.py",
+      "size": 3076,
+      "sha256": "a87c86ab810f404cb134678df96c1231c1318ee86e882e958776fb11e8510e24"
+    },
+    {
+      "path": "app/recycle_records.py",
+      "size": 24066,
+      "sha256": "906004f3dbd4fab6d53a1dfae44dd8ee54950eb625a281a82fdb87827af1758a"
+    },
+    {
+      "path": "app/remux_scheduler.py",
+      "size": 12220,
+      "sha256": "7ad3221531954814d4dac2d8d90bbad0a22b4e923b702ed49ad8570d651127cb"
+    },
+    {
+      "path": "app/remux_window.py",
+      "size": 4022,
+      "sha256": "0d9d45ffe41fa4932cf2339dd2e3a69a08243bccc458df35a353b9faa4efdc2c"
+    },
+    {
+      "path": "app/runtime_evidence.py",
+      "size": 2415,
+      "sha256": "e8a739e0c06cdd7035d6f4a2b4a93b4baff1e5a134c59dafc8f1b3b92106cf72"
+    },
+    {
+      "path": "app/scan_jobs.py",
+      "size": 16632,
+      "sha256": "91a590a1ffcac58a000b46652002e480f0313211e5e0aa9e2c38f9e90e0cb768"
+    },
+    {
+      "path": "app/scan_readiness.py",
+      "size": 5184,
+      "sha256": "1e9adbf10fb640aae0c09fbe49898f261e619c290071e28a7a68739eb097f03e"
+    },
+    {
+      "path": "app/scanning.py",
+      "size": 5849,
+      "sha256": "0100f80f60e0144ea1d355d7706b0b4fc4ab341494913c4a3213bb94b66c2526"
+    },
+    {
+      "path": "app/screenshots.py",
+      "size": 10577,
+      "sha256": "c47e4d1d1063c8ffbc8eb03f3565bbf0cbe982e943e45f4c0e98f8b75aedb4d6"
+    },
+    {
+      "path": "app/series_library.py",
+      "size": 6882,
+      "sha256": "f3a545cb562c1979bd9023fa87775ece57dbeea24aca6ef247a3b1becd700b57"
+    },
+    {
+      "path": "app/service_lifecycle.py",
+      "size": 2001,
+      "sha256": "721f3108a07ddfb7f50ea062eb830dcb2b6767ea535acaa3d0254a363cb919e3"
+    },
+    {
+      "path": "app/sqlite_runtime.py",
+      "size": 5434,
+      "sha256": "1f3ed123bae7335ccf06139174b72b94765e1e855fa492e3d8125af6e471bf7e"
+    },
+    {
+      "path": "app/storage_management.py",
+      "size": 10635,
+      "sha256": "00d782aba2d00fb6491dc30c3cdc80a9304976c77c770450d038004a51b54b4d"
+    },
+    {
+      "path": "app/subtitle_conversion.py",
+      "size": 2032,
+      "sha256": "1e5a1f9a5ffe74a55b49daf0b37d1381f6d405725ba28f8252115547bc63b279"
+    },
+    {
+      "path": "app/updates.py",
+      "size": 3287,
+      "sha256": "a8264b9b7acd40975a342f5a9a3b8e17d6e3987bd5cba0558304505afc71cef3"
+    },
+    {
+      "path": "app/video_color.py",
+      "size": 5828,
+      "sha256": "ea2befefe0b6098dbc4d42fbce52a63670042e29a10866740371223a2239d212"
+    },
+    {
+      "path": "app/windows_recycle.py",
+      "size": 18215,
+      "sha256": "58d2668ceba91e1fd64177b170b9d9b8a4bf0eac1d27c7a37977e267b0ce29ad"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "scope": "Source-traceable CLI profile for isolated M5 packages; ordinary project CLI remains unchanged",
+  "coreVersion": "9.0.2",
+  "sources": [
+    {
+      "name": "bzip2",
+      "repository": "https://sourceware.org/git/bzip2.git",
+      "revision": "6a8690fc8d26c815e798c588f796eabe9d684cf0",
+      "archive": "build/controlled-ffmpeg-inputs/bzip2-6a8690fc8d26c815e798c588f796eabe9d684cf0.tar",
+      "archiveSha256": "c48f929a8c20fc5d6428ede5daa72110a7136caf8202717063327faf6a1e4e23",
+      "prefix": "bzip2/",
+      "license": "LICENSE",
+      "archiveAutoCrlf": false
+    },
+    {
+      "name": "xz",
+      "repository": "https://github.com/tukaani-project/xz.git",
+      "revision": "3d078b52adbff566ccfc51067dfbf742ecf3ef86",
+      "archive": "build/controlled-ffmpeg-inputs/xz-3d078b52adbff566ccfc51067dfbf742ecf3ef86.tar",
+      "archiveSha256": "e898ae03f48161ef7c07ab458880f46b69f730689ca4ba8912ecc8d9fc3efcb3",
+      "prefix": "xz/",
+      "license": "COPYING",
+      "archiveAutoCrlf": false
+    },
+    {
+      "name": "x264",
+      "repository": "https://code.videolan.org/videolan/x264.git",
+      "revision": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "archiveSha256": "6aa687a141dcfcfc8fb2c61be29329eb6da5cea4ed781d1358692306352222c6",
+      "license": "COPYING",
+      "archive": "build/ffmpeg-external-source-review-uxs1l_zl/x264-0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee.tar",
+      "prefix": "x264/",
+      "archiveAutoCrlf": true
+    },
+    {
+      "name": "zimg",
+      "repository": "https://github.com/sekrit-twc/zimg.git",
+      "revision": "67e0603271c080e22c8429856dd4a8a56587e61e",
+      "archiveSha256": "20672d5d08dd2a4635379d68b443dd9138316c6daea37a7a8929e42ab469c6a7",
+      "license": "COPYING",
+      "archive": "build/ffmpeg-external-source-review-uxs1l_zl/zimg-67e0603271c080e22c8429856dd4a8a56587e61e.tar",
+      "prefix": "zimg/",
+      "archiveAutoCrlf": true
+    },
+    {
+      "name": "dav1d",
+      "repository": "https://code.videolan.org/videolan/dav1d.git",
+      "revision": "e5fd231fe9955a342c60600edb7e0b8777786a6a",
+      "archive": "build/native-git-inputs/dav1d-e5fd231fe995.tar",
+      "archiveSha256": "9b0c2c8ab0758568ac31f95803da3475a3d42ccb7962a164824c7746d1fb6b56",
+      "prefix": "",
+      "license": "COPYING",
+      "archiveAutoCrlf": false
+    },
+    {
+      "name": "zlib",
+      "repository": "https://github.com/zlib-ng/zlib-ng.git",
+      "revision": "49323f2af98b92fccf03cfc62ea2cb5591a3202e",
+      "archive": "build/native-git-inputs/zlib-49323f2af98b.tar",
+      "archiveSha256": "ddc571d94ca6c7942b861fc768386f6a3c57989d05ab4e2e0ebe22b9563ebdc1",
+      "prefix": "",
+      "license": "LICENSE.md",
+      "archiveAutoCrlf": false
+    },
+    {
+      "name": "ffmpeg",
+      "repository": "https://github.com/FFmpeg/FFmpeg.git",
+      "revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+      "archive": "build/ffmpeg-cli-source-review-l8diqnc1/ffmpeg-cli-946fcce07b6dcd0331c8cc609192aeff5e1924f8.tar",
+      "archiveSha256": "61b00f08ae2391291d664e1b9d3cd6d813d5ed4ff8ddf268891734d1b1079b72",
+      "prefix": "FFmpeg/",
+      "license": "COPYING.GPLv3",
+      "archiveAutoCrlf": true
+    },
+    {
+      "name": "graphengine",
+      "repository": "https://github.com/sekrit-twc/graphengine.git",
+      "revision": "cb5b2ce13384ec2491f0c37256ea210034799f69",
+      "archive": "build/controlled-ffmpeg-inputs/graphengine-cb5b2ce13384ec2491f0c37256ea210034799f69.tar",
+      "archiveSha256": "cce2a06ab234c9d8eb9360c5b42bad9580752b2f766b1d1f5bade7959248d062",
+      "prefix": "graphengine/",
+      "license": "COPYING",
+      "archiveAutoCrlf": false
+    },
+    {
+      "name": "x265",
+      "repository": "https://github.com/Multicorewareinc/x265.git",
+      "revision": "116b87573ed0cec20b75ccacd5641bf06f6e57bd",
+      "archiveSha256": "85d17c69f1ef1a067c099021022d71df7f0041a4cc8b6d945ef5104db43e28d1",
+      "license": "COPYING",
+      "archive": "build/ffmpeg-external-source-review-uxs1l_zl/x265-116b87573ed0cec20b75ccacd5641bf06f6e57bd.tar",
+      "prefix": "x265/",
+      "archiveAutoCrlf": true
+    },
+    {
+      "name": "vpx",
+      "repository": "https://github.com/webmproject/libvpx.git",
+      "revision": "d2413e2ca11039724ca33bb4d661ca2c94cb501e",
+      "archiveSha256": "334c297bcf0aa6700c9b2aad1d72da6d5ee13f7fe0e4ec3daf20794c41bd2c7d",
+      "license": "LICENSE",
+      "archive": "build/ffmpeg-external-source-review-uxs1l_zl/vpx-d2413e2ca11039724ca33bb4d661ca2c94cb501e.tar",
+      "prefix": "vpx/",
+      "archiveAutoCrlf": true
+    },
+    {
+      "name": "opus",
+      "repository": "https://github.com/xiph/opus.git",
+      "revision": "503d81b138d76621aae4b12786e90de48aa8db3a",
+      "archiveSha256": "0f3be7d81a927c19af678ad0b90c4a4cdc6ab4c1e2363fee71f3c594b12c9d17",
+      "license": "COPYING",
+      "archive": "build/ffmpeg-external-source-review-uxs1l_zl/opus-503d81b138d76621aae4b12786e90de48aa8db3a.tar",
+      "prefix": "opus/",
+      "archiveAutoCrlf": true
+    }
+  ],
+  "applicationRuntimeChanged": false,
+  "distributionReady": false
+}

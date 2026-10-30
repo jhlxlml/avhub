@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "repository": "zhongfly/mpv-winbuild",
+  "runId": 40191236015,
+  "jobId": 121162536770,
+  "jobName": "Build MPV (64, false)",
+  "artifactId": 12599005134,
+  "artifactName": "64_logs",
+  "archiveSize": 360920,
+  "archiveSha256": "7a25f827f79c2f44bbce7845a75174bcd59e356ddfd9d3d89a90d7b5c18ca65b",
+  "innerMember": "logs.7z",
+  "innerSha256": "7d8606b69d0787f8d67bfe295f30cd811a6fcd0862fe154117854757f63e71b3",
+  "dllSha256": "ea82215b32d8e5c8ed8e41b97659a5bf7c0ed0d1861d1baa61e6a6500a8ffe74",
+  "scope": "Fixed ordinary-x64 GPL job configuration evidence, not complete source or redistribution approval"
+}

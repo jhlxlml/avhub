@@ -24,6 +24,10 @@ try{
   assert.equal(legacy.tenMinuteWindows.length,1,'cleanup tail must not add an empty ten-minute window');
   assert.equal(legacy.rendererCounters.documents.max,null,'missing measurements are not zero');
   assert.equal(legacy.instrumentation,null);assert.deepEqual(legacy.idle.samples,[]);
+  const fixed=summarize({seconds:0,passes:48,completedPasses:2,targetReached:false,cleanExit:false,samples:[{elapsedMs:1000,...diagnostics}],playbacks:[]});
+  assert.equal(fixed.passes,48);assert.equal(fixed.completedPasses,2);assert.equal(fixed.targetReached,false);
+  assert.equal(fixed.resources.samples,0);assert.equal(fixed.resources.caches.images.count.max,null);
+  assert.equal(fixed.timing,null,'disabled/unrecorded timing cannot become zero frame gaps');
   console.log('Library soak report contract passed: partial duration, unknown metrics, warm cycles and legacy reports.');
 }finally{
   assert.match(path.basename(workspace),/^avhub-soak-report-/);rmSync(workspace,{recursive:true,force:true});

@@ -22,12 +22,17 @@
   --ui-shadow-soft:0 2px 8px #0002;
   --ui-overlay-accent:#9bbcff;
   --ui-on-accent:#14213b;
+  --ui-selection-bg:var(--ui-accent);
+  --ui-selection-fg:var(--ui-on-accent);
   --ui-accent-border:color-mix(in srgb,var(--ui-accent) 22%,transparent);
   --accent:var(--ui-accent);
   --muted:var(--ui-muted);
   --ui-radius:7px;
   --ui-panel-radius:12px;
   --ui-control-height:32px;
+  --ui-control-height-compact:28px;
+  --ui-control-gap:6px;
+  --ui-icon-size:18px;
   --ui-cover-radius:9px;
   --ui-shadow:0 12px 40px #0006,0 0 0 1px #ffffff03;
   font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
@@ -78,13 +83,16 @@ main>header {background:var(--ui-chrome);border-color:var(--ui-divider);gap:20px
 .primary-nav>button:hover {color:var(--ui-text);background:var(--ui-raised)}
 .primary-nav>button.active {background:var(--ui-accent-soft);color:var(--ui-accent);box-shadow:none}
 .primary-nav .playlist-nav {border:0;border-radius:var(--ui-radius);margin-left:8px;color:var(--ui-secondary)}
-.header-actions {align-items:center;gap:7px}
+.header-actions {align-items:center;gap:var(--ui-control-gap)}
 .header-actions>.ui-button,.header-actions>.ui-icon-button,.header-search>.search-toggle,.header-actions>.scan-recovery {
-  height:var(--ui-control-height);min-height:var(--ui-control-height);border:1px solid transparent;background:transparent;color:var(--ui-secondary);border-radius:var(--ui-radius);
+  height:var(--ui-control-height);min-height:var(--ui-control-height);box-sizing:border-box;border:1px solid transparent;background:transparent;color:var(--ui-secondary);border-radius:var(--ui-radius);
 }
-.header-search>.search-toggle {width:36px}
+.header-actions>.ui-icon-button,.header-actions>.scan-recovery,.header-search>.search-toggle {display:grid;place-items:center;flex:0 0 var(--ui-control-height);width:var(--ui-control-height);min-width:var(--ui-control-height);padding:0;margin:0}
+.header-search {min-width:var(--ui-control-height);gap:var(--ui-control-gap)}
+.header-actions>.ui-icon-button>.ui-icon,.header-actions>.scan-recovery>.ui-icon,.header-search>.search-toggle>.ui-icon {width:var(--ui-icon-size);height:var(--ui-icon-size)}
+.header-actions>.privacy-toggle[aria-pressed="true"] {color:var(--ui-accent);background:var(--ui-accent-soft)}
 .header-actions>.ui-button:hover:not(:disabled),.header-actions>.ui-icon-button:hover,.header-search>.search-toggle:hover {background:var(--ui-hover);color:var(--ui-text)}
-.header-search.expanded .search {height:36px;background:var(--ui-field);border-color:var(--ui-border);border-radius:var(--ui-radius)}
+.header-search.expanded .search {height:var(--ui-control-height);box-sizing:border-box;background:var(--ui-field);border-color:var(--ui-border);border-radius:var(--ui-radius)}
 .search input {font-size:12px;padding:8px 3px}
 .search-clear {display:grid;place-items:center;width:25px;height:25px;padding:0}
 .app-layout {padding-top:16px}
@@ -151,7 +159,7 @@ main>header {background:var(--ui-chrome);border-color:var(--ui-divider);gap:20px
 .resolution-filter-label {font-size:10px;color:var(--ui-muted);padding:0 6px;white-space:nowrap}
 .resolution-filter>button {min-height:28px;padding:4px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--ui-secondary);font-size:11px;font-weight:600;letter-spacing:.2px;white-space:nowrap;flex:none}
 .resolution-filter>button:hover {background:var(--ui-hover);color:var(--ui-text)}
-.resolution-filter>button[aria-pressed="true"] {background:var(--ui-surface);border-color:transparent;box-shadow:var(--ui-shadow-soft);color:var(--ui-accent)}
+.resolution-filter>button[aria-pressed="true"] {background:var(--ui-selection-bg);border-color:transparent;box-shadow:none;color:var(--ui-selection-fg)}
 @media(max-width:1200px) {.toolbar {flex-wrap:wrap}}
 @media(max-width:600px) {.library-toolbar-right {flex-wrap:wrap;gap:8px;width:100%}.library-toolbar-right .resolution-filter {order:2;width:100%;justify-content:space-between}.resolution-filter>button {padding:4px 6px}.resolution-filter-label {padding:0 4px}}
 .media-list .card {padding:10px;border:1px solid var(--ui-divider);border-radius:var(--ui-panel-radius);background:var(--ui-surface)}

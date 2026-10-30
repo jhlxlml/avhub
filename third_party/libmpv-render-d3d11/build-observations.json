@@ -1,0 +1,1264 @@
+{
+  "schema": 1,
+  "subject": {
+    "dllSha256": "ea82215b32d8e5c8ed8e41b97659a5bf7c0ed0d1861d1baa61e6a6500a8ffe74",
+    "runId": 40191236015,
+    "jobId": 121162536770,
+    "artifactId": 12599005134,
+    "artifactName": "64_logs",
+    "artifactSha256": "7a25f827f79c2f44bbce7845a75174bcd59e356ddfd9d3d89a90d7b5c18ca65b"
+  },
+  "scope": "Actual configuration logs from the fixed x64 GPL job; cached project versions do not establish precise source commits or complete binary inclusion",
+  "transitiveDependenciesVerified": false,
+  "distributionReady": false,
+  "mpvDependencies": [
+    {
+      "name": "libavcodec",
+      "found": true,
+      "version": "63.25.100",
+      "line": "Run-time dependency libavcodec found: YES 63.25.100"
+    },
+    {
+      "name": "libavfilter",
+      "found": true,
+      "version": "12.9.100",
+      "line": "Run-time dependency libavfilter found: YES 12.9.100"
+    },
+    {
+      "name": "libavformat",
+      "found": true,
+      "version": "63.17.100",
+      "line": "Run-time dependency libavformat found: YES 63.17.100"
+    },
+    {
+      "name": "libavutil",
+      "found": true,
+      "version": "61.20.100",
+      "line": "Run-time dependency libavutil found: YES 61.20.100"
+    },
+    {
+      "name": "libswresample",
+      "found": true,
+      "version": "7.7.100",
+      "line": "Run-time dependency libswresample found: YES 7.7.100"
+    },
+    {
+      "name": "libswscale",
+      "found": true,
+      "version": "10.6.100",
+      "line": "Run-time dependency libswscale found: YES 10.6.100"
+    },
+    {
+      "name": "libplacebo",
+      "found": true,
+      "version": "7.387.0",
+      "line": "Run-time dependency libplacebo found: YES 7.387.0"
+    },
+    {
+      "name": "libass",
+      "found": true,
+      "version": "0.17.5",
+      "line": "Run-time dependency libass found: YES 0.17.5"
+    },
+    {
+      "name": "dl",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency dl found: NO  (tried builtin and system)"
+    },
+    {
+      "name": "subrandr",
+      "found": true,
+      "version": "1.4.0",
+      "line": "Run-time dependency subrandr found: YES 1.4.0"
+    },
+    {
+      "name": "appleframeworks",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+    },
+    {
+      "name": "libcurl",
+      "found": true,
+      "version": "8.23.0-DEV",
+      "line": "Run-time dependency libcurl found: YES 8.23.0-DEV"
+    },
+    {
+      "name": "libcdio",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency libcdio found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "libcdio_paranoia",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency libcdio_paranoia found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "dvdread",
+      "found": true,
+      "version": "7.1.1",
+      "line": "Run-time dependency dvdread found: YES 7.1.1"
+    },
+    {
+      "name": "dvdnav",
+      "found": true,
+      "version": "7.0.1",
+      "line": "Run-time dependency dvdnav found: YES 7.0.1"
+    },
+    {
+      "name": "iconv",
+      "found": true,
+      "version": null,
+      "line": "Run-time dependency iconv found: YES"
+    },
+    {
+      "name": "mujs",
+      "found": true,
+      "version": "1.3.11-1-g18aaaf8",
+      "line": "Run-time dependency mujs found: YES 1.3.11-1-g18aaaf8"
+    },
+    {
+      "name": "lcms2",
+      "found": true,
+      "version": "2.20",
+      "line": "Run-time dependency lcms2 found: YES 2.20"
+    },
+    {
+      "name": "libarchive",
+      "found": true,
+      "version": "3.9.0",
+      "line": "Run-time dependency libarchive found: YES 3.9.0"
+    },
+    {
+      "name": "libavdevice",
+      "found": true,
+      "version": "63.6.100",
+      "line": "Run-time dependency libavdevice found: YES 63.6.100"
+    },
+    {
+      "name": "libbluray",
+      "found": true,
+      "version": "1.5.1",
+      "line": "Run-time dependency libbluray found: YES 1.5.1"
+    },
+    {
+      "name": "luajit",
+      "found": true,
+      "version": "2.1.0-beta3",
+      "line": "Run-time dependency luajit found: YES 2.1.0-beta3"
+    },
+    {
+      "name": "rubberband",
+      "found": true,
+      "version": "4.0.0",
+      "line": "Run-time dependency rubberband found: YES 4.0.0"
+    },
+    {
+      "name": "sdl2",
+      "found": true,
+      "version": "2.33.0",
+      "line": "Run-time dependency sdl2 found: YES 2.33.0"
+    },
+    {
+      "name": "uchardet",
+      "found": true,
+      "version": "0.0.8",
+      "line": "Run-time dependency uchardet found: YES 0.0.8"
+    },
+    {
+      "name": "vapoursynth-script",
+      "found": true,
+      "version": "72",
+      "line": "Run-time dependency vapoursynth-script found: YES 72"
+    },
+    {
+      "name": "xfixes",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency xfixes found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "x11",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency x11 found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "zimg",
+      "found": true,
+      "version": "3.0.6",
+      "line": "Run-time dependency zimg found: YES 3.0.6"
+    },
+    {
+      "name": "zlib",
+      "found": true,
+      "version": "1.3.2.zlib-ng",
+      "line": "Run-time dependency zlib found: YES 1.3.2.zlib-ng"
+    },
+    {
+      "name": "alsa",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency alsa found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "appleframeworks",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+    },
+    {
+      "name": "appleframeworks",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+    },
+    {
+      "name": "jack",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency jack found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "openal",
+      "found": true,
+      "version": "1.25.2",
+      "line": "Run-time dependency openal found: YES 1.25.2"
+    },
+    {
+      "name": "libpipewire-0.3",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency libpipewire-0.3 found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "libpulse",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency libpulse found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "sndio",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency sndio found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "caca",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency caca found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "libdrm",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency libdrm found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "libdisplay-info",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency libdisplay-info found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "libjpeg",
+      "found": true,
+      "version": "3.2.1",
+      "line": "Run-time dependency libjpeg found: YES 3.2.1"
+    },
+    {
+      "name": "shaderc",
+      "found": true,
+      "version": "2026.5.0",
+      "line": "Run-time dependency shaderc found: YES 2026.5.0"
+    },
+    {
+      "name": "libsixel",
+      "found": true,
+      "version": "1.8.7",
+      "line": "Run-time dependency libsixel found: YES 1.8.7"
+    },
+    {
+      "name": "spirv-cross-c-shared",
+      "found": true,
+      "version": "0.68.0",
+      "line": "Run-time dependency spirv-cross-c-shared found: YES 0.68.0"
+    },
+    {
+      "name": "wayland-client",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency wayland-client found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "wayland-cursor",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency wayland-cursor found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "wayland-protocols",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency wayland-protocols found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "xkbcommon",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency xkbcommon found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "wayland-client",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency wayland-client found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "x11",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency x11 found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "xscrnsaver",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency xscrnsaver found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "xext",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency xext found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "xpresent",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency xpresent found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "xrandr",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency xrandr found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "gl",
+      "found": true,
+      "version": null,
+      "line": "Run-time dependency gl found: YES"
+    },
+    {
+      "name": "egl",
+      "found": false,
+      "version": null,
+      "line": "Run-time dependency egl found: NO  (tried pkg-config and cmake)"
+    },
+    {
+      "name": "vulkan",
+      "found": true,
+      "version": "1.4.366",
+      "line": "Run-time dependency vulkan found: YES 1.4.366"
+    },
+    {
+      "name": "ffnvcodec",
+      "found": true,
+      "version": "13.1.15.1.2",
+      "line": "Run-time dependency ffnvcodec found: YES 13.1.15.1.2"
+    },
+    {
+      "name": "libva",
+      "found": true,
+      "version": "1.25.0",
+      "line": "Run-time dependency libva found: YES 1.25.0"
+    },
+    {
+      "name": "libva-win32",
+      "found": true,
+      "version": "1.25.0",
+      "line": "Run-time dependency libva-win32 found: YES 1.25.0"
+    }
+  ],
+  "observations": [
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/dav1d-prefix/src/dav1d-stamp/dav1d-configure-out.log",
+      "sha256": "c54b82e4a1687e69f8c270df1629d70f49f9150ef8918988a45564c1aab61349",
+      "projectName": "dav1d",
+      "projectVersion": "1.5.4",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/fontconfig-prefix/src/fontconfig-stamp/fontconfig-configure-out.log",
+      "sha256": "9cd47c349f7c67b7a785d78669e3b26c98f7cc91940762e3782211ac4fab78f1",
+      "projectName": "fontconfig",
+      "projectVersion": "2.18.3",
+      "dependencies": [
+        {
+          "name": "freetype2",
+          "found": true,
+          "version": "26.7.20",
+          "line": "Run-time dependency freetype2 found: YES 26.7.20"
+        },
+        {
+          "name": "json-c",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency json-c found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libxml-2.0",
+          "found": true,
+          "version": "2.16.0",
+          "line": "Run-time dependency libxml-2.0 found: YES 2.16.0"
+        },
+        {
+          "name": "intl",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency intl found: NO  (tried builtin and system)"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/freetype2-prefix/src/freetype2-stamp/freetype2-configure-out.log",
+      "sha256": "9e41eb4a41c12cd230520744b5f7af922085a16a2a485db17f551e56174aaeb5",
+      "projectName": "freetype2",
+      "projectVersion": "2.15.0",
+      "dependencies": [
+        {
+          "name": "zlib",
+          "found": true,
+          "version": "1.3.2.zlib-ng",
+          "line": "Run-time dependency zlib found: YES 1.3.2.zlib-ng"
+        },
+        {
+          "name": "bzip2",
+          "found": true,
+          "version": "1.1.0",
+          "line": "Run-time dependency bzip2 found: YES 1.1.0"
+        },
+        {
+          "name": "libpng",
+          "found": true,
+          "version": "1.6.60",
+          "line": "Run-time dependency libpng found: YES 1.6.60"
+        },
+        {
+          "name": "libbrotlidec",
+          "found": true,
+          "version": "1.2.0",
+          "line": "Run-time dependency libbrotlidec found: YES 1.2.0"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/fribidi-prefix/src/fribidi-stamp/fribidi-configure-out.log",
+      "sha256": "54ecaf926760c383b46a1683bebd14bbf143c69bf4757e038e96847b340747a7",
+      "projectName": "fribidi",
+      "projectVersion": "1.0.17",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/harfbuzz-prefix/src/harfbuzz-stamp/harfbuzz-configure-out.log",
+      "sha256": "236169779bb056128c4d3d1626eb8b5bbf5fcfc9823feb3018b3258fabb6a113",
+      "projectName": "harfbuzz",
+      "projectVersion": "15.0.0",
+      "dependencies": [
+        {
+          "name": "freetype2",
+          "found": true,
+          "version": "26.7.20",
+          "line": "Run-time dependency freetype2 found: YES 26.7.20"
+        },
+        {
+          "name": "cairo",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency cairo found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "cairo-ft",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency cairo-ft found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "cairo",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency cairo found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "cairo-ft",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency cairo-ft found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "chafa",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency chafa found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libpng",
+          "found": true,
+          "version": "1.6.60",
+          "line": "Run-time dependency libpng found: YES 1.6.60"
+        },
+        {
+          "name": "zlib",
+          "found": true,
+          "version": "1.3.2.zlib-ng",
+          "line": "Run-time dependency zlib found: YES 1.3.2.zlib-ng"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/highway-prefix/src/highway-stamp/highway-configure-out.log",
+      "sha256": "4844cf80354e1663a64d2810acc32fcba9550b1e4f28029479d672134026e4f5",
+      "projectName": "hwy",
+      "projectVersion": "1.4.0",
+      "dependencies": [
+        {
+          "name": "GTest",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency GTest found: NO  (tried pkg-config and system)"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/lcms2-prefix/src/lcms2-stamp/lcms2-configure-out.log",
+      "sha256": "9bda33384a408aaf86b5dc3a5393f6d58028519b475aa10ac3efd5d461391e37",
+      "projectName": "Little-CMS",
+      "projectVersion": "2.20",
+      "dependencies": [
+        {
+          "name": "libjpeg",
+          "found": true,
+          "version": "3.2.1",
+          "line": "Run-time dependency libjpeg found: YES 3.2.1"
+        },
+        {
+          "name": "libtiff-4",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libtiff-4 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "threads",
+          "found": true,
+          "version": null,
+          "line": "Run-time dependency threads found: YES"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libass-prefix/src/libass-stamp/libass-configure-out.log",
+      "sha256": "bdd4c957259bb25aec153a1270d886e8c99231ac61cf010e916f6c7e288e4294",
+      "projectName": "libass",
+      "projectVersion": "0.17.5",
+      "dependencies": [
+        {
+          "name": "iconv",
+          "found": true,
+          "version": null,
+          "line": "Run-time dependency iconv found: YES"
+        },
+        {
+          "name": "freetype2",
+          "found": true,
+          "version": "26.7.20",
+          "line": "Run-time dependency freetype2 found: YES 26.7.20"
+        },
+        {
+          "name": "fribidi",
+          "found": true,
+          "version": "1.0.17",
+          "line": "Run-time dependency fribidi found: YES 1.0.17"
+        },
+        {
+          "name": "harfbuzz",
+          "found": true,
+          "version": "15.0.0",
+          "line": "Run-time dependency harfbuzz found: YES 15.0.0"
+        },
+        {
+          "name": "libunibreak",
+          "found": true,
+          "version": "8.0",
+          "line": "Run-time dependency libunibreak found: YES 8.0"
+        },
+        {
+          "name": "libpng",
+          "found": true,
+          "version": "1.6.60",
+          "line": "Run-time dependency libpng found: YES 1.6.60"
+        },
+        {
+          "name": "fontconfig",
+          "found": true,
+          "version": "2.18.3",
+          "line": "Run-time dependency fontconfig found: YES 2.18.3"
+        },
+        {
+          "name": "appleframeworks",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+        },
+        {
+          "name": "appleframeworks",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libbluray-prefix/src/libbluray-stamp/libbluray-configure-out.log",
+      "sha256": "6211e99b20144eea5cb32017c4c85834a0abab6404a7a828750c01007fcd4918",
+      "projectName": "libbluray",
+      "projectVersion": "1.5.1",
+      "dependencies": [
+        {
+          "name": "freetype2",
+          "found": true,
+          "version": "26.7.20",
+          "line": "Run-time dependency freetype2 found: YES 26.7.20"
+        },
+        {
+          "name": "libxml-2.0",
+          "found": true,
+          "version": "2.16.0",
+          "line": "Run-time dependency libxml-2.0 found: YES 2.16.0"
+        },
+        {
+          "name": "libudfread",
+          "found": true,
+          "version": "1.2.0",
+          "line": "Run-time dependency libudfread found: YES 1.2.0"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libdvdcss-prefix/src/libdvdcss-stamp/libdvdcss-configure-out.log",
+      "sha256": "a7554fdf9dc04384656d068d032f63c5a0e40ceca66c5f554fa513a1c1b00836",
+      "projectName": "libdvdcss",
+      "projectVersion": "1.6.0",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libdvdnav-prefix/src/libdvdnav-stamp/libdvdnav-configure-out.log",
+      "sha256": "c00c50855a5e298120e5fbfe4917cd0e89bf3067eee573038aaeefdde58156e6",
+      "projectName": "libdvdnav",
+      "projectVersion": "7.0.1",
+      "dependencies": [
+        {
+          "name": "dvdread",
+          "found": true,
+          "version": "7.1.1",
+          "line": "Run-time dependency dvdread found: YES 7.1.1"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libdvdread-prefix/src/libdvdread-stamp/libdvdread-configure-out.log",
+      "sha256": "7cd1277eb71b48ff37241115381b6fdf6359351c1ed5defeb3795a6fd7b53d74",
+      "projectName": "libdvdread",
+      "projectVersion": "7.1.1",
+      "dependencies": [
+        {
+          "name": "libdvdcss",
+          "found": true,
+          "version": "1.6.0",
+          "line": "Run-time dependency libdvdcss found: YES 1.6.0"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libplacebo-prefix/src/libplacebo-stamp/libplacebo-configure-out.log",
+      "sha256": "23134276b45250ec94ee8467743cf80425d406b9cb4d28c4867a11e48c86c9a8",
+      "projectName": "libplacebo",
+      "projectVersion": "7.387.0",
+      "dependencies": [
+        {
+          "name": "libunwind",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libunwind found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "shaderc",
+          "found": true,
+          "version": "2026.5.0",
+          "line": "Run-time dependency shaderc found: YES 2026.5.0"
+        },
+        {
+          "name": "spirv-cross-c-shared",
+          "found": true,
+          "version": "0.68.0",
+          "line": "Run-time dependency spirv-cross-c-shared found: YES 0.68.0"
+        },
+        {
+          "name": "vulkan",
+          "found": true,
+          "version": "1.4.366",
+          "line": "Run-time dependency vulkan found: YES 1.4.366"
+        },
+        {
+          "name": "lcms2",
+          "found": true,
+          "version": "2.20",
+          "line": "Run-time dependency lcms2 found: YES 2.20"
+        },
+        {
+          "name": "dovi",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency dovi found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libxxhash",
+          "found": true,
+          "version": "0.8.4",
+          "line": "Run-time dependency libxxhash found: YES 0.8.4"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libpsl-prefix/src/libpsl-stamp/libpsl-configure-out.log",
+      "sha256": "bc9a84b1b2a31c21105ed0bc1f3587ff71a46b0e3eb891f6ecf9b5554850ca40",
+      "projectName": "libpsl",
+      "projectVersion": "0.23.1",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libudfread-prefix/src/libudfread-stamp/libudfread-configure-out.log",
+      "sha256": "a1f4cc319386948767506e78db533e6b46b22effda3b0a9f3705a0ca33a52187",
+      "projectName": "libudfread",
+      "projectVersion": "1.2.0",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/libva-prefix/src/libva-stamp/libva-configure-out.log",
+      "sha256": "b26a427138943c857c223483870f858a76ac8bbf34a3377033cef81584ebdbe9",
+      "projectName": "libva",
+      "projectVersion": "2.25.0.1",
+      "dependencies": [
+        {
+          "name": "libdrm",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libdrm found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "x11",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency x11 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xext",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xext found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xfixes",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xfixes found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "x11-xcb",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency x11-xcb found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xcb",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xcb found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xcb-dri3",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xcb-dri3 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "wayland-client",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency wayland-client found: NO  (tried pkg-config and cmake)"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/mpv-prefix/src/mpv-stamp/mpv-configure-out.log",
+      "sha256": "9c3d6e6f31ccfc371eead54ffe167c2db1859be78c03778aa7a65728900d8fdb",
+      "projectName": "mpv",
+      "projectVersion": "0.41.0-UNKNOWN",
+      "dependencies": [
+        {
+          "name": "libavcodec",
+          "found": true,
+          "version": "63.25.100",
+          "line": "Run-time dependency libavcodec found: YES 63.25.100"
+        },
+        {
+          "name": "libavfilter",
+          "found": true,
+          "version": "12.9.100",
+          "line": "Run-time dependency libavfilter found: YES 12.9.100"
+        },
+        {
+          "name": "libavformat",
+          "found": true,
+          "version": "63.17.100",
+          "line": "Run-time dependency libavformat found: YES 63.17.100"
+        },
+        {
+          "name": "libavutil",
+          "found": true,
+          "version": "61.20.100",
+          "line": "Run-time dependency libavutil found: YES 61.20.100"
+        },
+        {
+          "name": "libswresample",
+          "found": true,
+          "version": "7.7.100",
+          "line": "Run-time dependency libswresample found: YES 7.7.100"
+        },
+        {
+          "name": "libswscale",
+          "found": true,
+          "version": "10.6.100",
+          "line": "Run-time dependency libswscale found: YES 10.6.100"
+        },
+        {
+          "name": "libplacebo",
+          "found": true,
+          "version": "7.387.0",
+          "line": "Run-time dependency libplacebo found: YES 7.387.0"
+        },
+        {
+          "name": "libass",
+          "found": true,
+          "version": "0.17.5",
+          "line": "Run-time dependency libass found: YES 0.17.5"
+        },
+        {
+          "name": "dl",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency dl found: NO  (tried builtin and system)"
+        },
+        {
+          "name": "subrandr",
+          "found": true,
+          "version": "1.4.0",
+          "line": "Run-time dependency subrandr found: YES 1.4.0"
+        },
+        {
+          "name": "appleframeworks",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+        },
+        {
+          "name": "libcurl",
+          "found": true,
+          "version": "8.23.0-DEV",
+          "line": "Run-time dependency libcurl found: YES 8.23.0-DEV"
+        },
+        {
+          "name": "libcdio",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libcdio found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libcdio_paranoia",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libcdio_paranoia found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "dvdread",
+          "found": true,
+          "version": "7.1.1",
+          "line": "Run-time dependency dvdread found: YES 7.1.1"
+        },
+        {
+          "name": "dvdnav",
+          "found": true,
+          "version": "7.0.1",
+          "line": "Run-time dependency dvdnav found: YES 7.0.1"
+        },
+        {
+          "name": "iconv",
+          "found": true,
+          "version": null,
+          "line": "Run-time dependency iconv found: YES"
+        },
+        {
+          "name": "mujs",
+          "found": true,
+          "version": "1.3.11-1-g18aaaf8",
+          "line": "Run-time dependency mujs found: YES 1.3.11-1-g18aaaf8"
+        },
+        {
+          "name": "lcms2",
+          "found": true,
+          "version": "2.20",
+          "line": "Run-time dependency lcms2 found: YES 2.20"
+        },
+        {
+          "name": "libarchive",
+          "found": true,
+          "version": "3.9.0",
+          "line": "Run-time dependency libarchive found: YES 3.9.0"
+        },
+        {
+          "name": "libavdevice",
+          "found": true,
+          "version": "63.6.100",
+          "line": "Run-time dependency libavdevice found: YES 63.6.100"
+        },
+        {
+          "name": "libbluray",
+          "found": true,
+          "version": "1.5.1",
+          "line": "Run-time dependency libbluray found: YES 1.5.1"
+        },
+        {
+          "name": "luajit",
+          "found": true,
+          "version": "2.1.0-beta3",
+          "line": "Run-time dependency luajit found: YES 2.1.0-beta3"
+        },
+        {
+          "name": "rubberband",
+          "found": true,
+          "version": "4.0.0",
+          "line": "Run-time dependency rubberband found: YES 4.0.0"
+        },
+        {
+          "name": "sdl2",
+          "found": true,
+          "version": "2.33.0",
+          "line": "Run-time dependency sdl2 found: YES 2.33.0"
+        },
+        {
+          "name": "uchardet",
+          "found": true,
+          "version": "0.0.8",
+          "line": "Run-time dependency uchardet found: YES 0.0.8"
+        },
+        {
+          "name": "vapoursynth-script",
+          "found": true,
+          "version": "72",
+          "line": "Run-time dependency vapoursynth-script found: YES 72"
+        },
+        {
+          "name": "xfixes",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xfixes found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "x11",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency x11 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "zimg",
+          "found": true,
+          "version": "3.0.6",
+          "line": "Run-time dependency zimg found: YES 3.0.6"
+        },
+        {
+          "name": "zlib",
+          "found": true,
+          "version": "1.3.2.zlib-ng",
+          "line": "Run-time dependency zlib found: YES 1.3.2.zlib-ng"
+        },
+        {
+          "name": "alsa",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency alsa found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "appleframeworks",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+        },
+        {
+          "name": "appleframeworks",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency appleframeworks found: NO  (tried framework)"
+        },
+        {
+          "name": "jack",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency jack found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "openal",
+          "found": true,
+          "version": "1.25.2",
+          "line": "Run-time dependency openal found: YES 1.25.2"
+        },
+        {
+          "name": "libpipewire-0.3",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libpipewire-0.3 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libpulse",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libpulse found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "sndio",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency sndio found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "caca",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency caca found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libdrm",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libdrm found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libdisplay-info",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency libdisplay-info found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "libjpeg",
+          "found": true,
+          "version": "3.2.1",
+          "line": "Run-time dependency libjpeg found: YES 3.2.1"
+        },
+        {
+          "name": "shaderc",
+          "found": true,
+          "version": "2026.5.0",
+          "line": "Run-time dependency shaderc found: YES 2026.5.0"
+        },
+        {
+          "name": "libsixel",
+          "found": true,
+          "version": "1.8.7",
+          "line": "Run-time dependency libsixel found: YES 1.8.7"
+        },
+        {
+          "name": "spirv-cross-c-shared",
+          "found": true,
+          "version": "0.68.0",
+          "line": "Run-time dependency spirv-cross-c-shared found: YES 0.68.0"
+        },
+        {
+          "name": "wayland-client",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency wayland-client found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "wayland-cursor",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency wayland-cursor found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "wayland-protocols",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency wayland-protocols found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xkbcommon",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xkbcommon found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "wayland-client",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency wayland-client found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "x11",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency x11 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xscrnsaver",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xscrnsaver found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xext",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xext found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xpresent",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xpresent found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "xrandr",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency xrandr found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "gl",
+          "found": true,
+          "version": null,
+          "line": "Run-time dependency gl found: YES"
+        },
+        {
+          "name": "egl",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency egl found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "vulkan",
+          "found": true,
+          "version": "1.4.366",
+          "line": "Run-time dependency vulkan found: YES 1.4.366"
+        },
+        {
+          "name": "ffnvcodec",
+          "found": true,
+          "version": "13.1.15.1.2",
+          "line": "Run-time dependency ffnvcodec found: YES 13.1.15.1.2"
+        },
+        {
+          "name": "libva",
+          "found": true,
+          "version": "1.25.0",
+          "line": "Run-time dependency libva found: YES 1.25.0"
+        },
+        {
+          "name": "libva-win32",
+          "found": true,
+          "version": "1.25.0",
+          "line": "Run-time dependency libva-win32 found: YES 1.25.0"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/opus-prefix/src/opus-stamp/opus-configure-out.log",
+      "sha256": "16569599ceebd7b4d79b8e4ea84d75505d5b1d6aca111a3ea7defccdae84233a",
+      "projectName": "opus",
+      "projectVersion": "1.6.1-85-ga8b2545",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/rubberband-prefix/src/rubberband-stamp/rubberband-configure-out.log",
+      "sha256": "f1a9b849c1d08fba7998f3b6fad3f82f8f095950684e8fed2124507f07cac897",
+      "projectName": "Rubber Band Library",
+      "projectVersion": "4.0.0",
+      "dependencies": [
+        {
+          "name": "fftw3",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency fftw3 found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "sleef",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency sleef found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "sleefdft",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency sleefdft found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "samplerate",
+          "found": true,
+          "version": "0.2.2",
+          "line": "Run-time dependency samplerate found: YES 0.2.2"
+        },
+        {
+          "name": "speexdsp",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency speexdsp found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "sndfile",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency sndfile found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "vamp-sdk",
+          "found": false,
+          "version": null,
+          "line": "Run-time dependency vamp-sdk found: NO  (tried pkg-config and cmake)"
+        },
+        {
+          "name": "threads",
+          "found": true,
+          "version": null,
+          "line": "Run-time dependency threads found: YES"
+        }
+      ]
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/speex-prefix/src/speex-stamp/speex-configure-out.log",
+      "sha256": "892111ea6cc779e8367d362effded4f905b74fbfd1c5ffbba95f93ffcfaecc5a",
+      "projectName": "speex",
+      "projectVersion": "1.2.1",
+      "dependencies": []
+    },
+    {
+      "artifactMember": "mpv-winbuild-cmake/build64/packages/zstd-prefix/src/zstd-stamp/zstd-configure-out.log",
+      "sha256": "1b73b0ab51922ab5b0e5602c57e0e902e61f33c355cbc130cbe3ddf22f246779",
+      "projectName": "zstd",
+      "projectVersion": "1.6.0",
+      "dependencies": []
+    }
+  ]
+}

@@ -3,7 +3,6 @@ import { api, json, errorText, type Root } from './api';
 import {BackupTools} from './BackupTools';
 import {StorageTools} from './StorageTools';
 import {MissingArtworkTools} from './MissingArtworkTools';
-import './settings.css';
 import { Icon, type IconName } from './Icon';
 import { Button, Dialog, DialogHeader, StatusMessage } from './ui';
 import { Diagnostics } from './Diagnostics';
@@ -24,8 +23,9 @@ import {SourceChanges} from './SourceChanges';
 import {NativePlayerSettings} from './NativePlayerSettings';
 import {DirectorySettingRow} from './DirectorySettingRow';
 import {SettingToggle} from './SettingToggle';
+import {AppearanceSettings} from './AppearanceSettings';
 
-const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'activity'},{id:'help',label:'帮助',icon:'help'}];
+const tabs:{id:string;label:string;icon:IconName}[]=[{id:'directories',label:'媒体目录',icon:'folder'},{id:'appearance',label:'外观',icon:'palette'},{id:'playback',label:'播放偏好',icon:'play'},{id:'data',label:'数据管理',icon:'database'},{id:'diagnostics',label:'运行诊断',icon:'activity'},{id:'help',label:'帮助',icon:'help'}];
 
 export function Settings({ roots, close, reload, scanning, scan, previewEnabled, changePreview,thumbnailStatus,changeThumbnailStatus }: { roots: Root[]; close: () => void; reload: () => Promise<void>; scanning: boolean; scan: (root?: number) => Promise<void>; previewEnabled:boolean; changePreview:(enabled:boolean)=>void;thumbnailStatus:ThumbnailStatus|null;changeThumbnailStatus:(value:ThumbnailStatus)=>void }) {
   const [tab,setTab]=useState('directories');
@@ -44,13 +44,14 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
   const [availability, setAvailability] = useState<Record<number, boolean>>({});
   const [screenshotDirty,setScreenshotDirty]=useState(false),[addedRoot,setAddedRoot]=useState<Root|null>(null);
   const [mouseDirty,setMouseDirty]=useState(false);
+  const [appearanceDirty,setAppearanceDirty]=useState(false);
   const [filePermissions,setFilePermissions]=useState<Record<number,FilePermission>>({});
   const directoryAction=useRef(false),permissionEpoch=useRef(0),latestPermissions=useRef(filePermissions);
   latestPermissions.current=filePermissions;
   const [permissionError,setPermissionError]=useState(''),[statusError,setStatusError]=useState('');
   const [permissionLoading,setPermissionLoading]=useState(false),[statusLoading,setStatusLoading]=useState(false);
   const [permissionRetry,setPermissionRetry]=useState(0),[statusRetry,setStatusRetry]=useState(0);
-  const drafts=[screenshotDirty?'截图目录':'',mouseDirty?'鼠标侧键时长':'',path.trim()?'待添加目录':''].filter(Boolean);
+  const drafts=[appearanceDirty?'外观主题':'',screenshotDirty?'截图目录':'',mouseDirty?'鼠标侧键时长':'',path.trim()?'待添加目录':''].filter(Boolean);
   useDraftGuard(drafts.length>0,busy,`${drafts.join('、')}尚未保存，放弃修改并关闭设置吗？`);
   const requestClose=async()=>{if(!busy&&(!drafts.length||await confirmInApp('放弃未保存的修改？',drafts.join('、'),'关闭后这些修改不会保存。','放弃修改',true)))close();};
   async function toggleThumbnails(){
@@ -144,7 +145,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
     window.addEventListener('avhub-before-quit',quitting);return()=>window.removeEventListener('avhub-before-quit',quitting);
   },[busy]);
   return <Dialog labelledBy="settings-title" describedBy="settings-description" closeLabel="关闭设置" busy={busy} close={requestClose} className="modal settings-dialog">
-      <DialogHeader id="settings-title" descriptionId="settings-description" icon="settings" title="媒体库设置" description="目录默认只读，可按目录授权文件重命名和系统回收；不改视频内容。"/>
+      <DialogHeader id="settings-title" descriptionId="settings-description" icon="settings" title="媒体库设置" description={tab==='appearance'?'统一主题、背景和界面强调色，支持实时预览和本地保存。':'目录默认只读，可按目录授权文件重命名和系统回收；不改视频内容。'}/>
       <div className="settings-workspace">
       <div className="settings-tabs" role="tablist" aria-label="设置分类" aria-orientation={verticalTabs?'vertical':'horizontal'}>{tabs.map((item,index)=><button key={item.id} id={'settings-tab-'+item.id} role="tab" aria-selected={tab===item.id} aria-controls={'settings-panel-'+item.id} tabIndex={tab===item.id?0:-1} disabled={busy} onClick={()=>setTab(item.id)} onKeyDown={event=>{
         if(busy||!['ArrowLeft','ArrowRight','Home','End',...(verticalTabs?['ArrowUp','ArrowDown']:[])].includes(event.key))return;event.preventDefault();
@@ -186,6 +187,7 @@ export function Settings({ roots, close, reload, scanning, scan, previewEnabled,
       <details className="settings-advanced"><summary>高级播放设置</summary><NativePrepareSettings busy={busy} changeBusy={setBusy}/></details>
       </div><div className="settings-panel" role="tabpanel" id="settings-panel-data" aria-labelledby="settings-tab-data" hidden={tab!=='data'}><AppDataTools busy={busy} enabled={tab==='data'}/><FileStatePanel busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><SourceChanges busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><FileOperationHistory busy={busy} changeBusy={setBusy} reload={reload} enabled={tab==='data'}/><BackupTools busy={busy} changeBusy={setBusy} scanning={scanning} reload={reload}/><StorageTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'}/><MissingArtworkTools busy={busy} changeBusy={setBusy} scanning={scanning} enabled={tab==='data'} reload={reload}/></div>
       {notice && <StatusMessage className="settings-message" kind={noticeError ? 'error' : 'success'}>{notice}</StatusMessage>}
+      <div className="settings-panel" role="tabpanel" id="settings-panel-appearance" aria-labelledby="settings-tab-appearance" hidden={tab!=='appearance'}><AppearanceSettings busy={busy} changeBusy={setBusy} onDirtyChange={setAppearanceDirty}/></div>
       <div className="settings-panel" role="tabpanel" id="settings-panel-diagnostics" aria-labelledby="settings-tab-diagnostics" hidden={tab!=='diagnostics'}><Diagnostics changeBusy={setBusy}/></div>
       <div className="settings-panel" role="tabpanel" id="settings-panel-help" aria-labelledby="settings-tab-help" hidden={tab!=='help'}>{tab==='help'&&<HelpPanel changeBusy={setBusy} busy={busy}/>}</div>
       {scanning && <p role="status">后台扫描正在进行，可关闭设置继续观看。扫描结束后可修改目录。</p>}

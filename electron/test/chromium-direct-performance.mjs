@@ -12,6 +12,7 @@ const root=path.resolve(import.meta.dirname,'../..');
 const option=(key,fallback)=>process.argv.find(value=>value.startsWith(`--${key}=`))?.slice(key.length+3)??fallback;
 const index=option('index',undefined),id=Number(option('id','0')),seconds=Number(option('seconds','20')),at=Number(option('at','0'));
 const lossless=process.argv.includes('--lossless');
+const softwareDecodeControl=process.argv.includes('--software-decode-control');
 assert.ok(index&&path.isAbsolute(index),'Explicit authorized SQLite index required');
 assert.ok(Number.isSafeInteger(id)&&id>0);
 assert.ok(Number.isInteger(seconds)&&seconds>=15&&seconds<=60);
@@ -62,9 +63,10 @@ d.execute("UPDATE media SET path=?,name='owned-control.mp4',title='无损交织�
 }
 const probe=spawnSync(path.join(root,'bin/ffprobe.exe'),['-v','error','-select_streams','v:0','-show_entries','stream=codec_name,profile,level,pix_fmt,width,height,r_frame_rate,avg_frame_rate,bit_rate:format=duration,size,bit_rate','-of','json',fixture.path],{windowsHide:true,encoding:'utf8',timeout:30000});
 assert.equal(probe.status,0,probe.stderr);
-const report={completed:false,sourceUnchanged:false,cleanExit:false,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')),source:JSON.parse(probe.stdout),control,lossless,segmentStart:at,stages:[],seeks:[],attempts:[],byteRanges:[],fragments:[],limitations:[
- 'Single local real MP4, not the remote computer or reported file.',
- 'Visible hardware-enabled Electron; no disable-GPU, in-process-GPU or no-sandbox switches.',
+const report={completed:false,sourceUnchanged:false,cleanExit:false,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')),source:JSON.parse(probe.stdout),control,lossless,softwareDecodeControl,segmentStart:at,stages:[],seeks:[],attempts:[],byteRanges:[],fragments:[],limitations:[
+ 'Single authorized local real MP4; no claim about the other computer.',
+ softwareDecodeControl?'Accelerated decode disabled in this owned diagnostic process only; not a production recommendation.':'Normal hardware-enabled Electron.',
+ 'No disable-GPU, in-process-GPU or no-sandbox switches.',
  'Playwright/CDP used for diagnostics; not a no-inspector memory acceptance or cold-disk benchmark.',
  'Muted browser output; physical sound/lip-sync and HDR appearance are not accepted.',
  'The flattened-composition stage uses a temporary CSS override only; not a production fix.'
@@ -75,19 +77,20 @@ const flush=()=>writeFileSync(reportPath,JSON.stringify(report,null,2));
 try{
  const env={...process.env,AVHUB_DATA_DIR:profile,AVHUB_APP_HOME:workspace,AVHUB_SMOKE_TEST:'0',AVHUB_HEADLESS_TEST:'0'};
  delete env.ELECTRON_RUN_AS_NODE;delete env.NODE_OPTIONS;
- desktop=await _electron.launch({args:[root],cwd:workspace,env,timeout:60000});
+ desktop=await _electron.launch({args:[root,...(softwareDecodeControl?['--disable-accelerated-video-decode']:[])],cwd:workspace,env,timeout:60000});
  desktop.process().once('exit',(code,signal)=>{exit={code,signal};});
  page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
  await desktop.evaluate(({BrowserWindow})=>{const w=BrowserWindow.getAllWindows()[0];w.show();w.focus();});
  report.decoderCapture=await desktop.evaluate(async({BrowserWindow})=>{
   const wc=BrowserWindow.getAllWindows()[0].webContents;
   try{
-   wc.debugger.attach('1.3');globalThis.__avhubDirectMedia={properties:{},errors:[]};
+   wc.debugger.attach('1.3');globalThis.__avhubDirectMedia={properties:{},errors:[],messages:[]};
    const listener=(_,method,params)=>{
     if(method==='Media.playerPropertiesChanged')for(const p of params.properties??[]){
      if(/decoder|platform|codec|video_track|resolution|frame_rate/i.test(p.name))globalThis.__avhubDirectMedia.properties[p.name]=p.value;
     }
-    if(method==='Media.playerErrorsRaised')for(const e of params.errors??[])globalThis.__avhubDirectMedia.errors.push({errorType:e.errorType,code:e.code});
+    if(method==='Media.playerErrorsRaised')for(const e of params.errors??[])if(globalThis.__avhubDirectMedia.errors.length<32)globalThis.__avhubDirectMedia.errors.push(e);
+    if(method==='Media.playerMessagesLogged')for(const m of params.messages??[])if(globalThis.__avhubDirectMedia.messages.length<64)globalThis.__avhubDirectMedia.messages.push(m);
    };globalThis.__avhubDirectListener=listener;wc.debugger.on('message',listener);
    await wc.debugger.sendCommand('Media.enable');return{attached:true};
   }catch(error){return{attached:false,error:String(error.message)};}
@@ -128,7 +131,7 @@ try{
   return{at:performance.now(),time:v.currentTime,paused:v.paused,rate:v.playbackRate,ready:v.readyState,ahead,total:q.totalVideoFrames,dropped:q.droppedVideoFrames,width:v.videoWidth,height:v.videoHeight,error:v.error?.code??null,visible:document.visibilityState==='visible',events:o.events.length,frames:o.frames.length,longTasks:o.longTasks,longTaskMs:o.longTaskMs,controlsHidden:document.querySelector('.video-wrap').classList.contains('controls-hidden')};
  });
  await delay(4000);
- for(const mode of process.argv.includes('--export-only')?[]:process.argv.includes('--baseline-only')?['normal-hidden','normal-recheck']:['normal-hidden','normal-controls','flat-composition','normal-recheck']){
+ for(const mode of process.argv.includes('--export-only')?[]:process.argv.includes('--single-stage')?['normal-hidden']:process.argv.includes('--baseline-only')?['normal-hidden','normal-recheck']:['normal-hidden','normal-controls','flat-composition','normal-recheck']){
   await page.locator('video').evaluate((v,target)=>{v.currentTime=target;},segmentAt);
   await expect.poll(()=>page.locator('video').evaluate((v,target)=>!v.seeking&&v.readyState>=3&&Math.abs(v.currentTime-target)<3,segmentAt),{timeout:30000}).toBe(true);
   await delay(3000);
@@ -203,6 +206,7 @@ try{
 finally{
  if(desktop){
   report.decoder=await desktop.evaluate(()=>globalThis.__avhubDirectMedia??null).catch(()=>null);
+  report.finalVideo=await page.locator('video').evaluate(v=>{const q=v.getVideoPlaybackQuality();return {time:v.currentTime,rate:v.playbackRate,paused:v.paused,width:v.videoWidth,height:v.videoHeight,error:v.error?{code:v.error.code,message:v.error.message}:null,quality:{total:q.totalVideoFrames,dropped:q.droppedVideoFrames},sourceKind:v.currentSrc.startsWith('blob:')?'blob':v.currentSrc.endsWith('/file')?'original':'other'};}).catch(()=>null);
   report.gpuAfterPlayback=await desktop.evaluate(async({app})=>({features:app.getGPUFeatureStatus(),complete:await app.getGPUInfo('complete')})).catch(error=>({error:String(error.message)}));
   const stopped=desktop.waitForEvent('close',{timeout:30000}).then(()=>true,()=>false);
   await desktop.evaluate(({app})=>{setTimeout(()=>app.quit(),0);}).catch(()=>{});

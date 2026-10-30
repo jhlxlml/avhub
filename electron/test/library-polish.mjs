@@ -103,6 +103,20 @@ try{
  await page.getByRole('button',{name:`更多操作 ${title}`,exact:true}).click();await page.getByRole('menuitem',{name:'重命名文件',exact:true}).click();await page.getByRole('textbox',{name:'新文件名',exact:true}).fill('仅预览，不执行重命名');await expect(page.getByLabel('重命名预览')).toContainText('仅预览，不执行重命名.mp4');await screenshot('rename-preview-dark-800');
  await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'放弃修改',exact:true}).click();
  await page.getByRole('button',{name:'窗口置顶',exact:true}).click();await expect(page.getByRole('button',{name:'取消窗口置顶',exact:true})).toHaveAttribute('aria-pressed','true');await page.getByRole('button',{name:'取消窗口置顶',exact:true}).click();
+ // Real Electron + real local API: a delayed favorite completes after navigation.
+ // Delay transport only; do not fake responses or mutate the user's library.
+ const favoriteTarget=items[1],favoriteTitle=(await api(`/api/media/${favoriteTarget.id}`)).title;
+ let releaseFavorite,enteredFavorite;
+ const favoriteGate=new Promise(resolve=>releaseFavorite=resolve),favoriteStarted=new Promise(resolve=>enteredFavorite=resolve);
+ await page.route(`**/api/media/${favoriteTarget.id}/favorite`,async route=>{enteredFavorite();await favoriteGate;await route.continue();});
+ try{
+   const card=page.locator('.card').filter({has:page.getByRole('button',{name:`播放 ${favoriteTitle}`,exact:true})});
+   await card.locator('.cover').hover();await card.locator('.star').click();await favoriteStarted;
+   await page.getByRole('navigation',{name:'视频分类'}).getByRole('button',{name:'收藏',exact:true}).click();
+   await expect(page.locator('.card')).toHaveCount(0);releaseFavorite();
+   await expect(page.getByRole('button',{name:`播放 ${favoriteTitle}`,exact:true})).toBeVisible();
+   assert.equal((await api('/api/media?favorite=true&page=1')).total,1);
+ }finally{releaseFavorite();await page.unroute(`**/api/media/${favoriteTarget.id}/favorite`);}
  assert.deepEqual(identity(),before);assert.equal(playbackRequests,0);assert.deepEqual(errors,[]);
  await desktop.close();desktop=null;
  writeFileSync(path.join(folder,'acceptance.json'),JSON.stringify({build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')),engine:'real-electron',generatedMedia:true,sourceUnchanged:true,cleanExit:true,playbackRequests,errors,screenshots,limitations:['Synthetic SDR artwork; not a playback, HDR or physical mixed-DPI performance test.','390px renderer layout is covered by a separate explicitly marked harness; desktop minimum window width is preserved.']},null,2));

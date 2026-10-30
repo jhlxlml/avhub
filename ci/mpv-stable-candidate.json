@@ -1,0 +1,142 @@
+{
+  "schema": 1,
+  "status": "candidate-only",
+  "releaseTag": "v0.41.0",
+  "asset": "mpv-v0.41.0-x86_64-w64-mingw32.zip",
+  "url": "https://github.com/mpv-player/mpv/releases/download/v0.41.0/mpv-v0.41.0-x86_64-w64-mingw32.zip",
+  "assetId": 331763937,
+  "archiveSha256": "a49811c0752c108b8260636f9c6f6fcb97406641c98b30f1e7b500dfb20177de",
+  "innerArchive": {
+    "name": "mpv-git-2025-12-21-41f6a64-x86_64.zip",
+    "sha256": "443afe07e61e3f742743349d01d8dac95f0c5390a766a9d3d5b1b5f05911bae5"
+  },
+  "sourceCommit": "41f6a645068483470267271e1d09966ca3b9f413",
+  "buildContext": "https://github.com/mpv-player/mpv/actions/runs/20414542745",
+  "distributionReady": false,
+  "releaseBlockers": [
+    "Corresponding dependency sources and notices are incomplete",
+    "Not installed as the application's runtime; packaged layout is unverified"
+  ],
+  "files": [
+    {
+      "name": "avcodec-62.dll",
+      "size": 18698752,
+      "sha256": "da6e88180c23d5f27593364c781f9f4fbc62dd6305563fb15b97ba0ad4c82289"
+    },
+    {
+      "name": "avdevice-62.dll",
+      "size": 137216,
+      "sha256": "c4c7376aacbbbf0567627b4665e0c529dcfb31e3b10beea56e776cf7722ee6c2"
+    },
+    {
+      "name": "avfilter-11.dll",
+      "size": 5867520,
+      "sha256": "62d619ab392a134eb40792c30f16ff823418b649e2f7a307fd11807df3ccfe4e"
+    },
+    {
+      "name": "avformat-62.dll",
+      "size": 2733568,
+      "sha256": "5a6e1752485017773435658453b1eba769542fbf7f6f451d804a0f92a74f1dd3"
+    },
+    {
+      "name": "avutil-60.dll",
+      "size": 1168384,
+      "sha256": "a1b0530106dd5a0292d183a3a9fd9a5817754fa532bb0dcde3a24a98e0ba561a"
+    },
+    {
+      "name": "libass-9.dll",
+      "size": 760938,
+      "sha256": "5bd64a6ec88f00fe8e2b17e713e35d825dad023a516423dcf6b068f5470ffee5"
+    },
+    {
+      "name": "libdav1d.dll",
+      "size": 2778091,
+      "sha256": "c6586274d646d68ab81830005b9b4afc3fdc3b8eada229dd6d6918d38fa59ab7"
+    },
+    {
+      "name": "libfreetype-6.dll",
+      "size": 822896,
+      "sha256": "ce7309487db8badeb4c52ca9c5d9b90c12cf8d18734c67e4b8d87f8d046955d7"
+    },
+    {
+      "name": "libfribidi-0.dll",
+      "size": 216078,
+      "sha256": "b788d4e865fdd6cbc39cb3d89d5ba04d8039d58b4bed345090196e8e5077b054"
+    },
+    {
+      "name": "libgcc_s_seh-1.dll",
+      "size": 774200,
+      "sha256": "306983c483d96a6d08a2df044e360f0962e21dac021baf8311d3c0cb3b2c9def"
+    },
+    {
+      "name": "libharfbuzz-0.dll",
+      "size": 2171688,
+      "sha256": "007d4832f00e370fad9a255b5f83c6746e8cc77e210be8781bf6791bd245205c"
+    },
+    {
+      "name": "libiconv-2.dll",
+      "size": 1209281,
+      "sha256": "c5daadc6c8021fa6759b106d14b733ea2a10cf91d3e9ae0eead2a04274c5a184"
+    },
+    {
+      "name": "liblcms2.dll",
+      "size": 819185,
+      "sha256": "94e5b99d06e5f1b0bc637c65d8fe736e21c898078b2d91267f93e8a6dbd64900"
+    },
+    {
+      "name": "libplacebo-358.dll",
+      "size": 1648875,
+      "sha256": "5bd638535a1350803ebb371fb1ae76ebc9324f546ad67e7a1c38cded870dcd20"
+    },
+    {
+      "name": "libshaderc_shared.dll",
+      "size": 13081061,
+      "sha256": "326385a111f15db45819facabcd46714bf270d95f2095cffd4d29a19c443888a"
+    },
+    {
+      "name": "libspirv-cross-c-shared.dll",
+      "size": 4253958,
+      "sha256": "0d18be367a9c4a6250ae5ddaf04201d4b01b9c5890e633679216fdcccb43ada7"
+    },
+    {
+      "name": "libssp-0.dll",
+      "size": 131367,
+      "sha256": "0b4cf4b0a5f4ceb08bc2b95e7837b72ce24c2a5e906c93edd2661facbcfe5173"
+    },
+    {
+      "name": "libstdc++-6.dll",
+      "size": 26347027,
+      "sha256": "dc04a17d6e9fe93bcb0639e93aca2811ad53c81c523e1909a2c24daf827fd2cd"
+    },
+    {
+      "name": "libwinpthread-1.dll",
+      "size": 324451,
+      "sha256": "fc9f14551f6609dd51801daec2c194579d35345551ef84fe465cbdb3339c2a6f"
+    },
+    {
+      "name": "mpv.exe",
+      "size": 18375782,
+      "sha256": "3ad8364b572bffc7980c5c4bb11b952b2dd2429c203971ebed890d214b6e07c1"
+    },
+    {
+      "name": "swresample-6.dll",
+      "size": 139264,
+      "sha256": "4214c5ef1f091218d2eb1554d769625e7f918af5afd6f518804af1c61c058111"
+    },
+    {
+      "name": "swscale-9.dll",
+      "size": 2035712,
+      "sha256": "75f9a2979be77b3f1606a73c9c383ba46235030a9fe7c9327f944d2b1f5f787c"
+    },
+    {
+      "name": "vulkan-1.dll",
+      "size": 1192959,
+      "sha256": "b2c068a078d86a6df7f55a04634699a7656b09ee4f701c121e1ddbe6e98d77a3"
+    },
+    {
+      "name": "zlib1.dll",
+      "size": 137216,
+      "sha256": "f66de1d6324848c68bb45a808882e396cee910b0c561e848bee9ed26558a3a50"
+    }
+  ]
+}

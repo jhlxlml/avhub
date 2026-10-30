@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "host": "Ubuntu 24.04 x86_64",
+  "packages": [
+    {
+      "package": "binutils-mingw-w64-x86-64",
+      "version": "2.41.90.20240122-1ubuntu1+11.4",
+      "architecture": "amd64",
+      "sha256": "28bfabbf64a68813a56360bca056072af9ff71ef4090a4b8a8a085afcda3e4dd",
+      "size": 6053282,
+      "filename": "pool/universe/b/binutils-mingw-w64/binutils-mingw-w64-x86-64_2.41.90.20240122-1ubuntu1+11.4_amd64.deb",
+      "source": "binutils-mingw-w64 (11.4)",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "mingw-w64-common",
+      "version": "11.0.1-3build1",
+      "architecture": "all",
+      "sha256": "4a42fd30fbc3838c58c929d8a4882682fc12408bb7a0e6cafa913c0f0a57c187",
+      "size": 5580230,
+      "filename": "pool/universe/m/mingw-w64/mingw-w64-common_11.0.1-3build1_all.deb",
+      "source": "mingw-w64",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "mingw-w64-x86-64-dev",
+      "version": "11.0.1-3build1",
+      "architecture": "all",
+      "sha256": "018480a62907fcca19c6bf2975ae01f5c92c23dee8c3cf7a8355c10bf7d42c6f",
+      "size": 3786378,
+      "filename": "pool/universe/m/mingw-w64/mingw-w64-x86-64-dev_11.0.1-3build1_all.deb",
+      "source": "mingw-w64",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "gcc-mingw-w64-base",
+      "version": "13.2.0-6ubuntu1+26.1",
+      "architecture": "amd64",
+      "sha256": "a30c07e807e9874ea93909448c5d6d37f9569ebe60ad32de8e490aad198538a3",
+      "size": 188046,
+      "filename": "pool/universe/g/gcc-mingw-w64/gcc-mingw-w64-base_13.2.0-6ubuntu1+26.1_amd64.deb",
+      "source": "gcc-mingw-w64 (26.1)",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "gcc-mingw-w64-x86-64-posix-runtime",
+      "version": "13.2.0-6ubuntu1+26.1",
+      "architecture": "amd64",
+      "sha256": "aca6b438e0b55b11cedcf1170a1ee26e7979e34192e34f6e6389e560908a5bfc",
+      "size": 14036962,
+      "filename": "pool/universe/g/gcc-mingw-w64/gcc-mingw-w64-x86-64-posix-runtime_13.2.0-6ubuntu1+26.1_amd64.deb",
+      "source": "gcc-mingw-w64 (26.1)",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "gcc-mingw-w64-x86-64-posix",
+      "version": "13.2.0-6ubuntu1+26.1",
+      "architecture": "amd64",
+      "sha256": "0855fa1d4a618550faac3a3e4352aa3226833b28184ad3c3b496a68a22c4eda2",
+      "size": 35401298,
+      "filename": "pool/universe/g/gcc-mingw-w64/gcc-mingw-w64-x86-64-posix_13.2.0-6ubuntu1+26.1_amd64.deb",
+      "source": "gcc-mingw-w64 (26.1)",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "g++-mingw-w64-x86-64-posix",
+      "version": "13.2.0-6ubuntu1+26.1",
+      "architecture": "amd64",
+      "sha256": "52c3613f386e462ae71105d1a0b2a48d866ccb048ad253acff629c5a2291252d",
+      "size": 14701014,
+      "filename": "pool/universe/g/gcc-mingw-w64/g++-mingw-w64-x86-64-posix_13.2.0-6ubuntu1+26.1_amd64.deb",
+      "source": "gcc-mingw-w64 (26.1)",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "libpkgconf3",
+      "version": "1.8.1-2build1",
+      "architecture": "amd64",
+      "sha256": "fc3a57e8f931ec06cb7c51acc56878f1fec247ff02a7adcab26905c2faeb2792",
+      "size": 30652,
+      "filename": "pool/main/p/pkgconf/libpkgconf3_1.8.1-2build1_amd64.deb",
+      "source": "pkgconf",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "ninja-build",
+      "version": "1.11.1-2",
+      "architecture": "amd64",
+      "sha256": "6a17f76a0f75586f1292f6c61a9b07fd0dec963baf6a102b17673f601c6b323a",
+      "size": 128926,
+      "filename": "pool/universe/n/ninja-build/ninja-build_1.11.1-2_amd64.deb",
+      "source": "ninja-build",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "meson",
+      "version": "1.3.2-1ubuntu1",
+      "architecture": "all",
+      "sha256": "5a9ab497255cc51f97866c359fc5cc75a1be4890ad376e471ca45d76bbea4803",
+      "size": 603950,
+      "filename": "pool/universe/m/meson/meson_1.3.2-1ubuntu1_all.deb",
+      "source": "meson",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "nasm",
+      "version": "2.16.01-1build1",
+      "architecture": "amd64",
+      "sha256": "22eede0f2dd62343b0298182f62f7485704fe02f166395b02c92a8883377e0b3",
+      "size": 458884,
+      "filename": "pool/universe/n/nasm/nasm_2.16.01-1build1_amd64.deb",
+      "source": "nasm",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "pkgconf-bin",
+      "version": "1.8.1-2build1",
+      "architecture": "amd64",
+      "sha256": "7a812f05ee1610154b433e2ad54f6e4163fcbb306b9fb31afe959afb2e5e1545",
+      "size": 20730,
+      "filename": "pool/main/p/pkgconf/pkgconf-bin_1.8.1-2build1_amd64.deb",
+      "source": "pkgconf",
+      "digestProvenance": "Existing Ubuntu APT index"
+    },
+    {
+      "package": "pkgconf",
+      "version": "1.8.1-2build1",
+      "architecture": "amd64",
+      "sha256": "834a58031069d97d7cfb8b2f5bfd5effc69cecf7f30cc362071875f1f8dc1828",
+      "size": 16790,
+      "filename": "pool/main/p/pkgconf/pkgconf_1.8.1-2build1_amd64.deb",
+      "source": "pkgconf",
+      "digestProvenance": "Existing Ubuntu APT index"
+    }
+  ]
+}

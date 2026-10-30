@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "sourceCommit": "41f6a645068483470267271e1d09966ca3b9f413",
+  "archiveSha256": "a49811c0752c108b8260636f9c6f6fcb97406641c98b30f1e7b500dfb20177de",
+  "completeDistributionMaterials": false,
+  "references": [
+    {
+      "path": "third_party/mpv/upstream-stable/ci/build-common.sh",
+      "sha256": "57231023e0356b5114b91535c4fac2e031a2cffdeefc2ca43c4f5a55e4a5007a",
+      "url": "https://github.com/mpv-player/mpv/blob/41f6a645068483470267271e1d09966ca3b9f413/ci/build-common.sh"
+    },
+    {
+      "path": "third_party/mpv/upstream-stable/ci/build-mingw64.sh",
+      "sha256": "3987301f65e3a7e86b84c34d2e7f76c352cfdb600c6575df516feeed4f37880c",
+      "url": "https://github.com/mpv-player/mpv/blob/41f6a645068483470267271e1d09966ca3b9f413/ci/build-mingw64.sh"
+    },
+    {
+      "path": "third_party/mpv/upstream-stable/Copyright",
+      "sha256": "bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23",
+      "url": "https://github.com/mpv-player/mpv/blob/41f6a645068483470267271e1d09966ca3b9f413/Copyright"
+    },
+    {
+      "path": "third_party/mpv/upstream-stable/LICENSE.GPL",
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6",
+      "url": "https://github.com/mpv-player/mpv/blob/41f6a645068483470267271e1d09966ca3b9f413/LICENSE.GPL"
+    }
+  ]
+}

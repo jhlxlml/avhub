@@ -3,12 +3,12 @@ import math
 import re
 from fastapi import HTTPException
 
-GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','privacyMode','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode'}
+GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','privacyMode','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode','playbackControllerEnabled','nativeRenderEnabled'}
 
 
 def validate(key, value):
     valid = False
-    if key in {'hoverPreview','queueOpen','autoNext','nativePrepare','privacyMode'}:
+    if key in {'hoverPreview','queueOpen','autoNext','nativePrepare','privacyMode','playbackControllerEnabled','nativeRenderEnabled'}:
         valid = isinstance(value,bool)
     elif key == 'queueMode':
         valid = value in ('sequential','random','repeat-one')
@@ -26,8 +26,13 @@ def validate(key, value):
         from .media_order import ORDERS
         valid = isinstance(value,str) and value in ORDERS
     elif key == 'appearance' and isinstance(value,dict):
-        valid = (set(value)=={'theme','coverSize'} and value.get('theme') in ('dark','light')
-                 and value.get('coverSize') in ('compact','standard','comfortable','large'))
+        valid = ({'theme','coverSize'}<=set(value)<= {'theme','coverSize','palette','accent','background','emphasis'}
+                 and value.get('theme') in ('dark','light','system')
+                 and value.get('coverSize') in ('compact','standard','comfortable','large')
+                 and ('palette' not in value or value['palette'] in ('violet','blue','teal','amber','graphite','custom'))
+                 and ('accent' not in value or isinstance(value['accent'],str) and re.fullmatch(r'#[0-9a-fA-F]{6}',value['accent']) is not None)
+                 and ('background' not in value or value['background'] in ('neutral','cool','warm'))
+                 and ('emphasis' not in value or value['emphasis'] in ('soft','standard')))
     elif key == 'playbackSpeed':
         valid = type(value) in (int,float) and value in (.5,.75,1,1.25,1.5,2)
     elif key == 'audio' and isinstance(value,dict):

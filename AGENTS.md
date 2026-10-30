@@ -10,3 +10,13 @@
 - Increment the application patch version only when preparing a user-authorized stable release tag push. Ordinary GitHub source pushes and local feature/fix iterations must not increment the version. Batch accumulated changes into the release version and synchronize package.json, package-lock.json, fallback build metadata and release notes before pushing the stable tag. Keep an already prepared release version on retries; never update the frozen archive's version.
 - Stable release tags must match package/lock versions and have docs/RELEASE-X.Y.Z.md. Pushing a stable version tag authorizes the configured CI build/publish; ordinary main/PR pushes run tests only. Never create/push a release tag merely because the user asks to push source changes.
 - Keep README.md and README.en.md focused on current features and usage, without version-by-version update sections or hard-coded current version numbers. Publish version-specific update notes on GitHub Releases only; docs/RELEASE-X.Y.Z.md remains the required publishing input, not a README changelog.
+- Keep things in one function unless composable or reusable
+- Validate unknown values once at the boundary that owns them. Pass typed values inward instead of repeating typeof value === "object" and property-existence checks. Do not defensively revalidate values already guaranteed by a schema, constructor, or internal type.
+- Do not extract single-use helpers preemptively. Inline the logic at the call site unless the helper is reused, hides a genuinely complex boundary, or has a clear independent name that improves the caller.
+- Before adding complexity for a speculative or vanishingly unlikely race or security edge case, explain the concrete failure mode, likelihood, and complexity cost to the user and get their buy-in. Do not silently expand scope for theoretical robustness.
+- Avoid try/catch where possible
+- Avoid using the any type
+- Rely on type inference when possible; avoid explicit type annotations or interfaces unless necessary for exports or clarity
+- Prefer functional array methods (flatMap, filter, map) over for loops; use type guards on filter to maintain type inference downstream
+- In src/config, follow the existing self-export pattern at the top of the file (for example export * as ConfigAgent from "./agent.js") when adding a new config module.
+- In Effect generators, bind services to named variables before calling methods. Do not use nested service yields such as yield* (yield* Foo.Service).bar().

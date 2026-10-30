@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "version": "1.4.363.0",
+  "platform": "windows-x64",
+  "sourceCommit": "fa218055ff4948b159f31d43f800c808a13d51df",
+  "sourceTag": "vulkan-sdk-1.4.363.0",
+  "sourceRepository": "https://github.com/KhronosGroup/Vulkan-Loader",
+  "catalogUrl": "https://vulkan.lunarg.com/sdk/files.json",
+  "archiveUrl": "https://sdk.lunarg.com/sdk/download/1.4.363.0/windows/VulkanRT-X64-1.4.363.0-Components.zip",
+  "archiveSize": 18211191,
+  "archiveSha256": "a25a927aa8b9f0371048f1861cf88ac3b9bc9b1fb332c42d897c8ab32695769a",
+  "licensePath": "third_party/vulkan-loader/LICENSE.txt",
+  "licenseSha256": "43c0a37e6a0fa7ff3c843b3ec5a4fac84b712558ddac103fbd4c1649662a9ece",
+  "status": "official-user-supplied-archive-verified-app-local-development-layout-acceptance-passed-not-distribution",
+  "distributionReady": false,
+  "archiveLicenseName": "VulkanRT-X64-1.4.363.0-Components/VulkanRT-License.txt",
+  "archiveLicenseSha256": "404deb98dabf3e54bf9070d59676b31d69a3da2f9f6e56bdf09ad315c04c718c"
+}

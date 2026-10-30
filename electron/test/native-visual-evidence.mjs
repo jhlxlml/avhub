@@ -4,7 +4,7 @@
 export async function nativeVisualEvidence(desktop,output,target='native') {
   const result=await desktop.evaluate(async({desktopCapturer,BaseWindow,BrowserWindow,screen},target)=>{
     try{
-      const host=target==='main'?BrowserWindow.getAllWindows().find(w=>!w.webContents.getURL().includes('nativePlayer=')):BaseWindow.getAllWindows().find(w=>w.getTitle()==='AVHub · 原生播放');
+      const host=target==='render-api'?BaseWindow.getAllWindows().find(w=>w.getTitle()==='AVHub Render API spike'):target==='main'?BrowserWindow.getAllWindows().find(w=>!w.webContents.getURL().includes('nativePlayer=')):BaseWindow.getAllWindows().find(w=>w.getTitle()==='AVHub · 原生播放');
       if(!host)return {status:'unavailable',reason:'host missing'};
       const bounds=host.getBounds(),display=screen.getDisplayMatching(bounds);
       const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:Math.round(display.size.width*display.scaleFactor),height:Math.round(display.size.height*display.scaleFactor)}});

@@ -1,5 +1,6 @@
 // Summarizes the no-debugger workload only. Not allocation attribution or a
 // declaration that a flat/declining process curve proves the absence of leaks.
+import {summarizeMemoryResources} from './memory-resource-summary.mjs';
 const finite=value=>typeof value==='number'&&Number.isFinite(value)&&value>=0?value:null;
 const stats=values=>{const a=values.map(finite).filter(v=>v!==null).sort((x,y)=>x-y);return a.length?{min:a[0],median:a.length%2?a[(a.length-1)/2]:(a[a.length/2-1]+a[a.length/2])/2,max:a.at(-1)}:{min:null,median:null,max:null};};
 const memory=(point,role,key)=>{
@@ -21,14 +22,17 @@ export function summarizeNoInspector(report){
  const durationReached=target===null?null:target>0?elapsed!==null&&elapsed>=target*1000:report.targetReached===true;
  const errors=Array.isArray(report.errors)?report.errors:null;
  const pages=[...new Set(rows.map(r=>r.library?.page).filter(p=>Number.isInteger(p)&&p>0))].sort((a,b)=>a-b);
+ const waitRows=rows.filter(r=>r.waitingByPhase&&['startup','playback','seek'].every(key=>finite(r.waitingByPhase[key])!==null));
+ const waitingByPhase=waitRows.length?Object.fromEntries(['startup','playback','seek'].map(key=>[key,waitRows.reduce((n,r)=>n+r.waitingByPhase[key],0)])):null;
  const accepted=rows.length>=2&&(!report.walkPages||pages.length>=2)&&report.completed===true&&report.cleanExit===true&&report.sourceIdentityVerified===true&&report.targetReached===true&&durationReached===true&&diagnosticsDisabled&&errors?.length===0&&Array.isArray(report.remainingOwnedMpv)&&report.remainingOwnedMpv.length===0;
- return {build:report.build??null,phase:report.phase??null,walkPages:report.walkPages??null,accepted,
+ return {build:report.build??null,phase:report.phase??null,walkPages:report.walkPages??null,playbackEngine:report.playbackEngine??null,artwork:report.artwork??null,resourceProbe:report.resourceProbe??null,accepted,
   completed:report.completed===true,cleanExit:report.cleanExit===true,sourceIdentityVerified:report.sourceIdentityVerified===true,
   targetSeconds:target,workloadMs:elapsed,durationReached,diagnosticsDisabled,cycles:rows.length,pages,
   warmCycles:memories(rows.slice(2).map(r=>r.afterClose)),tenMinuteWindows:windows,
   library:{cards:stats(rows.map(r=>r.library?.cards)),images:stats(rows.map(r=>r.library?.images)),decodedImages:stats(rows.map(r=>r.library?.decodedImages)),imagePixels:stats(rows.map(r=>r.library?.imagePixels)),nodes:stats(rows.map(r=>r.library?.nodes))},
   browsing:{images:stats(rows.map(r=>r.browsing?.images)),decodedImages:stats(rows.map(r=>r.browsing?.decodedImages)),imagePixels:stats(rows.map(r=>r.browsing?.imagePixels)),nodes:stats(rows.map(r=>r.browsing?.nodes))},
-  playback:{cycles:rows.filter(r=>finite(r.sourceLoads)!==null).length,firstFrameMs:stats(rows.map(r=>r.firstFrameMs)),seekMs:stats(rows.map(r=>r.seekMs)),sourceLoads:stats(rows.map(r=>r.sourceLoads)),bufferingEvents:stats(rows.map(r=>r.bufferingEvents)),audioTracks:stats(rows.map(r=>r.audioTracks))},
+  resources:summarizeMemoryResources(rows.map(r=>r.afterClose)),idleResources:summarizeMemoryResources(idle),
+  playback:{cycles:rows.filter(r=>finite(r.sourceLoads)!==null).length,firstFrameMs:stats(rows.map(r=>r.firstFrameMs)),seekMs:stats(rows.map(r=>r.seekMs)),seekTargetErrorSeconds:stats(rows.map(r=>finite(r.target)!==null&&finite(r.position)!==null?Math.abs(r.target-r.position):null)),sourceLoads:stats(rows.map(r=>r.sourceLoads)),bufferingEvents:stats(rows.map(r=>r.bufferingEvents)),waitingByPhase,dropped:stats(rows.map(r=>r.dropped)),audioTracks:stats(rows.map(r=>r.audioTracks))},
   idle:{samples:idle.length,first:idleFirst?memories([idleFirst]):null,last:idleLast?memories([idleLast]):null},
   errors,limitations:['Process private memory/working set are not allocation categories or GPU VRAM.','DOM image pixels/nodes describe the current document, not retained native image-cache memory.','Warm cycles exclude the first two. Idle time never satisfies active workload duration.','No cold-cache, HDR, physical sound-device or mixed-DPI acceptance is implied.']};
 }

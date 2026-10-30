@@ -1,10 +1,10 @@
 import {mkdir,mkdtemp,lstat,realpath,statfs,stat,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes} from 'node:crypto';
-import type {MpvClient} from './mpvClient';
 type Dependencies={data:()=>string;origin:()=>string;token:()=>string;log:(value:string)=>void};
 /** Shared original-resolution PNG publication, independent of window layout. */
-export async function captureNativeFrame(deps:Dependencies,active:{client:MpvClient;mediaId:number},frameSaved:()=>void=()=>{}){
+type CaptureClient={snapshot:{phase:string;pendingSeek:number|null;properties:Record<string,any>};command:(args:any[],timeout?:number)=>Promise<any>};
+export async function captureNativeFrame(deps:Dependencies,active:{client:CaptureClient;mediaId:number},frameSaved:()=>void=()=>{}){
   const started=performance.now(),snapshot=active.client.snapshot;let directory:string|undefined;
   try{
     if(!['ready','ended'].includes(snapshot.phase)||snapshot.pendingSeek!==null||snapshot.properties.seeking===true)throw new Error('画面尚未就绪或正在定位，请等待目标画面后截图');

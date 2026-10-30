@@ -36,6 +36,10 @@ if (-not $SkipDependencyInstall) {
     npm ci
     if ($LASTEXITCODE -ne 0) { throw 'Frontend and Electron dependency installation failed.' }
 }
+python scripts/prepare-desktop-cli-inputs.py
+if ($LASTEXITCODE -ne 0) { throw 'Prepare the source-built controlled CLI before desktop release packaging.' }
+$desktopCli = (Get-Content -LiteralPath 'build/desktop-cli-inputs.json' -Raw | ConvertFrom-Json).folder
+
 node node_modules/electron/install.js
 if ($LASTEXITCODE -ne 0) { throw 'Electron runtime installation failed.' }
 npm run build
@@ -55,15 +59,29 @@ python scripts/python-runtime.py -m PyInstaller --noconfirm --clean --onedir --c
   --add-data "$projectRoot\bin\SQLite-BUILD-INFO.txt;licenses" `
   --add-binary "$sqliteBinary;." `
   --runtime-hook "$projectRoot\scripts\pyi-sqlite-runtime.py" `
-  --add-data "$projectRoot\bin\FFmpeg-LICENSE.txt;licenses" `
-  --add-data "$projectRoot\bin\FFmpeg-BUILD-INFO.txt;licenses" `
-  --add-binary "$projectRoot\bin\ffmpeg.exe;bin" `
-  --add-binary "$projectRoot\bin\ffprobe.exe;bin" `
+  --add-data "$desktopCli\FFmpeg-LICENSE.txt;licenses" `
+  --add-data "$desktopCli\FFmpeg-BUILD-INFO.txt;licenses" `
+  --add-binary "$desktopCli\ffmpeg.exe;bin" `
+  --add-binary "$desktopCli\ffprobe.exe;bin" `
+  --add-data "$desktopCli\FFmpeg-THIRD-PARTY-NOTICES.txt;licenses" `
+  --add-data "$desktopCli\FFmpeg-RUNTIME.json;licenses" `
   --collect-all fastapi --collect-all starlette --collect-all uvicorn --collect-all pydantic `
   run.py
 if ($LASTEXITCODE -ne 0) { throw 'FastAPI backend packaging failed.' }
 python scripts/verify-bundled-sqlite.py
 if ($LASTEXITCODE -ne 0) { throw 'Bundled SQLite verification failed; refusing to package desktop assets.' }
+python scripts/python-runtime.py scripts/prepare-backend-notices.py --install
+if ($LASTEXITCODE -ne 0) { throw 'Backend dependency notice collection failed; refusing to package desktop assets.' }
+
+$releaseInputsFile = if ($env:AVHUB_DESKTOP_RELEASE_INPUTS) { $env:AVHUB_DESKTOP_RELEASE_INPUTS } else { 'build/desktop-release-inputs.json' }
+$releaseInputs = Get-Content -LiteralPath $releaseInputsFile -Raw | ConvertFrom-Json
+$sourceBundle = Join-Path $projectRoot $releaseInputs.sourceBundle.path
+$releaseVersion = (Get-Content -LiteralPath 'package.json' -Raw | ConvertFrom-Json).version
+New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
+$deliveredSource = Join-Path $artifactDirectory ("AVHub-source-materials-" + $releaseVersion + '.zip')
+if (Test-Path -LiteralPath $deliveredSource) {
+    if ((Get-FileHash -LiteralPath $deliveredSource -Algorithm SHA256).Hash -ne $releaseInputs.sourceBundle.sha256) { throw 'Existing source delivery differs; choose a new candidate directory.' }
+} else { Copy-Item -LiteralPath $sourceBundle -Destination $deliveredSource }
 
 if ($CandidateDirectory) {
     npm run package:windows -- "--config.directories.output=$artifactDirectory"

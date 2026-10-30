@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "status": "m2-spike-only",
+  "sourceCommit": "7c4f662c088d55fdb4f7049e9226de061ecad8c5",
+  "releaseTag": "2026-10-14-7c4f662c08",
+  "url": "https://github.com/zhongfly/mpv-winbuild/releases/download/2026-10-14-7c4f662c08/mpv-dev-x86_64-20261014-git-7c4f662c08.7z",
+  "buildContext": "https://github.com/zhongfly/mpv-winbuild/actions/runs/38602995704",
+  "archiveSha256": "c88b6c9cc368495dc4f8d66fec3b10f720d8a2bd6d7aa5d857bdda218393d174",
+  "dllSha256": "13c9ea4260760058f506df2fd4bfe5fa82db14a9d1be4131acb35648141bf8a3",
+  "dllSize": 121889792,
+  "platform": "windows-x64",
+  "license": "GPL build; dependency notices and corresponding build/source materials pending review",
+  "distributionReady": false,
+  "files": [
+    {"name":"include/mpv/client.h","size":86136,"sha256":"1acf99ee77c8c2a6f1d1993bd81bbc8a91d27fb5924e80171670e6139a4bd353"},
+    {"name":"include/mpv/render.h","size":34271,"sha256":"192691941602052f00df0587f126246c48785a1cf21de68d22a92ea1908d1c55"},
+    {"name":"include/mpv/render_gl.h","size":7328,"sha256":"48662c0ed9872a14dd9e1684105c97f69f94a0414709c254c5d372adc41d2e69"},
+    {"name":"include/mpv/stream_cb.h","size":9589,"sha256":"188e58b6d14383e15a5dffdc4ecebbdfbf2e412b9c099ff21b571f747a8ce32d"},
+    {"name":"libmpv.dll.a","size":53308,"sha256":"bef1b89f534bc86b33135e1f04fa2d5064b9d48b5de8bc9866665bbf43def793"},
+    {"name":"libmpv-2.dll","size":121889792,"sha256":"13c9ea4260760058f506df2fd4bfe5fa82db14a9d1be4131acb35648141bf8a3"}
+  ]
+}

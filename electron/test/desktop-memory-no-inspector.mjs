@@ -13,6 +13,14 @@ assert.equal(process.platform,'win32','This real-media control requires Windows'
 const number=(name,fallback)=>Number(process.argv.find(x=>x.startsWith(`--${name}=`))?.split('=')[1]??fallback);
 const mediaId=number('media-id',0),cycles=number('cycles',12),idleSeconds=number('idle-seconds',60),seconds=number('seconds',0);
 const walkPages=process.argv.includes('--walk'),phase=process.argv.find(x=>x.startsWith('--phase='))?.split('=')[1]??'mixed';
+const playbackEngine=process.argv.find(x=>x.startsWith('--playback-engine='))?.split('=')[1]??'mpv';
+const playbackEvery=number('playback-every',1),settleMs=number('settle-ms',150),cycleDelay=number('cycle-delay',3000);
+const artwork=process.argv.find(x=>x.startsWith('--artwork='))?.split('=')[1]??'present';
+const resourceProbe=process.argv.includes('--resource-probe'),backgroundUnthrottled=process.argv.includes('--test-background-unthrottled');
+assert.ok(['mpv','chromium'].includes(playbackEngine));assert.ok(['present','absent'].includes(artwork));
+assert.ok(Number.isSafeInteger(playbackEvery)&&playbackEvery>=1&&playbackEvery<=100);
+assert.ok(Number.isSafeInteger(settleMs)&&settleMs>=150&&settleMs<=10000);
+assert.ok(Number.isSafeInteger(cycleDelay)&&cycleDelay>=0&&cycleDelay<=30000);
 assert.ok(source&&path.isAbsolute(source),'Explicit authorized index path required');
 assert.ok(Number.isSafeInteger(mediaId)&&mediaId>0);
 assert.ok(Number.isSafeInteger(cycles)&&cycles>=2&&cycles<=100);
@@ -31,21 +39,24 @@ tables={r[0] for r in dst.execute("SELECT name FROM sqlite_master WHERE type='ta
 for t in ('thumbnail_jobs','file_operations','recycle_actions','source_changes','media_subtitle_links','scan_checkpoint','root_file_permissions'):
  if t in tables:dst.execute('DELETE FROM '+t)
 dst.execute('INSERT OR REPLACE INTO thumbnail_control(id,paused) VALUES(1,1)');dst.execute('DELETE FROM playlist_items WHERE media_id NOT IN (SELECT id FROM media)')
-copied=0
+copied=0; available=0
 for mid,thumb,cover in dst.execute('SELECT id,thumbnail,custom_cover FROM media').fetchall():
  for key,value in [('thumbnail',thumb),('custom_cover',cover)]:
   if not value:continue
   candidate=(original.parent/value).resolve(); destination=(target/value).resolve()
   if not candidate.is_relative_to(original.parent) or not destination.is_relative_to(target) or candidate.suffix.lower() not in ('.jpg','.jpeg','.png','.webp') or not candidate.is_file():dst.execute('UPDATE media SET '+key+'=NULL WHERE id=?',(mid,));continue
+  available+=1
+  if os.environ['AVHUB_ARTWORK']=='absent':dst.execute('UPDATE media SET '+key+'=NULL WHERE id=?',(mid,));continue
   destination.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(candidate,destination);copied+=1
 item=dst.execute('SELECT path,width,height,duration FROM media WHERE id=?',(int(os.environ['AVHUB_SAMPLE_ID']),)).fetchone()
 assert item and item[0].lower().startswith(prefix.lower())
-dst.commit();print(json.dumps({'videos':dst.execute('SELECT COUNT(*) FROM media').fetchone()[0],'covers':copied,'sample':dict(zip(('path','width','height','duration'),item))}));dst.close()`],
-{cwd:root,env:{...process.env,PYTHONUTF8:'1',AVHUB_INDEX:source,AVHUB_CLONE:profile,AVHUB_SAMPLE_ID:String(mediaId)},encoding:'utf8',windowsHide:true,timeout:60000});
-assert.equal(clone.status,0,clone.stderr);const fixture=JSON.parse(clone.stdout);assert.ok(fixture.videos>1000&&fixture.covers>100);
+dst.commit();print(json.dumps({'videos':dst.execute('SELECT COUNT(*) FROM media').fetchone()[0],'covers':copied,'availableCovers':available,'sample':dict(zip(('path','width','height','duration'),item))}));dst.close()`],
+{cwd:root,env:{...process.env,PYTHONUTF8:'1',AVHUB_INDEX:source,AVHUB_CLONE:profile,AVHUB_SAMPLE_ID:String(mediaId),AVHUB_ARTWORK:artwork},encoding:'utf8',windowsHide:true,timeout:60000});
+assert.equal(clone.status,0,clone.stderr);const fixture=JSON.parse(clone.stdout);assert.ok(fixture.videos>1000&&fixture.availableCovers>100);
+assert.ok(artwork==='present'?fixture.covers>100:fixture.covers===0);
 const identity=async()=>{const digest=createHash('sha256');for await(const chunk of createReadStream(fixture.sample.path))digest.update(chunk);const stat=statSync(fixture.sample.path);return {sha256:digest.digest('hex'),size:stat.size,mtime:stat.mtimeMs};};
 const before=await identity();
-const manifest={root,workspace,profile,mediaId,cycles,idleSeconds,seconds,walkPages,phase,fixture,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8'))};
+const manifest={root,workspace,profile,mediaId,cycles,idleSeconds,seconds,walkPages,phase,playbackEngine,playbackEvery,settleMs,cycleDelay,artwork,resourceProbe,backgroundUnthrottled,fixture,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8'))};
 const config=path.join(workspace,'run.json');writeFileSync(config,JSON.stringify(manifest,null,2));
 const env={...process.env,AVHUB_DATA_DIR:profile,AVHUB_APP_HOME:workspace,AVHUB_SMOKE_TEST:'0',AVHUB_NO_INSPECTOR_CONFIG:config};
 // Do not inherit headless or debugger switches from another harness.

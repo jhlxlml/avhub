@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": "third_party/libmpv-render-d3d11/build-reference-20261025/upstream-job-excerpts.txt",
+      "size": 1823,
+      "sha256": "b2f942334041cee82e9ea9f2a27b7271d5742c310f5aeccf09462c8e45882f36"
+    },
+    {
+      "path": "third_party/libmpv-render-d3d11/build-reference-20261025/builder/build.sh",
+      "size": 4360,
+      "sha256": "8b18b2ca93fc279ce14b727cd3fc6752cb3598a4b83831af62ef6cb62e4a412d"
+    },
+    {
+      "path": "third_party/libmpv-render-d3d11/build-reference-20261025/builder/LICENSE",
+      "size": 1065,
+      "sha256": "616a0cefb333ddeafb45d46919f8f9037efa958742b48eba03ac5aae2b90b195"
+    },
+    {
+      "path": "third_party/libmpv-render-d3d11/build-reference-20261025/builder/workflow.yml",
+      "size": 33055,
+      "sha256": "015bb8620fd33353b2db54d8b6ebc16b769ce6af5bb2e48b1998ce24d8380f0e"
+    },
+    {
+      "path": "third_party/libmpv-render-d3d11/build-reference-20261025/builder/patch/0001-ffmpeg-remove-opengl.patch",
+      "size": 660,
+      "sha256": "7460ebb64e87bb9ff7cafac1ba5bb7e4709633dc8709fae65f88ad302770e53b"
+    },
+    {
+      "path": "third_party/libmpv-render-d3d11/build-reference-20261025/builder/patch/0002-spirv-cross-shaderc-skip-unused-stuff.patch",
+      "size": 2205,
+      "sha256": "ae823fbd0d0303d272d3b5aebf0e15042a2065cfe497145ef884f790a57fd4f5"
+    }
+  ],
+  "scope": "MIT-licensed builder references only; not complete transitive source or notices"
+}

@@ -15,8 +15,9 @@ REPO='jhlxlml/avhub'
 def release_body(notes,version,sha,ci):
     downloads=(f'\n\n## 下载 / Downloads\n\n'
                f'- `AVHub-folder-portable-{version}-x64.zip`：推荐日常使用。完整解压到可写目录后运行 `AVHub.exe`，不要只复制 EXE 或直接在压缩包内启动。Extract the whole folder, then run AVHub.exe.\n'
+               f'- `AVHub-source-materials-{version}.zip`：对应的应用与原生依赖源码、许可及构建材料。Corresponding application/native sources, notices and build materials.\n'
                f'- `AVHub-portable-{version}-x64.exe`：单文件便携版，每次启动先解压。Single-file portable app; extracts on launch.\n'
-               '两个版本均无需另装 Python、Node.js 或 FFmpeg；保留 AVHub-data 和 avhub-data-location.json。校验两个下载文件请使用 SHA256SUMS.txt。Both formats bundle their runtimes; preserve your data and verify SHA256SUMS.txt.\n')
+               '两个版本均无需另装 Python、Node.js 或 FFmpeg；保留 AVHub-data 和 avhub-data-location.json。校验下载文件请使用 SHA256SUMS.txt。Both formats bundle their runtimes; preserve your data and verify SHA256SUMS.txt.\n')
     return notes+downloads+f'\n<!-- avhub-{"ci" if ci else "manual"}-release:{sha} -->'
 
 def reusable_draft(release,body,sha,ci,resume,tag):
@@ -93,7 +94,7 @@ def main():
     else:release=call('/releases','POST',{'tag_name':tag,'target_commitish':sha,'name':'AVHub '+version,'body':body,'draft':True,'prerelease':False})
     digest=hashlib.sha256(artifact.read_bytes()).hexdigest()
     checksum=artifact.with_name('SHA256SUMS.txt')
-    files=(artifact,artifact.parent/f'AVHub-folder-portable-{version}-x64.zip',checksum,artifact.parent/'release-build.json')
+    files=(artifact,artifact.parent/f'AVHub-folder-portable-{version}-x64.zip',artifact.parent/f'AVHub-source-materials-{version}.zip',checksum,artifact.parent/'release-build.json')
     if any(not file.is_file() or file.is_symlink() for file in files):raise SystemExit('Required EXE/ZIP release files missing')
     check_draft(release,body,sha,args.ci,True,files,tag)
     for file in files:

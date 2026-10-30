@@ -59,15 +59,25 @@ Recent library conveniences are implemented natively for AVHub: Electron-owned f
 - One-click PNG screenshots with a configurable destination, no save dialog, and no interruption of the current playback state.
 - Keyboard actions do not reveal already-hidden controls; text inputs, menus, and settings are protected from playback shortcuts.
 
-### Optional MPV native playback (source preview)
+### Optional MPV native playback
 
-Run `npm run prepare:mpv`, then `npm run electron:dev`. Select MPV under Settings → Playback → Playback engine. It decodes the original file without remux copies or transcoding. The existing player remains the default and is available as an explicit fallback. MPV uses the embedded AVHub view by default, with basic controls, track selection, C-key screenshots, zoom/rotation, progress saving and queue navigation.
+Run `npm run prepare:mpv`, then `npm run electron:dev`. Select MPV under Settings → Playback → Playback engine. It decodes the original file without remux copies or transcoding. The existing player remains the default and is available as an explicit fallback. First-time MPV opt-in through Settings recommends the independent window when no window preference exists; legacy MPV users and explicitly saved choices are preserved. Embedded playback remains available with track selection, C-key screenshots, zoom/rotation, progress saving and queue navigation.
+
+With a verified download cache, use `npm run prepare:mpv -- -Offline`. Preparation extracts only allowlisted runtime and license files and refuses to overwrite different existing files; it does not update the runtime automatically. `npm run check:mpv` reports runtime integrity separately from distribution readiness.
+
+When the MPV runtime is available, Playback information in the existing player offers **使用 MPV 原画播放** (Play original with MPV); playback errors also offer a manual switch. Both directions continue from the current position for this video only, keeping the default engine and resume preference unchanged. Progress is saved before switching; a failed save keeps the current player available for retry.
 
 The MPV window setting also offers an optional independent window for subsequent videos. MPV owns its native window and AVHub-styled ASS controls without Electron video overlays, with pin/window buttons and a compact speed/audio/subtitle panel. AVHub retains screenshot storage, progress, autoplay and file-read protection. Space pauses, Left / Right seeks five seconds, C captures, F toggles fullscreen, and PageUp / PageDown changes video. The wheel adjusts volume rather than using embedded zoom. Both modes retain original quality and precise seeking; an independent window is not guaranteed to seek faster. See [validation and performance boundaries](docs/MPV-INDEPENDENT-ACCEPTANCE.md).
 
+Use **重新检测** (Check again) in Settings to inspect the MPV runtime offline. Source-built desktop packages also verify every bundled DLL. Every new independent playback session checks runtime file checksums; missing or changed files reject that native session while the library and an explicit existing-player option remain available. Seeking does not repeat this scan. Manual retry first saves and closes the previous session; unresolved save failures must be handled first.
+
 The native window includes a local subtitle picker and text subtitle size, colour and background settings shared with the existing player; ASS/SSA retain their authored layout. The existing queue UI is reused in the library window, accessible from the native controls with a return-to-player button. The existing player and embedded MPV share keyboard focus policy; the independent window uses native bindings, without forwarding ordinary keys from the library page.
 
-This is an opt-in preview: HDR, greater-than-8-bit and unverifiable colour metadata are blocked pending acceptance; picture-in-picture has not migrated. Window compositing, multiple monitors and mixed DPI require interactive validation. The default release packaging does not yet include the MPV runtime automatically. See [integration design, runtime provenance and limitations](docs/MPV-INTEGRATION.md).
+This is an opt-in preview: HDR and higher bit depths may play; unverified display fidelity is reported rather than used as a source whitelist. Picture-in-picture has not migrated. Window compositing, multiple monitors and mixed DPI require interactive validation. Ordinary desktop packaging requires verified independent MPV EXE and embedded libmpv inputs, refusing to silently produce a package without them. See [integration design, runtime provenance and limitations](docs/MPV-INTEGRATION.md).
+
+The source also provides a **D3D11 Render API development/local-acceptance candidate** with a pinned libmpv closure, showing decoded frames inside Electron. MPV handles codecs, pixel formats, bit depths and missing color tags without a test-sample whitelist. File rotation and pixel aspect ratios are supported; there is no fixed 8K exclusion or 256 MiB limit. Actual hardware and output constraints still apply: PQ/HLG use matching HDR texture declarations; HDR playback is allowed while physical display and dynamic metadata fidelity remain unverified. The two presentations use separately prepared runtimes bundled together. `prepare:mpv` prepares the historical development EXE, not the source-built dual-runtime inputs. Default playback and existing preferences remain unchanged. See [compatibility evidence and remaining limits](docs/playback-refactor/62-playback-compatibility-without-whitelist.md).
+
+Extract the whole dual-runtime desktop package and run `AVHub.exe`; both the independent MPV window and embedded Render API remain available, without an acceptance launcher or separately installed MPV, Python or Node.js. Missing colour tags, HDR and high resolutions are not blocked by a sample whitelist. Real decoder, hardware or texture-import errors retain an explicit existing-player option; no silent transcoding. Physical HDR output, mixed-DPI displays and dynamic-metadata accuracy remain separate verification tasks. See the [dual-runtime delivery guide](docs/playback-refactor/67-m5-desktop-delivery.md).
 
 Both engines share per-video audio-track, recognized-subtitle and subtitle-delay memory. Changes to source identity, tracks or associated subtitles invalidate old choices. Global volume, playback speed and subtitle appearance remain separate. Temporarily imported subtitles outside the library are session-only. The MPV settings panel can copy playback diagnostics without video paths or titles for display/layout troubleshooting.
 
@@ -178,6 +188,9 @@ Check the active data directory under Settings → **数据管理** (Data manage
 
 ## Appearance and cover size
 
+- Settings → **外观** (Appearance) offers violet, blue, teal, amber and graphite presets, plus a color picker and `#RRGGBB` input. Choose light, dark or system mode independently, with neutral/cool/warm backgrounds and soft/standard emphasis. Text and selection colors adapt for contrast.
+- Changes preview immediately and become durable with **保存外观** (Save appearance). Cancel or discard the draft when closing to restore the previous look. Reset previews the defaults until saved and preserves cover size. A failed save retains the draft for retry.
+- The independent MPV window uses the same theme for progress, hover and selected controls, with dark high-contrast surfaces. Color changes do not reload video or alter video/subtitle colors.
 - Use the sun / moon icon in the top bar to switch between light and dark mode. The player header provides the same toggle. Dark remains the default. Transparent controls and popovers over video retain dark, high-contrast styling without altering video colors.
 - The eye icon between Refresh and Theme toggles privacy mode: it blurs covers and other preview images, including playlist and queue artwork, and suspends hover videos. It defaults to off and remembers your choice. Active video, titles, paths and saved screenshots are unchanged. This is not encryption or access control.
 - Click the cover-size icon beside the grid / list switch. Use the slider or preset buttons to choose **Compact, Standard, Comfortable, or Large**. Standard preserves the previous layout; column counts adapt to window width.
@@ -329,9 +342,11 @@ After preparing the optional MPV runtime, use `npm run test:electron:mpv` for na
 
 See [large-library sustained-run acceptance](docs/LIBRARY-LONG-RUN-ACCEPTANCE.md) for real-cover scrolling, repeated MPV sessions, and memory / HTTP cache measurements. These tests read original media without changing it and use an isolated index and cache. Reports distinguish short tests, incomplete long runs, and completed long runs.
 
-The manual GitHub Actions input `mpv_validation` checks the optional native runtime without packaging or publishing. Leaving it disabled keeps the existing manual build workflow. A cloud virtual desktop is not a substitute for physical multi-monitor or HDR acceptance.
+GitHub Actions runs regressions only; it does not package or publish releases. The manual `mpv_validation` input checks the optional native runtime. Release artifacts are built and accepted locally, then uploaded to GitHub Releases. A virtual CI desktop cannot certify physical HDR or mixed-DPI output.
 
 ## Build a Windows portable app
+
+Dual-MPV distribution also requires verified native runtimes, the controlled FFmpeg CLI, corresponding source materials and `build/desktop-release-inputs.json`; `prepare:mpv` alone is insufficient. See the [delivery and source rebuild guide](docs/playback-refactor/67-m5-desktop-delivery.md). Generated inputs stay outside Git.
 
 Packaging is unnecessary for everyday development. For distribution, prepare a Windows x64 environment with Python, Node.js, `bin/ffmpeg.exe`, `bin/ffprobe.exe`, and matching license documentation.
 

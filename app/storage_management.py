@@ -12,6 +12,14 @@ from . import artwork_readers
 
 ROLLBACK=re.compile(r'before-restore-\d{8}-\d{6}-[a-f0-9]{8}\.db\Z')
 IMAGE=re.compile(r'[1-9]\d{0,18}\.jpg\Z')
+CLEAN_BATCH_FILES=64
+CLEAN_BATCH_SECONDS=.025
+CLEAN_REQUEST_SECONDS=2
+
+
+def yield_batch():
+    # Called outside publication/control locks; waiting saves and controls can run.
+    time.sleep(0)
 
 
 def reference_token(database):
@@ -137,9 +145,30 @@ def validate(data,database,preview,active_tokens=()):
         if parts[0]=='hls' and parts[1] in active_tokens:changed()
 
 
+def validate_batch(data,database,preview,active_tokens=()):
+    """Recheck bounded candidates, not an O(library) reference hash per batch."""
+    def changed():raise HTTPException(409,'清理期间引用或任务已变化，已停止，请刷新预览后再确认')
+    try:
+        if rollback_inventory(data)!=preview['_backups']:changed()
+    except OSError:changed()
+    names=[name for name,_,_ in preview['_files']]
+    if names:
+        placeholders=','.join('?' for _ in names)
+        if database.execute(f'SELECT 1 FROM media WHERE path COLLATE NOCASE IN ({placeholders}) LIMIT 1',
+                            [str(data/name) for name in names]).fetchone():changed()
+    ids=[int(Path(name).stem) for name in names if name.startswith('thumbnails/')]
+    if ids:
+        placeholders=','.join('?' for _ in ids)
+        if database.execute(f'SELECT 1 FROM media WHERE id IN ({placeholders}) AND thumbnail IS NOT NULL LIMIT 1',ids).fetchone():changed()
+        if database.execute(f'SELECT 1 FROM thumbnail_jobs WHERE media_id IN ({placeholders}) LIMIT 1',ids).fetchone():changed()
+    if any(Path(name).parts[0]=='hls' and Path(name).parts[1] in active_tokens for name in names):changed()
+
+
 def clean(data,preview):
-    removed=0;freed=0;skipped=0
+    removed=0;freed=0;skipped=0;processed=0
     for name,size,modified in preview['_files']:
+        if processed and time.monotonic()>=preview.get('_deadline',float('inf')):break
+        processed+=1
         path=data/name
         try:
             info=path.stat()
@@ -149,12 +178,14 @@ def clean(data,preview):
             path.unlink();removed+=1;freed+=size
         except OSError:skipped+=1
     # No recursive deletion: only remove proven empty, recognized cache dirs.
-    for name in preview['_folders']:
+    for name in preview['_folders'] if processed==len(preview['_files']) else ():
         folder=data/name
         try:
             if folder.resolve()==data.resolve()/name and not folder.is_symlink():folder.rmdir()
         except OSError:pass
-    return {'ok':True,'removed':removed,'freed_bytes':freed,'skipped':skipped,'recoverable':False}
+    result={'ok':True,'removed':removed,'freed_bytes':freed,'skipped':skipped,'recoverable':False}
+    if '_deadline' in preview:result['_processed']=processed
+    return result
 
 
 def public(preview):return {key:value for key,value in preview.items() if not key.startswith('_')}

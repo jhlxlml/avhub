@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import type Hls from 'hls.js';
+import {Html5Delivery,type DeliveryOptions} from './playback/Html5Delivery';
+import {Html5Engine} from './playback/Html5Engine';
+import {PlaybackController} from './playback/PlaybackController';
+import {selectEngine} from './playback/EngineSelector';
+import type {TrackPorts} from './playback/types';
 import {confirmInApp} from './AppConfirm';
 import { api, request as httpRequest, json, duration, errorText, isHtmlResponse, readJson, SERVICE_MISMATCH, type ExternalSubtitle, type Media, type MediaUpdate, type QueuePage, type PlaylistSource, type PlaybackColor } from './api';
 import { MediaEditor } from './MediaEditor';
@@ -16,7 +20,7 @@ import {PlaybackDiagnosticsExport} from './PlaybackDiagnosticsExport';
 import { usePlaybackFeedback } from './usePlaybackFeedback';
 import { useSeekFrame } from './useSeekFrame';
 import { usePreparationTrace, preparationLabels, type BackendPreparation } from './usePreparationTrace';
-import { preference, savePreference } from './preferences';
+import { preference, savePreference,flushPreferences } from './preferences';
 import { setWindowMode, useWindowMode } from './windowMode';
 import { saveScreenshot,screenshotKey,screenshotShortcutLabel,revealScreenshot,trackScreenshot,type SavedScreenshot } from './screenshots';
 import './screenshots.css';
@@ -75,7 +79,14 @@ function decodeSubtitle(buffer: ArrayBuffer): string {
 
 export function Player(props:Parameters<typeof ChromiumPlayer>[0]) {
   const [engine,setEngine]=useState(()=>preference('playerEngine','chromium'));
-  return engine==='mpv'?<NativePlayerLaunch {...props} fallback={()=>setEngine('chromium')}/>:<ChromiumPlayerWithMemory {...props}/>;
+  const [handoffPosition,setHandoffPosition]=useState<number|undefined>();
+  const [handoffPaused,setHandoffPaused]=useState<boolean|undefined>();
+  const recovery=useRef({eligible:false,used:false});
+  const handoff=(engine:string,position:number,paused?:boolean)=>{recovery.current.eligible=engine==='mpv';setHandoffPosition(position);setHandoffPaused(paused);setEngine(engine);};
+  // A known unavailable render path may return once even for the MPV preference.
+  // Source/save/cleanup errors never consume this automatic recovery budget.
+  const claimAutomaticFallback=(unavailablePath=false)=>{const r=recovery.current;if(r.used||(!r.eligible&&!unavailablePath))return false;r.used=true;r.eligible=false;return true;};
+  return engine==='mpv'?<NativePlayerLaunch {...props} initialPosition={handoffPosition} initialPaused={handoffPaused} claimAutomaticFallback={claimAutomaticFallback} fallback={(position,paused)=>handoff('chromium',position,paused)}/>:<ChromiumPlayerWithMemory {...props} initialPosition={handoffPosition} initialPaused={handoffPaused} onUseNative={(position,paused)=>handoff('mpv',position,paused)}/>;
 }
 
 function ChromiumPlayerWithMemory(props:Parameters<typeof ChromiumPlayer>[0]){
@@ -84,7 +95,7 @@ function ChromiumPlayerWithMemory(props:Parameters<typeof ChromiumPlayer>[0]){
   return loaded?.id===props.media.id?<ChromiumPlayer {...props} initialPlaybackState={loaded.value}/>:<div className="player-shell"><div className="player-top"><Button icon="arrowLeft" onClick={props.close}>返回媒体库</Button><span>{props.media.title}</span></div><div className="video-wrap"><p role="status">正在读取播放设置…</p></div></div>;
 }
 
-function ChromiumPlayer({ media, automatic=false, close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify,initialPlaybackState }: {
+function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,onUseNative,close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify,initialPlaybackState }: {
   media: Media; automatic?:boolean; close: () => void; playNext: (media: Media, automatic?:boolean) => void; update: (value: MediaUpdate) => void;
   queue?: PlaylistSource;
   changePlaylistPlayback:(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>)=>void;
@@ -92,6 +103,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   registerNavigationGuard:(guard:()=>Promise<boolean>)=>()=>void;
   notify:(message:string,autoDismissMs?:number)=>void;
   initialPlaybackState?:MediaPlaybackState|null;
+  initialPosition?:number;initialPaused?:boolean;onUseNative?:(position:number,paused?:boolean)=>void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const videoWrap = useRef<HTMLDivElement>(null);
@@ -114,9 +126,9 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   const dragSession = useRef<DragSession | null>(null);
   const suppressStageClick = useRef(false);
   const [request, setRequest] = useState<Request | null>(() => {
-    const decision=startingPoint(media,automatic,readResumeBehavior());
+    const decision=startingPoint(media,automatic,readResumeBehavior(),initialPosition);
     const audio=initialPlaybackState?.audio;
-    return decision.ask?null:{start:decision.start,force_transcode:false,prefer_original:audio==null,audio_track_index:audio??undefined,quality:'auto',key:0};
+    return decision.ask?null:{start:decision.start,force_transcode:false,prefer_original:audio==null,audio_track_index:audio??undefined,quality:'auto',key:0,...(initialPaused===true?{autoplay:false}:{})};
   });
   const [phase, setPhase] = useState<'choice' | 'preparing' | 'ready' | 'error' | 'ended'>(request ? 'preparing' : 'choice');
   const [error, setError] = useState('');
@@ -124,6 +136,13 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   const [closing, setClosing] = useState(false);
   const desktopQuitting = useRef(false);
   const [desktopClosing, setDesktopClosing] = useState(false);
+  const [nativeAvailable,setNativeAvailable]=useState(false);
+  useEffect(()=>{
+    let active=true;
+    const native=preference<boolean>('nativeRenderEnabled',false)?window.avhubDesktop?.renderPlayer:window.avhubDesktop?.nativePlayer;
+    if(native)void native('status').then(value=>{if(active)setNativeAvailable(value.available===true);}).catch(()=>{});
+    return()=>{active=false;};
+  },[]);
   const [speed, setSpeed] = useState(loadPlaybackSpeed);
   const [rotation, setRotation] = useState(0);
   const [displaySize,setDisplaySize]=useState({width:0,height:0});
@@ -233,7 +252,26 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   const offset = useRef(0);
   const seekFrame=useSeekFrame(video,offset);
   const hls = useRef(false);
-  const hlsInstance = useRef<Hls | null>(null);
+  const hlsInstance = useRef<Html5Delivery | null>(null);
+  const playbackController=useRef<PlaybackController|null>(null);
+  const [controllerEnabled]=useState(()=>preference<boolean>('playbackControllerEnabled',false));
+  const trackPorts=useRef<TrackPorts|null>(null);
+  trackPorts.current={
+    list:()=>[
+      ...media.audio_tracks.map(t=>({id:String(t.index),type:'audio' as const,language:t.language,title:t.title,selected:audioTrack?String(t.index)===audioTrack:t.index===media.audio_tracks[0]?.index})),
+      ...media.subtitles.filter(t=>TEXT_SUBTITLE_CODECS.has(t.codec.toLowerCase())).map(t=>({id:`embedded:${t.index}`,type:'subtitle' as const,language:t.language,title:t.title,selected:activeSubtitle===`embedded:${t.index}`})),
+      ...subtitleFiles.map(t=>({id:t.path,type:'subtitle' as const,title:t.name,external:true,selected:activeSubtitle===t.path})),
+      ...(uploadedSubtitle?[{id:'uploaded',type:'subtitle' as const,title:uploadedSubtitle.name,external:true,selected:activeSubtitle==='uploaded'}]:[]),
+    ],
+    select:(type,id)=>{if(type==='audio')changeAudio(id??'');else return selectSubtitle(id??'');},
+    delay:seconds=>{subtitleUserChanged.current=true;setSubtitleDelay(seconds);},
+  };
+  function controlError(error:unknown){if(!(error instanceof DOMException&&error.name==='AbortError')&&activePlayer.current)notify(`播放操作失败：${errorText(error)}`,3000);}
+  function seekVideoRelative(seconds:number){if(playbackController.current)void playbackController.current.seekTo(seconds+offset.current).catch(controlError);else if(video.current)video.current.currentTime=seconds;}
+  function playVideo(){return playbackController.current?.play()??video.current!.play();}
+  function pauseVideo(){if(playbackController.current)void playbackController.current.pause().catch(controlError);else video.current?.pause();}
+  function volumeVideo(value:number){if(playbackController.current)void playbackController.current.setVolume(value).catch(controlError);else if(video.current)video.current.volume=value;}
+  function muteVideo(value:boolean){if(playbackController.current)void playbackController.current.setMuted(value).catch(controlError);else if(video.current)video.current.muted=value;}
   const hlsAvailableEnd = useRef(0);
   const hlsAvailableStart = useRef(0);
   const indexedTsPending = useRef(false);
@@ -286,7 +324,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
   });
   updateRef.current = update;
 
-  const save = useCallback(async (keepalive = false) => {
+  const save = useCallback(async (keepalive = false,explicitPosition?:number) => {
     // Independent durable writes may run together. Every caller still confirms
     // its current memory barrier, including when sharing an in-flight progress
     // write. A slow track preference must not postpone sending the position.
@@ -299,7 +337,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       return;
     }
     const total = media.duration || (Number.isFinite(v.duration) ? v.duration + offset.current : 0);
-    const current = ended.current && total ? total : v.currentTime + offset.current;
+    const current = typeof explicitPosition==='number'&&Number.isFinite(explicitPosition)?explicitPosition:ended.current && total ? total : v.currentTime + offset.current;
     const watched=ended.current || (total > 0 && current / total >= .92);
     const pending=progressSave.current;
     // pause + explicit back/next/quit can request the same durable snapshot.
@@ -370,7 +408,8 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
     let playbackStart=requestedStart;
     const v = video.current!;
     let disposed = false;
-    let instance: Hls | null = null;
+    let instance: Html5Delivery | null = null;
+    let controller:PlaybackController|null=null;
     let sessionToken: string | null = null;
     let heartbeat: number | undefined;
     let browserLoadTimer: number | undefined;
@@ -393,7 +432,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       clearTimeout(browserLoadTimer);
       trace.finish(true);
       void save().catch(() => {});
-      v.pause(); instance?.destroy(); void stop();
+      v.pause();void controller?.dispose();instance?.destroy(); void stop();
       hlsInstance.current = null;
       diagnostics.abortTiming();
       setError(message); setPhase('error');
@@ -444,17 +483,17 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       trace.finish();
       diagnostics.observeFrame();
       if (!hls.current) {
-        if(Math.abs(v.currentTime-playbackStart)>.05)v.currentTime = playbackStart;
+        if(Math.abs(v.currentTime-playbackStart)>.05)seekVideoRelative(playbackStart);
       }
       else {
         const point=Math.max(0,playbackStart-offset.current);
-        if(point>v.currentTime+.05)v.currentTime=point;
-        else if(request.autoplay===false&&v.buffered.length&&v.currentTime<v.buffered.start(0))v.currentTime=v.buffered.start(0)+.01;
+        if(point>v.currentTime+.05)seekVideoRelative(point);
+        else if(request.autoplay===false&&v.buffered.length&&v.currentTime<v.buffered.start(0))seekVideoRelative(v.buffered.start(0)+.01);
       }
       sourceChanging.current = false;
       setPhase('ready');
       // If the browser blocks autoplay, its normal play button remains available.
-      if (request.autoplay !== false && !desktopQuitting.current) void v.play().catch(e => {
+      if (request.autoplay !== false && !desktopQuitting.current) void playVideo().catch(e => {
         if (e instanceof DOMException && e.name === 'NotSupportedError') videoError();
         // NotAllowedError is normal autoplay policy, not codec failure.
       });
@@ -571,52 +610,42 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
         // Observe before attaching the new source: a paused stream may present
         // its only frame before loadedmetadata/loadeddata listeners run.
         diagnostics.observeFrame();
-        if (hls.current) {
-          const { default: HlsRuntime } = await import('hls.js');
-          if (disposed) return;
-          if (HlsRuntime.isSupported()) {
-            instance = new HlsRuntime({ startPosition: Math.max(0,playbackStart-session.offset), autoStartLoad: true,
-              backBufferLength: 30, maxBufferLength: 30, maxMaxBufferLength: 90,
-              // Indexed TS is an offline EVENT timeline, not a broadcast whose
-              // growing edge should move the user's playback position.
-              liveSyncDuration: session.delivery==='indexed-ts'?Math.max(120,media.duration+120):120,
-              xhrSetup:(xhr,url)=>{if(session.delivery==='indexed-remux') {
-                if(xhr.readyState===0)xhr.open('GET',url,true);
-                xhr.setRequestHeader('X-AVHub-Seek-Revision',String(seekRevision.current));
-              }} });
-            hlsInstance.current = instance;
-            let playlistRefreshPending=false;
-            instance.on(HlsRuntime.Events.LEVEL_LOADED, (_, data) => {
+        let playlistRefreshPending=false;
+        instance=new Html5Delivery();
+        const source={mediaId:media.id,uri:session.url,transport:hls.current?'hls' as const:'direct' as const,offsetSec:session.offset,durationSec:media.duration};
+        const deliveryOptions:DeliveryOptions={
+          startPosition:Math.max(0,playbackStart-session.offset),duration:media.duration,
+          indexedTs:session.delivery==='indexed-ts',indexedRemux:session.delivery==='indexed-remux',revision:()=>seekRevision.current,
+          beforeAttach:watchBrowserLoad,onMse:()=>{hlsInstance.current=instance;},
+          onLevel:({start,end,live,hasFragments})=>{
               if (disposed) return;
               playlistRefreshPending=false;
-              const end = data.details.fragments.reduce((latest, fragment) =>
-                Math.max(latest, fragment.start + fragment.duration), 0);
               hlsAvailableEnd.current = Math.max(hlsAvailableEnd.current, end);
-              if (data.details.fragments.length) hlsAvailableStart.current = Math.max(hlsAvailableStart.current, data.details.fragments[0].start);
+              if (hasFragments) hlsAvailableStart.current = Math.max(hlsAvailableStart.current, start);
               if(session.delivery==='indexed-ts') {
-                if(!data.details.live)indexedTsPending.current=false;
+                if(!live)indexedTsPending.current=false;
                 // Resume as soon as the requested range is published; do not
                 // wait for unrelated hours of the timeline to finish indexing.
                 const target=queuedSeek.current;
                 if(target!==null&&seekTimer.current===null&&target-offset.current<end) {
                   queuedSeek.current=null;
-                  v.currentTime=target-offset.current;
+                  seekVideoRelative(target-offset.current);
                   setWaitingForIndex(false);
                   setPosition(target);
-                  if(seekAutoplay.current)void v.play().catch(()=>{});
+                  if(seekAutoplay.current)void playVideo().catch(()=>{});
                 }
               }
-            });
-            instance.on(HlsRuntime.Events.FRAG_BUFFERED, () => {
+          },
+          onBuffered:()=>{
               // Paused MSE streams do not run gap recovery. Align the first
               // frame explicitly if audio/video timestamps begin just after zero.
-              if (!disposed && request?.autoplay === false && !played.current && v.buffered.length && v.currentTime < v.buffered.start(0)) v.currentTime = v.buffered.start(0) + .01;
-            });
-            instance.on(HlsRuntime.Events.ERROR, (_, data) => {
-              if(data.context?.type==='level')playlistRefreshPending=false;
+              if (!disposed && request?.autoplay === false && !played.current && v.buffered.length && v.currentTime < v.buffered.start(0)) seekVideoRelative(v.buffered.start(0)+.01);
+          },
+          onError:data=>{
+              if(data.level)playlistRefreshPending=false;
               if (disposed || desktopQuitting.current || !request) return;
               if (cacheRecoveryStarted) return;
-              if (data.response?.code === 410) {
+              if (data.code === 410) {
                 if (cacheRecoveries.current >= 1) { fail('播放分片持续不可用，请检查缓存目录后重试播放'); return; }
                 cacheRecoveries.current++;
                 cacheRecoveryStarted = true;
@@ -643,40 +672,33 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
               }
               else if (!transcode.current) fallback();
               else fail('转码视频播放失败，请重试或检查文件');
-            });
-            watchBrowserLoad();
-            instance.loadSource(session.url); instance.attachMedia(v);
-            if(indexedTsPending.current) {
-              const extendIndex=async()=>{
-                try {
-                  while(!disposed&&indexedTsPending.current&&sessionToken) {
-                    await new Promise(resolve=>setTimeout(resolve,150));
-                    if(disposed||!indexedTsPending.current||!sessionToken)return;
-                    const state=await api<Session>(`/api/playback/${sessionToken}`,{signal:creationController.signal});
-                    if(disposed)return;
-                    if(state.state==='failed'){recoverPendingIndex();return;}
-                    const level=instance?.loadLevelObj;
-                    if(instance&&level&&hlsAvailableEnd.current>0&&!playlistRefreshPending&&
-                        (state.complete||(state.window_end??0)>hlsAvailableEnd.current+.01)) {
-                      // Refresh only the playlist through the public event API.
-                      // startLoad() stops the fragment controller, cancelling
-                      // in-flight bytes and resetting its next-load position.
-                      playlistRefreshPending=true;
-                      instance.trigger(HlsRuntime.Events.LEVEL_LOADING,{url:level.uri,level:instance.loadLevel,
-                        levelInfo:level,pathwayId:level.attrs['PATHWAY-ID'],id:0,deliveryDirectives:null});
-                    }
-                  }
-                }catch(e){if(!disposed)fail(errorText(e));}
-              };
-              void extendIndex();
-            }
-          } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
-            watchBrowserLoad();
-            v.src = session.url;
-          } else throw new Error('当前浏览器不支持此播放方式，请使用 Edge 或 Chrome');
-        } else {
-          watchBrowserLoad();
-          v.src = session.url;
+          },
+        };
+        if(controllerEnabled&&selectEngine({preference:'html5'}).kind==='html5'){
+          const engine=new Html5Engine(deliveryOptions,{
+            list:()=>trackPorts.current!.list(),
+            select:(type,id)=>trackPorts.current!.select(type,id),
+            delay:seconds=>trackPorts.current!.delay(seconds),
+          },instance);
+          controller=new PlaybackController(engine);playbackController.current=controller;
+          await engine.init(v);await controller.load(source,{signal:creationController.signal});
+        }else await instance.load(v,source,deliveryOptions,creationController.signal);
+        if(disposed)return;
+        if(hls.current&&indexedTsPending.current){
+          const extendIndex=async()=>{
+            try{
+              while(!disposed&&indexedTsPending.current&&sessionToken){
+                await new Promise(resolve=>setTimeout(resolve,150));
+                if(disposed||!indexedTsPending.current||!sessionToken)return;
+                const state=await api<Session>(`/api/playback/${sessionToken}`,{signal:creationController.signal});
+                if(disposed)return;
+                if(state.state==='failed'){recoverPendingIndex();return;}
+                if(instance&&hlsAvailableEnd.current>0&&!playlistRefreshPending&&(state.complete||(state.window_end??0)>hlsAvailableEnd.current+.01)){
+                  playlistRefreshPending=true;if(!instance.refreshPlaylist())playlistRefreshPending=false;
+                }
+              }
+            }catch(e){if(!disposed)fail(errorText(e));}
+          };void extendIndex();
         }
         heartbeat = window.setInterval(async () => {
           if (!sessionToken || disposed || heartbeatBusy || desktopQuitting.current) return;
@@ -708,6 +730,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       v.removeEventListener('loadeddata', hasVideoFrameTrack);
       played.current = false;
       diagnostics.cancelObservation();
+      void controller?.dispose();if(playbackController.current===controller)playbackController.current=null;
       v.pause(); instance?.destroy(); v.removeAttribute('src'); v.load();
       if (hlsInstance.current === instance) hlsInstance.current = null;
       hlsAvailableEnd.current = 0;
@@ -728,7 +751,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
     catch { /* Keep playback working when persistence is disabled. */ }
   }, [volume, muted]);
 
-  useEffect(() => { if (video.current) video.current.playbackRate = speed; }, [speed, phase]);
+  useEffect(() => { if(playbackController.current)void playbackController.current.setRate(speed).catch(controlError);else if (video.current) video.current.playbackRate = speed; }, [speed, phase]);
   useEffect(() => {
     try { savePreference('playbackSpeed',speed); }
     catch { /* Playback remains available if browser storage is disabled. */ }
@@ -820,6 +843,26 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
     try { await save(); if(!await flushMediaPlaybackState())throw new Error('播放记忆尚未保存');if (activePlayer.current) close(); }
     catch { navigationBusy.current = false; setClosing(false); }
   }
+  async function switchToNative(){
+    if(!onUseNative||!nativeAvailable||desktopQuitting.current||navigationBusy.current)return;
+    navigationBusy.current=true;
+    try{
+      if(!await canDiscardMetadata())return;
+      setClosing(true);
+      const v=video.current;
+      const paused=v?.paused;
+      const current=v&&v.readyState>=2&&!sourceChanging.current?v.currentTime+offset.current:positionRef.current;
+      v?.pause();
+      await save(false,current);
+      if(!await flushMediaPlaybackState())throw new Error('播放记忆尚未保存');
+      if(!await flushPreferences())throw new Error('播放设置尚未保存');
+      if(document.fullscreenElement)await document.exitFullscreen();
+      if(document.pictureInPictureElement)await document.exitPictureInPicture();
+      if(purePlayback)await setWindowMode({purePlayback:false});
+      if(activePlayer.current&&!desktopQuitting.current)onUseNative(current,paused);
+    }catch(e){if(activePlayer.current)notify(`暂未切换播放器：${errorText(e)}`);}
+    finally{if(activePlayer.current){navigationBusy.current=false;setClosing(false);}}
+  }
   async function switchMedia(next: Media, automatic=false) {
     if (desktopQuitting.current || next.id === media.id || next.missing || navigationBusy.current) return;
     if (!await canDiscardMetadata()) return;
@@ -909,6 +952,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       // A user seek supersedes speculative work, not every sequential HTTP
       // fragment. The matching header also protects against out-of-order hints.
       void api(`/api/playback/${token.current}/seek`,json('POST',{position:target,revision})).catch(()=>{});
+      hlsInstance.current?.prioritizeSeek(v,target-offset.current);
     }
     const relative = target - offset.current;
     if(indexedTsPending.current&&!sourceChanging.current&&hlsInstance.current&&relative>hlsAvailableEnd.current-.05) {
@@ -916,13 +960,13 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       queuedSeek.current=target;
       setWaitingForIndex(true);
       diagnostics.beginSeek(target,'segments');
-      v.pause();setPosition(target);
+      pauseVideo();setPosition(target);
       return;
     }
     if (!sourceChanging.current && !hls.current) {
       if (Math.abs(v.currentTime + offset.current - target) < .05) return;
       diagnostics.beginSeek(target, 'original');
-      v.currentTime = target; setPosition(target); return;
+      seekVideoRelative(target); setPosition(target); return;
     }
     const resumePending=indexedTsPending.current&&queuedSeek.current!==null&&seekAutoplay.current;
     // Browser seekable ranges may lag behind an updated event playlist.
@@ -933,8 +977,8 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       seekTimer.current = null; queuedSeek.current = null;
       setWaitingForIndex(false);
       diagnostics.beginSeek(target, 'segments');
-      v.currentTime = relative;
-      if(resumePending)void v.play().catch(()=>{});
+      seekVideoRelative(relative);
+      if(resumePending)void playVideo().catch(()=>{});
       setPosition(target);
       return;
     }
@@ -943,7 +987,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
         if (seekTimer.current !== null) clearTimeout(seekTimer.current);
         seekTimer.current = null; queuedSeek.current = null;
         diagnostics.beginSeek(target, 'segments');
-        v.currentTime = relative; setPosition(target); return;
+        seekVideoRelative(relative); setPosition(target); return;
       }
     }
     diagnostics.beginSeek(target, 'restart');
@@ -1054,14 +1098,14 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       setIsPlaying(seekAutoplay.current);
       return;
     }
-    if (current.paused) void current.play().catch(()=>{}); else current.pause();
+    if (current.paused) void playVideo().catch(()=>{}); else pauseVideo();
   }
   function changeVolumeByWheel(event: WheelEvent) {
     if (!event.deltaY) return;
     const current = video.current;
     if (!current) return;
-    current.volume = Math.max(0, Math.min(1, current.volume + (event.deltaY < 0 ? .05 : -.05)));
-    if (current.volume > 0) current.muted = false;
+    volumeVideo(Math.max(0, Math.min(1, current.volume + (event.deltaY < 0 ? .05 : -.05))));
+    if (current.volume > 0) muteVideo(false);
   }
   function zoomAtPointer(event: WheelEvent) {
     if (!videoWrap.current || !event.deltaY) return;
@@ -1260,10 +1304,10 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
         seekTo(Math.max(0, Math.min(limit, current + delta)));
       } else if (intent === 'volumeUp' || intent === 'volumeDown') {
         event.preventDefault();
-        v.volume = Math.max(0, Math.min(1, v.volume + (event.code === 'ArrowUp' ? .05 : -.05)));
-        if (event.code === 'ArrowUp') v.muted = false;
+        volumeVideo(Math.max(0, Math.min(1, v.volume + (event.code === 'ArrowUp' ? .05 : -.05))));
+        if (event.code === 'ArrowUp') muteVideo(false);
       } else if (intent === 'mute') {
-        event.preventDefault(); v.muted = !v.muted;
+        event.preventDefault(); muteVideo(!v.muted);
       } else if (intent === 'fullscreen' && phase === 'ready') {
         event.preventDefault(); toggleFullscreen();
       } else if(intent==='pure' && phase==='ready') {
@@ -1354,7 +1398,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
         {subtitleFiles.length === 0 && !uploadedSubtitle && media.subtitles.length === 0 && <small className="subtitle-hint">可选择同目录的 SRT/VTT/ASS/SSA 字幕，或加载本地字幕；支持 UTF-8 与常见简体中文编码。</small>}
       </section>
   );
-  return <div className={`player-shell${purePlayback?' is-pure-playback':''}`}>
+  return <div className={`player-shell${purePlayback?' is-pure-playback':''}`} data-playback-controller={controllerEnabled?'unified':'legacy'}>
     <div className="player-top"><button className="ui-button" onClick={() => void back()} disabled={closing || nextStarting}><Icon name="arrowLeft"/>{closing ? '正在保存…' : nextStarting ? '正在切换…' : '返回媒体库'}</button>
       <span>{media.title}</span>
       <ThemeToggle/>
@@ -1421,6 +1465,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
       {feedback.preparing && <div className="resume" role="status"><b>正在准备播放…</b><span>{quality==='auto'?'原片直放或无损封装，不自动降低画质':'正在按已确认的有损兼容模式准备'}</span></div>}
       {feedback.buffering && <div className="buffering" role="status"><i />正在缓冲…</div>}
       {phase === 'error' && <div className="resume" role="alert"><b>暂时无法播放</b><span>{error}</span><button onClick={() => startAt(positionRef.current)}>重试播放</button>
+        {nativeAvailable&&onUseNative&&<Button icon="play" disabled={closing||nextStarting} onClick={()=>void switchToNative()}>改用 MPV 原画播放</Button>}
         {losslessDelivery&&<button className="ghost" onClick={()=>void changeQuality('auto')}>返回原片播放</button>}
         <button className="ghost" onClick={()=>changeQuality('compat')}>兼容播放（有损，需确认）</button>
         {media.video_codec==='h264'&&media.audio_tracks.length>0&&<button className="ghost" onClick={allowAudioCompatibility}>仅兼容音轨（视频原画）</button>}</div>}
@@ -1464,11 +1509,11 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
           <button className="play-toggle" aria-label={isPlaying ? '暂停' : '播放'} title={isPlaying ? '暂停 (K)' : '播放 (K)'} disabled={phase !== 'ready'} onClick={togglePlayback}><Icon name={isPlaying ? 'pause' : 'play'} size={20} /></button>
           <button aria-label="快退 10 秒" title="后退 10 秒 (J)" disabled={phase !== 'ready' && phase !== 'preparing'} onClick={() => skip(-10)}><Icon name="back" size={20} /></button>
           <button aria-label="快进 10 秒" title="前进 10 秒 (L)" disabled={phase !== 'ready' && phase !== 'preparing'} onClick={() => skip(10)}><Icon name="forward" size={20} /></button>
-          <button aria-label={muted ? '取消静音' : '静音'} disabled={phase !== 'ready'} onClick={() => { if (video.current) video.current.muted = !video.current.muted; }}>
+          <button aria-label={muted ? '取消静音' : '静音'} disabled={phase !== 'ready'} onClick={() => { if (video.current) muteVideo(!video.current.muted); }}>
             <Icon name={muted || volume === 0 ? 'muted' : 'volume'} size={20} />
           </button>
           <input className="volume-slider" aria-label="音量" type="range" min={0} max={1} step={.05} value={muted ? 0 : volume}
-            disabled={phase !== 'ready'} onChange={e => { if (video.current) { video.current.volume = Number(e.target.value); video.current.muted = false; } }} />
+            disabled={phase !== 'ready'} onChange={e => { if (video.current) { volumeVideo(Number(e.target.value));muteVideo(false); } }} />
           {!compactControls && pictureActions}
           {compactControls && zoom > 1 && <button aria-label="还原画面缩放" title="还原缩放" disabled={phase !== 'ready'} onClick={resetZoom}><Icon name="zoomReset" size={19}/></button>}
           </div>
@@ -1541,6 +1586,7 @@ function ChromiumPlayer({ media, automatic=false, close, playNext, queue, change
         </dl>
         {playbackColor?.warning && <p className="color-warning">{playbackColor.warning}</p>}
         <small>耗时包含本机处理、读取与解码；分辨率不代表转码无损。</small>
+        {nativeAvailable&&onUseNative&&<div className="playback-diagnostic-export"><div className="diagnostic-actions"><Button icon="play" disabled={closing||nextStarting||phase==='preparing'} onClick={()=>void switchToNative()}>使用 MPV 原画播放</Button></div><small>持续丢帧或解码异常时可尝试。仅本次从当前进度切换，MPV 直接读取原文件，默认播放引擎保持不变。</small></div>}
         <PlaybackDiagnosticsExport/>
       </details>
       {openSetting !== 'subtitles' && subtitlePanel}

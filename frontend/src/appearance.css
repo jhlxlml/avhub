@@ -95,7 +95,7 @@
   --ui-bg:#0b0f16;--ui-surface:#121923;--ui-raised:#18212e;--ui-hover:#212d3d;
   --ui-field:#0e151f;--ui-border:#283445;--ui-divider:#202c3a;
   --ui-text:#e8edf5;--ui-secondary:#b0bdce;--ui-muted:#8797ad;
-  --ui-accent:var(--ui-overlay-accent);--ui-accent-hover:#bdd2ff;--ui-accent-soft:#9bbcff18;
+  --ui-accent:var(--ui-overlay-accent);--accent:var(--ui-accent);--ui-accent-hover:color-mix(in srgb,var(--ui-accent) 75%,white);--ui-accent-soft:color-mix(in srgb,var(--ui-accent) 10%,transparent);
   --ui-danger:#f49a9a;--ui-on-accent:#14213b;--ui-shadow:0 20px 70px #0008;
   --ui-warning:#efbe79;--ui-success:#8ac5a4;
   --ui-danger-soft:color-mix(in srgb,var(--ui-danger) 9%,var(--ui-surface));

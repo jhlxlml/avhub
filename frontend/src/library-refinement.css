@@ -22,6 +22,9 @@
   .library-heading-status {grid-column:2}
 }
 .resolution-compact {display:none;align-items:center;gap:6px;color:var(--ui-muted);font-size:12px}.resolution-compact select {padding:8px 10px;min-width:110px}
+.resolution-compact[data-active="true"] {color:var(--ui-accent)}
+.resolution-compact[data-active="true"] select {background:var(--ui-selection-bg);color:var(--ui-selection-fg)}
+.resolution-compact select option {background:var(--ui-surface);color:var(--ui-text)}
 @media(max-width:1200px) {
   .toolbar .resolution-filter {display:none}.resolution-compact {display:flex}.library-toolbar-right {margin-left:auto}
   .library .toolbar .toolbar-icon-action {width:36px;height:36px;min-width:36px;flex:none;justify-content:center;padding:8px;gap:0}

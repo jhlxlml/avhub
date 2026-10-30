@@ -20,6 +20,7 @@ import { realpath,stat } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import {NativePlayer} from './nativePlayer';
+import {RenderPlayer} from './renderPlayer';
 import {FilePreviewRequest,cancellableFilePreview} from './filePreview';
 
 const isPackaged = app.isPackaged;
@@ -49,7 +50,11 @@ const dataConfigFile=path.join(dataHome,configName);
 const defaultDataDir=path.join(dataHome,'AVHub-data');
 const nativePlayer=new NativePlayer({origin:()=>`http://127.0.0.1:${backendPort}`,token:()=>sessionToken,
   runtime:()=>path.join(isPackaged?process.resourcesPath:projectRoot,isPackaged?'mpv':'bin/mpv','mpv.exe'),
+  runtimeManifest:()=>isPackaged&&existsSync(path.join(process.resourcesPath,'mpv/runtime.json'))?path.join(process.resourcesPath,'mpv/runtime.json'):undefined,
   data:()=>dataDir,main:()=>mainWindow,icon:()=>loadDesktopIcon(projectRoot,process.resourcesPath,isPackaged),log:line=>appendDesktopLog(line),mode:value=>applyWindowMode(mainWindow!,value),windowAction:value=>applyWindowAction(mainWindow!,value),settled:()=>waitForWindowPlacement(mainWindow!),windowState:()=>windowState(mainWindow!)});
+const renderPlayer=new RenderPlayer({root:projectRoot,origin:()=>`http://127.0.0.1:${backendPort}`,token:()=>sessionToken,data:()=>dataDir,main:()=>mainWindow,log:line=>appendDesktopLog(line),mode:value=>applyWindowMode(mainWindow!,value),windowAction:value=>applyWindowAction(mainWindow!,value),settled:()=>waitForWindowPlacement(mainWindow!),windowState:()=>windowState(mainWindow!)});
+ipcMain.handle('avhub:render-player',(event,action:unknown,input:unknown)=>{if(shuttingDown&&action==='open')throw new Error('应用正在退出');return renderPlayer.invoke(event,action,input);});
+ipcMain.on('avhub:render-surface-error',(event,value)=>renderPlayer.surfaceFailure(event,value));
 ipcMain.handle('avhub:native-player',(event,action:unknown,input:unknown)=>{
   if(shuttingDown&&action==='open')throw new Error('应用正在退出，不能打开新视频');
   return nativePlayer.invoke(event,action,input);
@@ -599,7 +604,8 @@ function createWindow(): BrowserWindow {
       appendDesktopLog(`startup-slow ${JSON.stringify({...startupTrace.snapshot(),document_loading:window.webContents.isLoadingMainFrame()})}`);
   },15000);
   window.once('closed',()=>clearTimeout(slowStartup));
-  window.webContents.on('render-process-gone',(_event,details)=>appendDesktopLog(`renderer-gone reason=${details.reason} exit_code=${details.exitCode}`));
+  window.webContents.on('render-process-gone',(_event,details)=>{appendDesktopLog(`renderer-gone reason=${details.reason} exit_code=${details.exitCode}`);void renderPlayer.retireRenderer(window.webContents).catch(()=>{});});
+  window.webContents.on('did-start-navigation',(_event,_url,inPlace,mainFrame)=>{if(mainFrame&&!inPlace)void renderPlayer.retireRenderer(window.webContents).catch(()=>{});});
   window.on('unresponsive',()=>appendDesktopLog('renderer-unresponsive'));
   window.webContents.on('did-fail-load',(_event,code,_description,_url,isMainFrame)=>{
     if(isMainFrame)appendDesktopLog(`renderer-document-failed code=${code}`);
@@ -714,7 +720,7 @@ app.on('before-quit', event => {
     }
     // Stop the owned decoder and save its progress BEFORE stopping the API.
     for(;;){
-      try{await nativePlayer.shutdown(discardUnsaved);break;}
+      try{await renderPlayer.shutdown(discardUnsaved);await nativePlayer.shutdown(discardUnsaved);break;}
       catch(error){
         if(!mainWindow||mainWindow.isDestroyed())throw error;
         const choice=await dialog.showMessageBox(mainWindow,{type:'warning',title:'原生播放器尚未关闭',message:String((error as Error).message),

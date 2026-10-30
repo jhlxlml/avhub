@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "scope": "Independent bundled FFmpeg CLI source review; not the libmpv FFmpeg dependency",
+  "version": "9.0.2",
+  "repository": "https://github.com/FFmpeg/FFmpeg.git",
+  "tag": "n9.0.2",
+  "revision": "946fcce07b6dcd0331c8cc609192aeff5e1924f8",
+  "publisher": "https://www.gyan.dev/ffmpeg/builds/",
+  "binaryArchiveSha256": "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba",
+  "externalLibrarySourcesComplete": false,
+  "distributionReady": false
+}

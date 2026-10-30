@@ -4,6 +4,7 @@ import {_electron,expect} from '@playwright/test';
 import {mkdirSync,writeFileSync,renameSync,existsSync,createReadStream,readFileSync,statSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {nativeProcessMetrics} from './native-owned-process.mjs';
+import {installChromiumCycleObserver,chromiumLibraryCycle} from './chromium-library-cycle.mjs';
 import {spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {ownedTemporaryWorkspace} from './owned-temp-workspace.mjs';
@@ -18,11 +19,17 @@ assert.ok(Number.isSafeInteger(passes)&&passes>=12&&passes<=120);
 const option=(name,fallback)=>Number(process.argv.find(value=>value.startsWith(`--${name}=`))?.split('=')[1]??fallback);
 const seconds=option('seconds',0),settleMs=option('settle-ms',seconds?1000:150),cycleDelay=option('cycle-delay',seconds?3000:0);
 const playbackId=option('playback-id',0),playbackEvery=option('playback-every',10);
+const playbackEngine=process.argv.find(value=>value.startsWith('--playback-engine='))?.split('=')[1]??'mpv';
+assert.ok(['mpv','chromium'].includes(playbackEngine));
 const idleSeconds=option('idle-seconds',0);
 const networkMode=process.argv.find(value=>value.startsWith('--network-metrics='))?.split('=')[1]??'on';
+const resourceProbe=process.argv.includes('--resource-probe');
+const sampleMode=process.argv.find(value=>value.startsWith('--sample-mode='))?.split('=')[1]??'all';
+const timingEnabled=!process.argv.includes('--no-timing');
+assert.ok(['all','cycle'].includes(sampleMode));
 assert.ok(['on','off'].includes(networkMode));
 assert.ok(Number.isSafeInteger(idleSeconds)&&idleSeconds>=0&&idleSeconds<=300);
-const instrumentation={additionalNetworkMetrics:networkMode==='on',playwrightTransport:true,forcedGc:false};
+const instrumentation={additionalNetworkMetrics:networkMode==='on',playwrightTransport:true,forcedGc:false,blinkResourceProbe:resourceProbe,sampleMode,animationTiming:timingEnabled};
 assert.ok(Number.isSafeInteger(seconds)&&seconds>=0&&seconds<=7200);
 assert.ok(Number.isSafeInteger(settleMs)&&settleMs>=150&&settleMs<=10000);
 assert.ok(Number.isSafeInteger(cycleDelay)&&cycleDelay>=0&&cycleDelay<=30000);
@@ -53,23 +60,25 @@ dst.commit();print(json.dumps({'videos':dst.execute('SELECT COUNT(*) FROM media'
 assert.equal(clone.status,0,clone.stderr);const counts=JSON.parse(clone.stdout);assert.ok(counts.videos>1000&&counts.covers>100,'Need real large index and existing covers');
 counts.walkPages=walkPages;
 let desktop;const samples=[],errors=[];let requests=0,forward=true;
-const playbacks=[],idleSamples=[];let started=0,elapsedMs=0,totalElapsedMs=0,cleanExit=false,sourceIdentity=null,parentPid;
+const playbacks=[],idleSamples=[];let started=0,elapsedMs=0,totalElapsedMs=0,cleanExit=false,sourceIdentity=null,parentPid,completedPasses=0;
 const network={enabled:networkMode==='on',completed:0,cacheHits:0,notModified:0,transferBytes:0,failed:0,policies:{}};const inflight=new Map();
 const hash=file=>new Promise((resolve,reject)=>{const digest=createHash('sha256'),stream=createReadStream(file);stream.on('data',chunk=>digest.update(chunk));stream.on('error',reject);stream.on('end',()=>resolve(digest.digest('hex')));});
 const snapshotIdentity=async file=>({hash:await hash(file),size:statSync(file).size,mtime:statSync(file).mtimeMs});
 const stopping=()=>stopped||Boolean(stopFile&&existsSync(path.resolve(stopFile)));
 const timing={longTasks:0,maxLongTaskMs:0,frames:0,gapsOver50ms:0,maxGapMs:0};
 const installTiming=()=>{const timing={longTasks:0,maxLongTaskMs:0,frames:0,gapsOver50ms:0,maxGapMs:0};window.__coverTiming=timing;const observer=new PerformanceObserver(list=>{for(const entry of list.getEntries()){timing.longTasks++;timing.maxLongTaskMs=Math.max(timing.maxLongTaskMs,entry.duration);}});observer.observe({type:'longtask'});let last=performance.now(),id;const frame=now=>{const gap=now-last;last=now;timing.frames++;if(gap>50)timing.gapsOver50ms++;timing.maxGapMs=Math.max(timing.maxGapMs,gap);id=requestAnimationFrame(frame);};id=requestAnimationFrame(frame);window.__stopCoverTiming=()=>{observer.disconnect();cancelAnimationFrame(id);};};
-const reportFile=path.join(workspace,seconds?'library-soak.json':'covers.json');
+const reportFile=path.join(workspace,'library-soak.json');
 const build=JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8'));
 const writeCheckpoint=value=>{const file=path.join(workspace,'checkpoint.json'),pending=file+'.tmp';writeFileSync(pending,JSON.stringify(value,null,2));renameSync(pending,file);};
 console.log('Isolated report:',reportFile);
 try{
- desktop=await _electron.launch({args:[root,...(hardwareGpu?[]:['--in-process-gpu','--disable-gpu']),'--no-sandbox'],cwd:workspace,env:{...process.env,AVHUB_DATA_DIR:profile,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});const page=await desktop.firstWindow();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/thumbs/'))requests++;});
+ desktop=await _electron.launch({args:[root,...(hardwareGpu?[]:['--in-process-gpu','--disable-gpu','--no-sandbox'])],cwd:workspace,env:{...process.env,AVHUB_DATA_DIR:profile,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});const page=await desktop.firstWindow();page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/thumbs/'))requests++;});
+ if(resourceProbe)await desktop.evaluate(({session},filePath)=>session.defaultSession.registerPreloadScript({type:'frame',filePath}),path.join(root,'electron/test/memory-resource-preload.cjs'));
  const cdp=await page.context().newCDPSession(page);if(network.enabled)await cdp.send('Network.enable');
  const rendererDiagnostics=async()=>({
    processes:await desktop.evaluate(({app})=>app.getAppMetrics().map(m=>({type:m.type,pid:m.pid,workingSetKB:m.memory.workingSetSize,privateKB:m.memory.privateBytes??null,cpuPercent:m.cpu.percentCPUUsage}))),
    dom:await cdp.send('Memory.getDOMCounters'),heapUsage:await cdp.send('Runtime.getHeapUsage'),
+   resourceUsage:resourceProbe?await page.evaluate(()=>window.__avhubMemoryResources.snapshot()):null,
  });
  parentPid=await desktop.evaluate(()=>process.pid);
  cdp.on('Network.requestWillBeSent',event=>{if(new URL(event.request.url).pathname.startsWith('/thumbs/'))inflight.set(event.requestId,{cached:false});});
@@ -79,32 +88,44 @@ try{
  cdp.on('Network.loadingFailed',event=>{if(inflight.delete(event.requestId))network.failed++;});
  cdp.on('Network.responseReceivedExtraInfo',event=>{if(inflight.has(event.requestId)&&event.statusCode===304)network.notModified++;});
  await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
- await page.evaluate(async playback=>{const r=await fetch('/api/preferences',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:{hoverPreview:false,...(playback?{playerEngine:'mpv',resumeBehavior:'restart',audio:{volume:0,muted:true},autoNext:false,screenshots:{directory:'',shortcut:'C'}}:{})}})});if(!r.ok)throw new Error('Could not initialize isolated benchmark preferences');},Boolean(playbackId));
+ await page.evaluate(async({playback,engine})=>{const r=await fetch('/api/preferences',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:{hoverPreview:false,privacyMode:false,appearance:{theme:'dark',coverSize:'standard'},...(playback?{playerEngine:engine,resumeBehavior:'restart',audio:{volume:0,muted:true},autoNext:false,screenshots:{directory:'',shortcut:'C'}}:{})}})});if(!r.ok)throw new Error('Could not initialize isolated benchmark preferences');},{playback:Boolean(playbackId),engine:playbackEngine});
  let playbackItem;
  if(playbackId){playbackItem=await page.evaluate(async id=>{const r=await fetch(`/api/media/${id}`);if(!r.ok)throw new Error('Explicit playback sample not in cloned index');return r.json();},playbackId);assert.ok(playbackItem.path.toLowerCase().startsWith('e:\\downloads\\'));sourceIdentity=await snapshotIdentity(playbackItem.path);}
  await desktop.evaluate(({BrowserWindow})=>{const window=BrowserWindow.getAllWindows()[0];window.webContents.setBackgroundThrottling(false);window.showInactive();}); // Test only, visible without taking keyboard focus. Hidden windows can still throttle rAF to 1Hz.
  if(nativeLazy)await page.addInitScript(()=>{window.IntersectionObserver=undefined;}); // Explicit control harness: original img loading=lazy behavior.
  await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();await desktop.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setContentSize(1440,900));await page.goto(new URL('/?pageSize=96',page.url()).href);await expect(page.locator('.card')).toHaveCount(96);await expect(page.locator('.thumbnail-ready').first()).toBeVisible();
- await page.evaluate(installTiming);
+ if(timingEnabled)await page.evaluate(installTiming);
  const documentToken=await page.evaluate(()=>window.__librarySoakDocument=crypto.randomUUID());
- const collectTiming=async()=>{const value=await page.evaluate(()=>{window.__stopCoverTiming();return window.__coverTiming;});for(const key of ['longTasks','frames','gapsOver50ms'])timing[key]+=value[key];for(const key of ['maxLongTaskMs','maxGapMs'])timing[key]=Math.max(timing[key],value[key]);};
+ const collectTiming=async()=>{if(!timingEnabled)return;const value=await page.evaluate(()=>{window.__stopCoverTiming();return window.__coverTiming;});for(const key of ['longTasks','frames','gapsOver50ms'])timing[key]+=value[key];for(const key of ['maxLongTaskMs','maxGapMs'])timing[key]=Math.max(timing[key],value[key]);};
+ const sample=async(pass,fraction,diagnostics)=>{
+   const state=await page.evaluate(()=>({cards:document.querySelectorAll('.card').length,attached:document.querySelectorAll('.card img.thumbnail[src]').length,decoded:document.querySelectorAll('.card img.thumbnail-ready').length,imagePixels:[...document.querySelectorAll('img.thumbnail')].reduce((sum,image)=>sum+image.naturalWidth*image.naturalHeight,0),heap:performance.memory?.usedJSHeapSize||null}));
+   const {processes,dom,heapUsage,resourceUsage}=diagnostics??await rendererDiagnostics();
+   const memory=processes.filter(m=>m.type==='Tab').map(m=>m.workingSetKB);
+   samples.push({elapsedMs:Math.round(performance.now()-started),pass,fraction,...state,dom,heapUsage,resourceUsage,rendererKB:memory,processes,network:{...network,policies:{...network.policies}}});
+   if(walkPages)assert.ok(state.cards>0&&state.cards<=96);else assert.equal(state.cards,96);
+   assert.ok(state.attached<=96,'admitted image elements stay within the current page; not a decoded-cache memory bound');
+   assert.ok(memory.every(value=>value<2*1024*1024),'stop safely if renderer working set exceeds 2 GiB; not a product memory cap');
+ };
  started=performance.now();let checkpoint=started;
  for(let pass=0;(seconds?performance.now()-started<seconds*1000:pass<passes)&&!stopping();pass++){
+  let cycleDiagnostics;
   for(const fraction of phase==='pages'?[0]:[0,1,.25,.75,0]){
    await page.locator('#app-scroll-area').evaluate((node,f)=>node.scrollTo({top:(node.scrollHeight-node.clientHeight)*f,behavior:'instant'}),fraction);await page.waitForTimeout(settleMs);
-   const state=await page.evaluate(()=>({cards:document.querySelectorAll('.card').length,attached:document.querySelectorAll('.card img.thumbnail[src]').length,decoded:document.querySelectorAll('.card img.thumbnail-ready').length,imagePixels:[...document.querySelectorAll('img.thumbnail')].reduce((sum,image)=>sum+image.naturalWidth*image.naturalHeight,0),heap:performance.memory?.usedJSHeapSize||null}));
-   // Read current counters only. Leak-preparation/GC commands would invalidate
-   // the working-set experiment by dropping internal caches.
-   const {processes,dom,heapUsage}=await rendererDiagnostics();
-   const memory=processes.filter(m=>m.type==='Tab').map(m=>m.workingSetKB);samples.push({elapsedMs:Math.round(performance.now()-started),pass,fraction,...state,dom,heapUsage,rendererKB:memory,processes,network:{...network,policies:{...network.policies}}});if(walkPages)assert.ok(state.cards>0&&state.cards<=96);else assert.equal(state.cards,96);assert.ok(state.attached<=96,'decoded image lifetime is bounded by the current page');
-   assert.ok(memory.every(value=>value<2*1024*1024),'stop safely if renderer working set exceeds 2 GiB; not a product memory cap');
-   if(!nativeLazy&&pass===0&&fraction===0&&samples.length===1)assert.ok(state.attached<96,'initial requests stay near the viewport');
+   // Read counters only. No leak-preparation/GC/cache-clearing commands.
+   if(sampleMode==='all')await sample(pass,fraction);
+   if(!nativeLazy&&pass===0&&fraction===0&&samples.length<=1)assert.ok(await page.locator('.card img.thumbnail[src]').count()<96,'initial requests stay near the viewport');
   }
   if(playbackId&&pass%playbackEvery===0&&!stopping()){
     const libraryUrl=page.url(),openStart=performance.now();await collectTiming();
+    if(playbackEngine==='chromium')await page.evaluate(installChromiumCycleObserver);
     // Drive the actual history router without reloading the renderer. Reloads
     // would discard memory and conceal lifecycle leaks after player close.
     await page.evaluate(id=>{const url=new URL(location.href);url.searchParams.set('video',String(id));const index=Number(history.state?.avhubIndex)||0;history.pushState({...history.state,avhubIndex:index+1,avhubLibraryIndex:index},'',url);dispatchEvent(new PopStateEvent('popstate'));},playbackId);
+    let row;
+    if(playbackEngine==='chromium'){
+      try{row={cycle:playbacks.length,...await chromiumLibraryCycle(page,playbackItem,openStart)};}
+      finally{await page.evaluate(()=>{window.__chromiumLibraryCycle?.stop();delete window.__chromiumLibraryCycle;});}
+    }else{
     await expect(page.getByText('MPV · 原文件直接播放',{exact:true})).toBeVisible({timeout:30000});
     const session=await page.evaluate(async()=>(await window.avhubDesktop.nativePlayer('snapshot')).session);
     const overlay=desktop.windows().find(window=>window.url().includes(`nativePlayer=${session}`));assert.ok(overlay);
@@ -113,7 +134,7 @@ try{
     try{await expect.poll(async()=>(await snapshot()).phase,{timeout:35000}).toBe('ready');}
     catch(error){writeFileSync(path.join(workspace,'startup-failure.json'),JSON.stringify({snapshot:await snapshot(),processes:nativeProcessMetrics(parentPid)},null,2));throw error;}
     await expect.poll(async()=>Number((await snapshot()).properties['time-pos']),{timeout:15000}).toBeGreaterThan(.1);
-    const row={cycle:playbacks.length,openMs:Math.round(performance.now()-openStart)};
+    row={cycle:playbacks.length,engine:'mpv',openMs:Math.round(performance.now()-openStart)};
     await page.waitForTimeout(10000);await call('pause',true);
     if(!playbacks.length){const capture=await call('screenshot');assert.equal(capture.width,playbackItem.width);assert.equal(capture.height,playbackItem.height);row.firstFrameHash=await hash(capture.path);}
     const target=Math.min(30,playbackItem.duration/2);await call('seek',target);
@@ -121,26 +142,32 @@ try{
     const state=await snapshot();assert.ok(Math.abs(state.properties['time-pos']-target)<.5);assert.equal(state.sourceLoads,1);
     if(!playbacks.length){const capture=await call('screenshot');row.seekFrameHash=await hash(capture.path);assert.notEqual(row.seekFrameHash,row.firstFrameHash,'explicit moving 4K sample decoded pixels advance');}
     Object.assign(row,{firstFrameMs:state.firstFrameMs,sourceLoads:state.sourceLoads,bufferingEvents:state.bufferingEvents,dropped:state.properties['frame-drop-count']??null,decoderDropped:state.properties['decoder-frame-drop-count']??null,seekMs:state.lastSeekMs,position:state.properties['time-pos'],processes:nativeProcessMetrics(parentPid)});
+    }
     await page.locator('.player-top').getByRole('button',{name:'返回媒体库',exact:true}).click();
-    await expect.poll(()=>page.evaluate(()=>window.avhubDesktop.nativePlayer('status')).then(value=>value.active),{timeout:20000}).toBe(false);
-    assert.deepEqual(nativeProcessMetrics(parentPid),[],'decoder released between library visits');
+    if(playbackEngine==='mpv')await expect.poll(()=>page.evaluate(()=>window.avhubDesktop.nativePlayer('status')).then(value=>value.active),{timeout:20000}).toBe(false);
+    else await expect(page.locator('.player-shell video')).toHaveCount(0);
+    assert.deepEqual(nativeProcessMetrics(parentPid),[],'no owned MPV process remains between library visits');
+    assert.equal(await page.locator('.player-shell video').count(),0,'video element released after returning');
     await expect(page).toHaveURL(libraryUrl);await expect(page.locator('section.library')).toHaveAttribute('aria-busy','false');
     assert.equal(await page.evaluate(()=>window.__librarySoakDocument),documentToken,'same renderer document survives playback cycles');
     const windows=await desktop.evaluate(({BrowserWindow,BaseWindow,screen})=>({browser:BrowserWindow.getAllWindows().length,base:BaseWindow.getAllWindows().length,displayListeners:screen.listenerCount('display-metrics-changed')}));
     assert.equal(windows.browser,1);assert.equal(windows.base,1);row.windowsAfterClose=windows;
     row.afterClose=await rendererDiagnostics();
-    await page.evaluate(installTiming);playbacks.push(row);
+    if(sampleMode==='cycle')cycleDiagnostics=row.afterClose;
+    if(timingEnabled)await page.evaluate(installTiming);playbacks.push(row);
   }
+  if(sampleMode==='cycle')await sample(pass,0,cycleDiagnostics);
   if(phase!=='scroll'){
     if(walkPages&&await page.getByRole('button',{name:forward?'下一页':'上一页',exact:true}).isDisabled())forward=!forward;
     await page.getByRole('button',{name:walkPages?(forward?'下一页':'上一页'):(pass%2===0?'下一页':'上一页'),exact:true}).click();await expect(page.locator('section.library')).toHaveAttribute('aria-busy','false');
   }
   if(cycleDelay)await page.waitForTimeout(cycleDelay);
+  completedPasses++;
   if(performance.now()-checkpoint>=60000){
     checkpoint=performance.now();const progress={elapsedMs:Math.round(checkpoint-started),targetSeconds:seconds,sample:samples.at(-1),playbackCycles:playbacks.length,network,errors};
     // Persist the curve, not just its final point. An interrupted run remains
     // explicitly incomplete; reaching wall-clock time is not a clean-exit proof.
-    writeCheckpoint({build,seconds,elapsedMs:progress.elapsedMs,incomplete:true,targetReached:false,cleanExit:false,sourceIdentityVerified:false,hardwareGpu,phase,walkPages,counts,samples,playbacks,network,instrumentation,idleSeconds,idleSamples,errors});
+    writeCheckpoint({build,seconds,elapsedMs:progress.elapsedMs,incomplete:true,targetReached:false,cleanExit:false,sourceIdentityVerified:false,hardwareGpu,playbackEngine,phase,walkPages,counts,samples,playbacks,network,instrumentation,idleSeconds,idleSamples,errors});
     writeFileSync(path.join(workspace,'progress.json'),JSON.stringify(progress,null,2));console.log(JSON.stringify({elapsedMs:progress.elapsedMs,pass,rendererKB:progress.sample.rendererKB,heap:progress.sample.heap,playbackCycles:playbacks.length,network}));
   }
  }
@@ -161,8 +188,8 @@ try{
  totalElapsedMs=Math.round(performance.now()-started);assert.deepEqual(errors,[]);
  if(playbackItem)assert.deepEqual(await snapshotIdentity(playbackItem.path),sourceIdentity,'real media remains byte-identical');
  await desktop.close();desktop=null;assert.deepEqual(nativeProcessMetrics(parentPid),[],'normal app exit leaves no owned MPV');cleanExit=true;
- if(seconds)writeFileSync(reportFile,JSON.stringify({build,seconds,elapsedMs,totalElapsedMs,targetReached:elapsedMs>=seconds*1000,stopped:stopping(),cleanExit,sourceIdentityVerified:Boolean(playbackItem),hardwareGpu,phase,walkPages,counts,samples,playbacks,network,timing,instrumentation,idleSeconds,idleSamples,errors,limitations:['Single machine and read-only sample; not all codecs, HDR, physical mixed-DPI or monitor scanout acceptance.','Working set is sampled without forced GC. GPU process working set is not VRAM. HTTP transfer is not disk I/O.','Library and native playback alternate; native phases use original file and decoded PNG evidence for the first seek. No source mutation.','Disabling additional CDP Network metrics does not disable Playwright transport instrumentation. Disabled counters are unavailable, not zero traffic.']},null,2));
- writeFileSync(path.join(workspace,'covers.json'),JSON.stringify({nativeLazy,hardwareGpu,phase,...counts,requests,network,samples,timing,limitations:[`Read-only E downloads metadata and copied existing artwork; hover video explicitly disabled. No scan. ${playbackId?'Alternates with original-file native playback.':'No video playback.'} Working set is sampled without forced GC, not proof of leak freedom.`,'GPU process working set is not VRAM usage or a decoded-image-cache allocation measurement. Image pixels estimate current DOM images only.','Network encodedDataLength measures transferred HTTP bytes, not disk I/O; cache hits and logical request counts are separate.','Timing includes driver and paging intervals, not isolated scroll FPS. Native-lazy control disables IntersectionObserver only in this test profile.']},null,2));
- console.log(JSON.stringify({nativeLazy,hardwareGpu,phase,walkPages,...counts,requests,network,timing,maxAttached:Math.max(...samples.map(s=>s.attached)),heapFirst:samples[0].heap,heapLast:samples.at(-1).heap,rendererFirstKB:samples[0].rendererKB,rendererLastKB:samples.at(-1).rendererKB}));console.log('Owned real-cover report:',path.join(workspace,'covers.json'));
+ writeFileSync(reportFile,JSON.stringify({build,seconds,passes,completedPasses,elapsedMs,totalElapsedMs,targetReached:seconds?elapsedMs>=seconds*1000:completedPasses===passes&&!stopping(),stopped:stopping(),cleanExit,sourceIdentityVerified:Boolean(playbackItem),hardwareGpu,playbackEngine,phase,walkPages,counts,samples,playbacks,network,timing:timingEnabled?timing:null,instrumentation,idleSeconds,idleSamples,errors,limitations:['Single machine and read-only sample; not all codecs, HDR, physical mixed-DPI or monitor scanout acceptance.','Working set is sampled without forced GC. GPU process working set is not VRAM. HTTP transfer is not disk I/O.','Library and original-file playback alternate. MPV records decoded PNG evidence; Chromium records presented-frame callbacks and seek target accuracy. No source mutation.','Disabling additional CDP Network metrics does not disable Playwright transport instrumentation. Disabled counters are unavailable, not zero traffic.']},null,2));
+ writeFileSync(path.join(workspace,'covers.json'),JSON.stringify({nativeLazy,hardwareGpu,phase,...counts,requests,network,samples,timing:timingEnabled?timing:null,limitations:[`Read-only E downloads metadata and copied existing artwork; hover video explicitly disabled. No scan. ${playbackId?`Alternates with original-file ${playbackEngine} playback.`:'No video playback.'} Working set is sampled without forced GC, not proof of leak freedom.`,'GPU process working set is not VRAM usage or a decoded-image-cache allocation measurement. Image pixels estimate current DOM images only.','Network encodedDataLength measures transferred HTTP bytes, not disk I/O; cache hits and logical request counts are separate.','Timing includes driver and paging intervals, not isolated scroll FPS. Native-lazy control disables IntersectionObserver only in this test profile.']},null,2));
+ console.log(JSON.stringify({nativeLazy,hardwareGpu,playbackEngine,phase,walkPages,...counts,requests,network,timing:timingEnabled?timing:null,maxAttached:Math.max(...samples.map(s=>s.attached)),heapFirst:samples[0].heap,heapLast:samples.at(-1).heap,rendererFirstKB:samples[0].rendererKB,rendererLastKB:samples.at(-1).rendererKB}));console.log('Owned real-cover report:',path.join(workspace,'covers.json'));
 }catch(error){errors.push(String(error));writeFileSync(reportFile,JSON.stringify({build,seconds,elapsedMs:elapsedMs||(started?Math.round(performance.now()-started):0),totalElapsedMs:started?Math.round(performance.now()-started):0,targetReached:false,cleanExit:false,errors,samples,playbacks,network,instrumentation,idleSeconds,idleSamples},null,2));throw error;
 }finally{if(desktop)await desktop.close();}

@@ -1,0 +1,22 @@
+2026-10-25T12:01:27.1124565Z [command]/usr/sbin/git log -1 --format=%H
+2026-10-25T12:01:27.1160714Z b120d7d8a64d17bd40b893f585429ef3845ac766
+2026-10-25T12:01:28.7075083Z [command]/usr/sbin/git log -1 --format=%H
+2026-10-25T12:01:28.7110003Z 1f8d2e76255abc48f0456d9be99b4cab9c6566e6
+2026-10-25T12:02:17.8276988Z Applying: ffmpeg: remove opengl
+2026-10-25T12:02:17.8378504Z Applying: spirv-cross, shaderc: skip unused stuff
+2026-10-25T12:02:33.2426139Z    3719f257c..31855b2a7  master      -> origin/master
+2026-10-25T12:22:33.5823734Z 31855b2a7
+2026-10-25T12:22:35.8515877Z [command]/usr/sbin/7z a -m0=lzma2 -mx=9 -ms=on mpv-winbuild-cmake/release/ffmpeg-x86_64-git-31855b2a7.7z /__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/install/x86_64-w64-mingw32/bin/ffmpeg.exe
+2026-10-25T12:22:55.3107319Z Creating archive: mpv-winbuild-cmake/release/ffmpeg-x86_64-git-31855b2a7.7z
+2026-10-25T12:22:55.3413465Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:22:58.2923065Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:00.8557441Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:03.3932372Z   path: mpv-winbuild-cmake/release/ffmpeg-x86_64-git-31855b2a7.7z
+2026-10-25T12:23:03.3941913Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:04.0732162Z Uploading artifact: ffmpeg-x86_64-git-31855b2a7.7z
+2026-10-25T12:23:05.9197800Z Artifact ffmpeg-x86_64-git-31855b2a7.7z successfully finalized. Artifact ID 12598014873
+2026-10-25T12:23:05.9467403Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:08.5872341Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:14.8957181Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:19.2712844Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7
+2026-10-25T12:23:34.3899181Z   ffmpeg_name: ffmpeg-x86_64-git-31855b2a7

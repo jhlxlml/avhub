@@ -45,9 +45,8 @@ import {ResolutionBadge} from './ResolutionBadge';
 import {NativePlayerOverlay} from './NativePlayerOverlay';
 import {readRoute,transientRouteRead} from './routeRecovery';
 import {traceStartup} from './startupProgress';
-// Preserve the existing cascade when the screen code is loaded on demand.
-// Shared theme rules below must win regardless of which dialog opens first.
-import './settings.css';
+// Feature styles are eager and ordered after primitives, so opening a lazy
+// dialog never changes the cascade of an already-mounted workspace.
 import './screenshots.css';
 import './help.css';
 import './native-player.css';
@@ -56,8 +55,9 @@ import './library-performance.css';
 import './design-system.css';
 import './appearance.css';
 import './scrollbars.css';
-import './playlists.css';
 import './mira.css';
+import './settings.css';
+import './playlists.css';
 
 const Player = lazy(() => import('./Player').then(module => ({ default: module.Player })));
 // Keep the event/quit hosts eager; optional screens need not delay the library.
@@ -260,6 +260,7 @@ function App() {
   const thumbnails=useThumbnails(refreshThumbnails,selected?String(selected.id):grouped?'':items.map(item=>item.id).join(','));
   async function changeFavorite(m: Media) {
     if (favoriteLocks.current.has(m.id)) return;
+    const origin=library.context();
     favoriteLocks.current.add(m.id); setFavoritePending([...favoriteLocks.current]);
     try {
       const value=await api<Media>(`/api/media/${m.id}/favorite`, json('PUT', { favorite: !m.favorite }));
@@ -271,11 +272,11 @@ function App() {
         const old=current.items.find(item=>item.id===value.id);
         const total=filters.view==='favorites'&&old?.favorite&&!value.favorite?Math.max(0,current.total-1):current.total;
         return {...current,total,pages:Math.max(1,Math.ceil(total/current.page_size)),items:current.items.map(item=>item.id===value.id?{...item,favorite:value.favorite}:item)};
-      });
+      },origin);
       setSelected(current=>current?.id===value.id?{...current,favorite:value.favorite}:current);
       // Removing a favorite may require filling/clamping a page. Revalidate
       // against the server without changing the current query identity.
-      if (!selected && filters.view === 'favorites') setLibraryRetry(x => x + 1);
+      if (!library.isCurrent(origin)||!selected&&filters.view==='favorites') setLibraryRetry(x => x + 1);
     }
     catch (e) { setNotice(errorText(e)); }
     finally { favoriteLocks.current.delete(m.id); setFavoritePending([...favoriteLocks.current]); }
@@ -392,7 +393,7 @@ function App() {
               aria-pressed={filters.resolution===tier} title={tier?'按源视频短边分级':'显示所有分辨率，包括未知'}
               onClick={()=>setFilters(f=>({...f,resolution:tier,page:1}))}>{tier?resolutionDisplayLabel(tier):<Icon name="resolution" size={17}/>}</button>)}
           </div>}
-          {!grouped&&<label className="resolution-compact" title="分辨率"><Icon name="resolution" size={18}/><select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
+          {!grouped&&<label className="resolution-compact" data-active={Boolean(filters.resolution)} title="分辨率"><Icon name="resolution" size={18}/><select aria-label="按分辨率筛选" value={filters.resolution} onChange={event=>setFilters(f=>({...f,resolution:event.target.value,page:1}))}>
             <option value="">全部</option>{resolutionTiers.map(tier=><option key={tier} value={tier}>{resolutionDisplayLabel(tier)}</option>)}
           </select></label>}
           <div className="library-view-controls"><CoverSizeControl disabled={!grouped&&filters.layout==='list'}/>

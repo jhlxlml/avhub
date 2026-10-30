@@ -53,3 +53,42 @@ test('failed favorite write preserves the old state and mounted cover',async({pa
   await expect(card.locator('.star')).toHaveAttribute('aria-pressed','true');
   expect(await card.evaluate(e=>e.querySelector('img')===(window as any).oldFavoriteImage)).toBe(true);
 });
+
+test('favorite finishing after tab switch refreshes the active classification',async({page,request})=>{
+  await page.goto('/?sort=name');
+  const card=page.locator('.card').filter({has:page.getByRole('button',{name:'播放 视频 002',exact:true})});
+  let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);
+  await page.route('**/api/media/2/favorite',async route=>{entered();await gate;await route.continue();});
+  try{
+    await card.locator('.cover').hover();await card.locator('.star').click();await started;
+    const oldRead=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/media'&&r.url().includes('favorite=true'));
+    await page.getByRole('navigation',{name:'视频分类'}).getByRole('button',{name:'收藏',exact:true}).click();
+    await (await oldRead).finished();await expect(page.locator('.card')).toHaveCount(1);
+    release();
+    await expect(page.getByRole('button',{name:'播放 视频 002',exact:true})).toBeVisible();
+    await expect(page.locator('.card')).toHaveCount(2);
+    expect((await (await request.get('/api/media?favorite=true&page=1')).json()).total).toBe(2);
+  }finally{release();}
+});
+
+test('a pre-mutation read cannot overwrite a successful favorite on the same page',async({page})=>{
+  await page.goto('/?sort=name');await expect(page.locator('.card')).toHaveCount(48);
+  const nav=page.getByRole('navigation',{name:'视频分类'});
+  await nav.getByRole('button',{name:'收藏',exact:true}).click();await expect(page.locator('.card')).toHaveCount(1);
+  await page.clock.install();await page.clock.fastForward(21000);
+  let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r);let reads=0;
+  await page.route('**/api/media?*',async route=>{
+    const url=new URL(route.request().url());
+    if(url.searchParams.get('favorite')==='true'){await route.continue();return;}
+    reads++;
+    if(reads===1){const old=await route.fetch();entered();await gate;await route.fulfill({response:old});}
+    else await route.continue();
+  });
+  try{
+    await nav.getByRole('button',{name:'全部视频',exact:true}).click();await started;
+    const card=page.locator('.card').filter({has:page.getByRole('button',{name:'播放 视频 002',exact:true})}),star=card.locator('.star');
+    await card.locator('.cover').hover();await star.click();await expect(star).toHaveAttribute('aria-pressed','true');
+    release();await expect.poll(()=>reads).toBeGreaterThanOrEqual(2);
+    await expect(star).toHaveAttribute('aria-pressed','true');await expect(page.locator('.card')).toHaveCount(48);
+  }finally{release();}
+});

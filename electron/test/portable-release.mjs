@@ -10,6 +10,8 @@ const root=path.resolve(import.meta.dirname,'../..'),version=JSON.parse(readFile
 const folderMode=process.argv.includes('--folder');
 const artifactOption=process.argv.find(value=>value.startsWith('--artifacts-dir='));
 const artifacts=path.resolve(artifactOption?artifactOption.slice('--artifacts-dir='.length):path.join(root,'dist/electron'));
+const portableOption=process.argv.find(value=>value.startsWith('--portable-artifact='));
+const portableName=portableOption?portableOption.slice('--portable-artifact='.length):`AVHub-portable-${version}-x64.exe`;assert.equal(path.basename(portableName),portableName);
 const folder=mkdtempSync(path.join(root,'build',folderMode?'folder-release-test-':'portable-release-test-'));
 const home=path.join(folder,'app',...(folderMode?[`AVHub-folder-portable-${version}-x64`]:[])),custom=path.join(folder,'custom');mkdirSync(custom);
 let exe;
@@ -18,7 +20,7 @@ if(folderMode) {
   assert.equal(extracted.status,0,`actual folder ZIP must extract safely: ${extracted.stderr}`);
   exe=path.join(home,'AVHub.exe');assert.ok(existsSync(exe));
 } else {
-  mkdirSync(home);exe=path.join(home,`AVHub-portable-${version}-x64.exe`);copyFileSync(path.join(artifacts,path.basename(exe)),exe);
+  mkdirSync(home);exe=path.join(home,`AVHub-portable-${version}-x64.exe`);copyFileSync(path.join(artifacts,portableName),exe);
 }
 // Only the frozen backend may migrate this owned old-schema fixture. Seeding
 // with current bootstrap() would silently skip the actual upgrade path.

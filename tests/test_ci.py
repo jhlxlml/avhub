@@ -4,6 +4,7 @@ import io
 import contextlib
 import hashlib
 import tempfile
+import zipfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -36,13 +37,13 @@ class CITests(unittest.TestCase):
         self.assertNotIn('Checksums and source manifest',commands)
         self.assertNotIn('Require successful exact-commit release candidate',commands)
         with self.assertRaises(ValueError):replay.plan({'jobs':{'verify':{'steps':[{'name':'new guard','run':'test','if':'new condition'}]}}})
-    def test_candidate_gate_and_full_short_path_suite_cannot_be_silently_skipped(self):
+    def test_manual_release_keeps_regressions_without_cloud_packaging(self):
         workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)
         steps=workflow['jobs']['verify']['steps'];names=[step.get('name') for step in steps]
-        gate=next(step for step in steps if step.get('name')=='Require successful exact-commit release candidate')
-        self.assertEqual(gate['if'],"startsWith(github.ref, 'refs/tags/')")
-        self.assertIn('check-release-candidate.py',gate['run'])
-        self.assertLess(names.index(gate['name']),names.index('Prepare pinned FFmpeg'))
+        self.assertNotIn('Require successful exact-commit release candidate',names)
+        self.assertNotIn('Package only tags or explicit manual runs',names)
+        self.assertNotIn('Checksums and source manifest',names)
+        self.assertNotIn('publish',workflow['jobs'])
         self.assertEqual(workflow['permissions']['actions'],'read')
         short=next(step for step in steps if step.get('name')=='Windows short-path regression')
         self.assertEqual(short['run'],'npm run test:backend:short-path')
@@ -68,6 +69,9 @@ class CITests(unittest.TestCase):
         self.assertIn('electron/test/build-dependency-policy.mjs',commands)
         self.assertIn('electron/test/playback-timeline.test.mjs',commands)
         self.assertIn('electron/test/steady-frame-observation.test.mjs',commands)
+        self.assertIn('electron/test/chromium-library-cycle.test.mjs',commands)
+        self.assertIn('electron/test/memory-resource-probe.test.mjs',commands)
+        self.assertIn('electron/test/stylesheet-ownership.test.mjs',commands)
         self.assertIn('npm audit --audit-level=moderate',commands)
         self.assertIn('electron/test/file-preview.test.mjs',commands)
         self.assertIn('electron/test/file-preview.mjs',commands)
@@ -109,23 +113,27 @@ class CITests(unittest.TestCase):
         self.assertIn('!**/.*/**',backend['filter'])
         workflow=yaml.load((ROOT/'.github/workflows/windows.yml').read_text(),Loader=yaml.BaseLoader)
         self.assertEqual(workflow['permissions']['contents'],'read')
-        self.assertEqual(workflow['jobs']['publish']['permissions']['contents'],'write')
-        self.assertIn("github.event_name == 'push'",workflow['jobs']['publish']['if'])
-        self.assertIn("github.repository == 'jhlxlml/avhub'",workflow['jobs']['publish']['if'])
+        self.assertNotIn('publish',workflow['jobs'])
         for job in workflow['jobs'].values():
             for step in job['steps']:
                 if 'uses' in step:self.assertRegex(step['uses'],r'@([a-f0-9]{40})$')
                 if step.get('name')=='Package only tags or explicit manual runs':self.assertIn('workflow_dispatch',step['if'])
         steps=workflow['jobs']['verify']['steps']
-        folder_check=next(step for step in steps if step.get('name')=='Actual extracted folder ZIP acceptance')
-        self.assertIn('--folder',folder_check['run']);self.assertIn('workflow_dispatch',folder_check['if'])
-        upload=next(step for step in steps if step.get('name')=='Save verified release files')
-        self.assertIn('AVHub-folder-portable-*-x64.zip',upload['with']['path'])
+        commands='\n'.join(step.get('run','') for job in workflow['jobs'].values() for step in job['steps'])
+        self.assertNotIn('scripts/build-windows.ps1',commands)
+        self.assertNotIn('scripts/publish-release.py',commands)
     def test_manifest_rejects_corruption_or_different_source(self):
         with tempfile.TemporaryDirectory() as directory:
             directory=Path(directory);file=directory/'AVHub-portable-1.2.3-x64.exe';file.write_bytes(b'MZ-test')
             archive=directory/artifacts.names('1.2.3')[1];folder.create(fixture(directory),archive,'1.2.3','test-build')
-            records=[{'filename':asset.name,'bytes':asset.stat().st_size,'sha256':artifacts.digest(asset)} for asset in (file,archive)]
+            sources=directory/artifacts.names('1.2.3')[2]
+            # Synthetic manifest fixture only; this does not certify native sources.
+            content=b'test source member'
+            index={'applicationBuild':{'version':'1.2.3','build_id':'test-build'},'nativeSourceArchives':22,'controlledCliSourceArchives':11,
+                   'files':[{'path':'APPLICATION/test.py','sha256':hashlib.sha256(content).hexdigest()}]}
+            with zipfile.ZipFile(sources,'w') as bundle:
+                bundle.writestr('APPLICATION/test.py',content);bundle.writestr('DELIVERY-INDEX.json',json.dumps(index))
+            records=[{'filename':asset.name,'bytes':asset.stat().st_size,'sha256':artifacts.digest(asset)} for asset in (file,archive,sources)]
             info={'schema':2,'version':'1.2.3','commit':'a'*40,'build_id':'test-build','artifacts':records}
             (directory/'release-build.json').write_text(json.dumps(info));(directory/'SHA256SUMS.txt').write_text(artifacts.checksums(records))
             self.assertEqual(artifacts.verify(directory,'1.2.3','a'*40),info)
@@ -142,6 +150,7 @@ class CITests(unittest.TestCase):
             (root/'docs/RELEASE-1.2.3.md').write_text('notes')
             (root/'dist/electron/AVHub-portable-1.2.3-x64.exe').write_bytes(b'MZ-test')
             (root/'dist/electron/AVHub-folder-portable-1.2.3-x64.zip').write_bytes(b'fake ZIP for mocked publisher')
+            (root/'dist/electron/AVHub-source-materials-1.2.3.zip').write_bytes(b'fake source ZIP for mocked publisher')
             (root/'dist/electron/SHA256SUMS.txt').write_text('two assets verified by mock')
             (root/'dist/electron/release-build.json').write_text('{}')
             sha='a'*40;draft={'id':1,'tag_name':'v1.2.3','draft':True,'prerelease':False,'target_commitish':sha,'body':publisher.release_body('notes','1.2.3',sha,True),'assets':[{'id':77,'name':'AVHub-portable-1.2.3-x64.exe','state':'uploaded','size':1,'digest':'wrong'}]}
@@ -191,7 +200,7 @@ class CITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);directory=root/'dist/electron';directory.mkdir(parents=True);(root/'docs').mkdir()
             (root/'package.json').write_text('{"version":"1.2.3"}');(root/'docs/RELEASE-1.2.3.md').write_text('notes')
-            names=['AVHub-portable-1.2.3-x64.exe','AVHub-folder-portable-1.2.3-x64.zip','SHA256SUMS.txt','release-build.json']
+            names=['AVHub-portable-1.2.3-x64.exe','AVHub-folder-portable-1.2.3-x64.zip','AVHub-source-materials-1.2.3.zip','SHA256SUMS.txt','release-build.json']
             for name in names:(directory/name).write_bytes(b'owned')
             sha='d'*40;body=publisher.release_body('notes','1.2.3',sha,False)
             asset=lambda name:{'id':100+names.index(name),'name':name,'state':'uploaded','size':5,'digest':'sha256:'+hashlib.sha256(b'owned').hexdigest()}
@@ -213,6 +222,7 @@ class CITests(unittest.TestCase):
             credential=type('Credential',(),{'returncode':0,'stdout':'password=test-only-token\n'})()
             with patch.object(publisher,'ROOT',root),patch('sys.argv',['publisher','--publish','--resume']),patch.object(publisher.subprocess,'run',return_value=credential),patch.object(publisher.subprocess,'check_output',side_effect=git),patch.object(publisher.runpy,'run_path',return_value={'validate_release':lambda tag:None,'verify':lambda *a:None}),patch.object(publisher,'urlopen',side_effect=api),contextlib.redirect_stdout(io.StringIO()):
                 publisher.main()
-            self.assertEqual(sum(method=='POST' for method,url in calls),3)
+            self.assertEqual(sum(method=='POST' for method,url in calls),4)
+            self.assertTrue(any('AVHub-source-materials-1.2.3.zip' in url and method=='POST' for method,url in calls))
             self.assertIn(('GET','https://api.github.com/repos/jhlxlml/avhub/releases/2'),calls)
             self.assertEqual(calls[-1][0],'PATCH')

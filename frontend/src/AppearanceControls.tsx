@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Icon } from './Icon';
-import { changeAppearance, coverSizes, useAppearance } from './appearance';
+import { changeAppearance, coverSizes, useAppearance,useResolvedTheme } from './appearance';
 import {changePrivacy,usePrivacy} from './privacy';
 
 export function PrivacyToggle(){
@@ -9,7 +9,7 @@ export function PrivacyToggle(){
 }
 
 export function ThemeToggle() {
-  const {theme}=useAppearance();
+  const theme=useResolvedTheme();
   const label=theme==='dark'?'切换至浅色模式':'切换至深色模式';
   return <button className="ui-icon-button theme-toggle" aria-label={label} title={label}
     aria-pressed={theme==='light'} onClick={()=>changeAppearance({theme:theme==='dark'?'light':'dark'})}>

@@ -2,6 +2,13 @@ type WindowPlaybackState = {purePlayback:boolean;alwaysOnTop:boolean;maximized:b
 type DesktopRecordPreview={id:string;eligible:boolean;reason:string;action:'restore'|'delete'|'clear';name?:string;source?:string;size?:number};
 interface Window {
   avhubDesktop?: {
+    renderPlayer:(action:string,input?:unknown)=>Promise<any>;
+    attachRenderSurface:(id:string)=>Promise<{ok:boolean}>;
+    detachRenderSurface:(id:string)=>Promise<{ok:boolean}>;
+    transformRenderSurface:(id:string,value:{rotation:number;zoom:number;x:number;y:number})=>void;
+    onRenderState:(callback:(value:any)=>void)=>()=>void;
+    onRenderEvent:(callback:(value:any)=>void)=>()=>void;
+    onRenderClosed:(callback:(value:any)=>void)=>()=>void;
     nativePlayer:(action:string,input?:unknown)=>Promise<any>;
       onNativeShortcut?:(callback:(value:{code:string;shiftKey:boolean;repeat:boolean})=>void)=>()=>void;
     onNativeState:(callback:(value:any)=>void)=>()=>void;

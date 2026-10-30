@@ -1,0 +1,819 @@
+{
+  "schema": 1,
+  "scope": "New rebuild candidate planning only; current advertised refs are NOT historical binary revisions",
+  "existingDllUnchanged": true,
+  "conditionalSourceExpressions": [
+    "${ffmpeg_davs2}",
+    "${ffmpeg_uavs3d}",
+    "${ffmpeg_x265}"
+  ],
+  "sources": [
+    {
+      "id": "amf-headers",
+      "recipeSha256": "bb0628f31bfd4e6db57ef3c5381f10e8bf8fb666acb62394558e71e34b339dca",
+      "repository": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git",
+      "requestedRef": "HEAD",
+      "revision": "57ee0cfb0e1a08d9041f77435653794c1b012be0",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "angle-headers",
+      "recipeSha256": "7e4f4c7d2914f3129ed285d85b9de4a2b040bfb5233983611704fe107f2bd4de",
+      "repository": "https://github.com/google/angle.git",
+      "requestedRef": "main",
+      "revision": "17a9a504d6568027840a8aabd3dbe3cf726a919f",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "aom",
+      "recipeSha256": "73c4f6335a5be0a8fb8639cea1936faa61c861f4cdb5c129e5384e3f04441eee",
+      "repository": "https://aomedia.googlesource.com/aom",
+      "requestedRef": "main",
+      "revision": "bf728816ce9e816a254104db1f134d7af67a13e6",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "avisynth-headers",
+      "recipeSha256": "4cd756ff326b00256d03d03e4f86e1554a8b1a57f7d014368b99057149ca6685",
+      "repository": "https://github.com/AviSynth/AviSynthPlus.git",
+      "requestedRef": "HEAD",
+      "revision": "523370a39933e2f9c208a5d74c1d35d43d177a76",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "brotli",
+      "recipeSha256": "b8554a6c7028bd3b0f1dd9361c0b7c6c6312e87d3793f3ce3dbf7f89d9fb9bc1",
+      "repository": "https://github.com/google/brotli.git",
+      "requestedRef": "HEAD",
+      "revision": "089e71983611a42643d75194fedfde086c5e58af",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "bzip2",
+      "recipeSha256": "22c06023a62280f46de2b3dd73daac92eff15e6c6ad48be32c5a101bf911d0ec",
+      "repository": "https://gitlab.com/bzip2/bzip2.git",
+      "requestedRef": "HEAD",
+      "revision": "66c46b8c9436613fd81bc5d03f63a61933a4dcc3",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "c-ares",
+      "recipeSha256": "ff158ffb4add510160a78eef6473625d965ebf4bd57b0fc1e23275fcb48c6013",
+      "repository": "https://github.com/c-ares/c-ares.git",
+      "requestedRef": "main",
+      "revision": "4c6046531646906e9a493d542bd7f1f63da9650e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "curl",
+      "recipeSha256": "6d62968ba70a837e3dd760d2cdbee3706e88aec47a685e25b989b63fc13d001a",
+      "repository": "https://github.com/curl/curl.git",
+      "requestedRef": "HEAD",
+      "revision": "caee991615edc2b0e3a52798f7bb8df275f399a4",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "dav1d",
+      "recipeSha256": "c64418c6e46a296d414a4345eb8e7f61f68ae63490c573f6bcb7988e8b3782dc",
+      "repository": "https://code.videolan.org/videolan/dav1d.git",
+      "requestedRef": "HEAD",
+      "revision": "e5fd231fe9955a342c60600edb7e0b8777786a6a",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "fast_float",
+      "recipeSha256": "3781c52eb992b862eed0df9ea3b03884e9d7330b39cbe5be24858b732b85c2aa",
+      "repository": "https://github.com/fastfloat/fast_float.git",
+      "requestedRef": "main",
+      "revision": "0de7a21da582b6c84b0546772a96549882905d2b",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "ffmpeg",
+      "recipeSha256": "359c9c7da360f57d3a438e6fe117af6169cbd9aa3672751fd2bfc31e02be8fff",
+      "repository": "https://github.com/FFmpeg/FFmpeg.git",
+      "revision": "31855b2a7051d07a370984f5e4029826db06be1d",
+      "state": "fixed-from-verified-project-source",
+      "sourceVerified": false
+    },
+    {
+      "id": "fontconfig",
+      "recipeSha256": "c20c10d75476bf1f99818e5dda7644c94ae157372b9fd396c09f1b2122b006aa",
+      "repository": "https://gitlab.freedesktop.org/fontconfig/fontconfig.git",
+      "requestedRef": "main",
+      "revision": "b25ffeabd15b76f86c0c6736f6df2f1b89858010",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "freetype2",
+      "recipeSha256": "eed687f636ec335af2e341537e089857f75a659e69d02da5176715628bf3b035",
+      "repository": "https://github.com/freetype/freetype.git",
+      "requestedRef": "HEAD",
+      "revision": "3f6dad8e4f82c4f9c7cf9ffbf82972b912c08e48",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "fribidi",
+      "recipeSha256": "9a220a21c07099ebc6391d828a677697c4f147a781fcb54f86e038dbbf620321",
+      "repository": "https://github.com/fribidi/fribidi.git",
+      "requestedRef": "HEAD",
+      "revision": "d2f3e1f4946e7cef9789e1c3ebdb4a60d4314c7f",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "glad",
+      "recipeSha256": "ee80b01e4fce4561f1d9dfa9f51474cc4b48ef7ef739227db6099aed36016468",
+      "repository": "https://github.com/Dav1dde/glad.git",
+      "requestedRef": "glad2",
+      "revision": "0a7cf1af9e25e02821587bd4095807fc90b6426a",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "glslang",
+      "recipeSha256": "164f4cef085f0224eb9b98eb7b4093880e5ad2ea4dba60bb00131f33f94a5d13",
+      "repository": "https://github.com/KhronosGroup/glslang.git",
+      "requestedRef": "main",
+      "revision": "9acb994e5f1669cf4b2399ccc9e3e0f06a197359",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "graphengine",
+      "recipeSha256": "acfd98328265bee49b86a7ce64d6dd3e8c9201952385f3911625840a9a01869b",
+      "repository": "https://github.com/sekrit-twc/graphengine.git",
+      "requestedRef": "HEAD",
+      "revision": "91c6af4c795c5396d8b974f24b4d2e2ecca04e2d",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "harfbuzz",
+      "recipeSha256": "9b8a2f9f2b7dfb440ff7f6c925489ae1cee64b3119f5556f6c103c786f653f4b",
+      "repository": "https://github.com/harfbuzz/harfbuzz.git",
+      "requestedRef": "main",
+      "revision": "29c29e1e7d1c663b9f9f8b03e980f8e7aabd1f2b",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "highway",
+      "recipeSha256": "26b46bc1f08f35d7fda6f2bab349224e39a3972942ccad7aca3b8b768954fa87",
+      "repository": "https://github.com/google/highway.git",
+      "requestedRef": "HEAD",
+      "revision": "bf94a626267897bb62354202e93d8159e10f422c",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "lame",
+      "recipeSha256": "2fc016fa58c3d768c9f872ca715309c7b94cf815a4c3352d325f4d25650c2fa3",
+      "repository": "https://gitlab.com/shinchiro/lame.git",
+      "requestedRef": "HEAD",
+      "revision": "9a5b35c430a2e6d150d65a96c7d7acdd64962a8f",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "lcms2",
+      "recipeSha256": "78ac60adc47be993cf59f7f1d318d78558a2850755a8b4b5181f68434245edbe",
+      "repository": "https://github.com/mm2/Little-CMS.git",
+      "requestedRef": "HEAD",
+      "revision": "5546f1d68136f94281c9f6bfc027c6cdf4898da8",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libarchive",
+      "recipeSha256": "4f5dd14180a11f34159bb652ab536ffb3118f867fe76b2a7d312d0624491ed61",
+      "repository": "https://github.com/libarchive/libarchive.git",
+      "requestedRef": "HEAD",
+      "revision": "d7ef15893a5ed68d475e157acfd1f9c0784f296b",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libaribcaption",
+      "recipeSha256": "5a51204655ceaba4341b39d043c00c39bd5884bf4a6f0a70358df1f0a05e128b",
+      "repository": "https://github.com/xqq/libaribcaption.git",
+      "requestedRef": "HEAD",
+      "revision": "37dde0f32652c32aa98bf92278944d1cfb2e7354",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libass",
+      "recipeSha256": "41ec0c08160e4d0a31b2d9dc214985056ad9b61d77530c526ee77b0acc9c84b6",
+      "repository": "https://github.com/libass/libass.git",
+      "requestedRef": "HEAD",
+      "revision": "f61db567e6593df3470e91594bcd4ad2d0473aff",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libbluray",
+      "recipeSha256": "0a5d301070c3239a673a1b7f360d6a14cf4f3c9b366c8a29a09bb463208ca71b",
+      "repository": "https://code.videolan.org/videolan/libbluray.git",
+      "requestedRef": "HEAD",
+      "revision": "f33a738fd7bb8b5e1148b0a5424778db7342450b",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libbs2b",
+      "recipeSha256": "95c5f9d08215685a2cc367e302d6f248cfb66040d2d27f972f2e17f612a10ac9",
+      "repository": "https://github.com/alexmarsev/libbs2b.git",
+      "requestedRef": "HEAD",
+      "revision": "5ca2d59888df047f1e4b028e3a2fd5be8b5a7277",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libdvdnav",
+      "recipeSha256": "e1295fb2df314fca53d7a92247ee11b6592c62b49cd28dd4a79224225a1e9619",
+      "repository": "https://code.videolan.org/videolan/libdvdnav.git",
+      "requestedRef": "HEAD",
+      "revision": "8147ccd35e5aae4afdd21171cf7b6b4d8f179d28",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libdvdread",
+      "recipeSha256": "bc494f70ffccbc75e021def2c2f21d913161bdf2912a33d9efccd99516041676",
+      "repository": "https://code.videolan.org/videolan/libdvdread.git",
+      "requestedRef": "HEAD",
+      "revision": "0f30df53125b564ef45903714403ce0a1e6c5e9e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libiconv",
+      "recipeSha256": "4ef38914020072ff0a3ea21415809cbfae6c095ad9b7ff03e82c04df3da4a20a",
+      "url": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz",
+      "declaredHash": "SHA256=3B08F5F4F9B4EB82F151A7040BFD6FE6C6FB922EFE4B1659C66EA933276965E8",
+      "state": "archive-hash-declared-not-downloaded",
+      "sourceVerified": false
+    },
+    {
+      "id": "libjpeg",
+      "recipeSha256": "8ab2b1835ec12a5db8152146b8a814b7944b69f0b8ec0d477d79cd731a7c5019",
+      "repository": "https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+      "requestedRef": "main",
+      "revision": "7b4993786d856cbccabfc0ed2f923ba000e326cc",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libjxl",
+      "recipeSha256": "ac5b42e265fd2949fb2ed9429ca8ce96a1784fe2e4bf908cdfdec1e7fb9e4bd7",
+      "repository": "https://github.com/libjxl/libjxl.git",
+      "requestedRef": "main",
+      "revision": "ec2982b1f79e9eebf5a514df759d0bb41b8f240d",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libmodplug",
+      "recipeSha256": "5c41503e29f825753f204d0e98bc2560e5d67ffbb14f4a194d8d4a0a593cf0b0",
+      "repository": "https://github.com/Konstanty/libmodplug.git",
+      "requestedRef": "HEAD",
+      "revision": "04855941cfacdf2369ab1f401b0357af7c45ee69",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libmysofa",
+      "recipeSha256": "f36dca3dece42a06f1d201d2fec621dcb37e978ef7617231787a223cb2eeb532",
+      "repository": "https://github.com/hoene/libmysofa.git",
+      "requestedRef": "main",
+      "revision": "648eed03472e6720a1ea45d1a1f86c4efb569ff9",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libopenmpt",
+      "recipeSha256": "0d5c354daa9e076768405bb2fc2aae75e8ad49800a305dfd2a2709eac61c400d",
+      "url": "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.12+release.autotools.tar.gz",
+      "declaredHash": "SHA256=79AB3CE3672601E525B5CC944F026C80C03032F37D39CAA84C8CA3FDD75E0C98",
+      "state": "archive-hash-declared-not-downloaded",
+      "sourceVerified": false
+    },
+    {
+      "id": "libplacebo",
+      "recipeSha256": "64c407a343a43bfe8b372b12d5dac4621d1362f094239cfb2c215e6ce213332f",
+      "repository": "https://github.com/haasn/libplacebo.git",
+      "requestedRef": "HEAD",
+      "revision": "275f7dea27924cdd34ab2e6c20e448b6bc4fab65",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libpng",
+      "recipeSha256": "b6d7aa5b712c87b0d023e1506fefe0190eeab6849c3e63eeba9f329d65657720",
+      "repository": "https://github.com/glennrp/libpng.git",
+      "requestedRef": "HEAD",
+      "revision": "890812a28da480f84f3b0198d31ac611c864ed98",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libpsl",
+      "recipeSha256": "de81de4a2791976cc1d52c114f3861ceae2154f825b3dcb0e609e09163d8b56f",
+      "repository": "https://github.com/rockdaboot/libpsl.git",
+      "requestedRef": "HEAD",
+      "revision": "58ee8297c96837d1e40a0c29e02591c6fd18c3a6",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libsamplerate",
+      "recipeSha256": "aec154ae791c215ef7669c30718bbc0dec7f6b727ea90145892b2ed664875b65",
+      "repository": "https://github.com/libsndfile/libsamplerate.git",
+      "requestedRef": "HEAD",
+      "revision": "0844c208f683527c08ea8a80acc13b398aa9c8bf",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libsdl2",
+      "recipeSha256": "e323098f27a92e23b406698ff1de547ca64c2d53c026fadd56a3e8d1e8732473",
+      "repository": "https://github.com/libsdl-org/SDL.git",
+      "requestedRef": "SDL2",
+      "revision": "8acf7cfc0f88717e5c036f60f0314bfcafe39189",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libsixel",
+      "recipeSha256": "999c757d24a44da84b37b00cc7227750f86fb10302f0179af87a59f880b1ee77",
+      "repository": "https://github.com/saitoha/libsixel.git",
+      "requestedRef": "HEAD",
+      "revision": "f0b705a365563c56f977afaca73997ca68669c62",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libsoxr",
+      "recipeSha256": "cec59d2ed74e2de1d3984eee656d475df047a2331d4b68219677d3a363bde38e",
+      "repository": "https://gitlab.com/shinchiro/soxr.git",
+      "requestedRef": "HEAD",
+      "revision": "945b592b70470e29f917f4de89b4281fbbd540c0",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libsrt",
+      "recipeSha256": "ab11608addcf34fac0f738a5abe3c35ead91e9bf1802373b2e5a94c6312b22b7",
+      "repository": "https://github.com/Haivision/srt.git",
+      "requestedRef": "HEAD",
+      "revision": "9f2390232a8256ed4c72a5418c2b2777c49ad737",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libssh",
+      "recipeSha256": "31a497f6b79da6d518f3422456fdbaca58d354455a3ebf8832bc0f0bd2f568d6",
+      "repository": "https://gitlab.com/libssh/libssh-mirror.git",
+      "requestedRef": "HEAD",
+      "revision": "9de02f3d01ba16d06f46c0c4d27aa08d8deeecee",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libudfread",
+      "recipeSha256": "0607b8034ca0feaebb4caff99cfca1ed1be8108c8c35b29b85a58ec0d872112a",
+      "repository": "https://code.videolan.org/videolan/libudfread.git",
+      "requestedRef": "HEAD",
+      "revision": "b0bc6957e7e07d5f35391f210596d9eb71cffdd9",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libunibreak",
+      "recipeSha256": "049156f79446ae26709c711abc0321c38ed723f5e45815de7cd5d2a11a74c00a",
+      "repository": "https://github.com/adah1972/libunibreak.git",
+      "requestedRef": "HEAD",
+      "revision": "f8172fe771ef620112247cadfb876aecaa4f769e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libva",
+      "recipeSha256": "93ec04ce9d24844d548c69d20cc077c7c1a187901886d3956e021ed1b9aeb718",
+      "repository": "https://github.com/intel/libva.git",
+      "requestedRef": "HEAD",
+      "revision": "f052e984e0c8bf10784198cc311b23c567b1367f",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libvpl",
+      "recipeSha256": "f590f3290564e30bb17237ba2ea77e1e434a0e30dea524fbecd8bdbea8031527",
+      "repository": "https://github.com/intel/libvpl.git",
+      "requestedRef": "main",
+      "revision": "674d015bcb294bc39fa276e99a652ea045423e82",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libvpx",
+      "recipeSha256": "728c41fd3b6613fb0df4025b65c2ea8bb66781441cba23569c94cb36e9342164",
+      "repository": "https://chromium.googlesource.com/webm/libvpx.git",
+      "requestedRef": "main",
+      "revision": "fb0a26ad923b58c3663aaa9523992cf779b1563b",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libwebp",
+      "recipeSha256": "390d3b131e2dfa8a4fa093b7d05b2d3e6967962240057f0c183d4201f045aa45",
+      "repository": "https://chromium.googlesource.com/webm/libwebp.git",
+      "requestedRef": "main",
+      "revision": "1844042d1ca751e62e61df7617dba19c98588339",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libxml2",
+      "recipeSha256": "49de5caa0199c4291564408254f830539073721286aa3c715650d2fb791706fd",
+      "repository": "https://github.com/GNOME/libxml2.git",
+      "requestedRef": "HEAD",
+      "revision": "2034036d2e8d5f1eac8302aa477ff563aa4670c6",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libzimg",
+      "recipeSha256": "918aac808ae4d526a9148c16735a615c6e7467ccda623afca07d34aee4b87c06",
+      "repository": "https://github.com/sekrit-twc/zimg.git",
+      "requestedRef": "HEAD",
+      "revision": "67e0603271c080e22c8429856dd4a8a56587e61e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "libzvbi",
+      "recipeSha256": "a647dbfaf97d65e6cc60a0ed0c19cca2a5316f1d3ec9fadd45e368d4f66bb2e9",
+      "repository": "https://github.com/zapping-vbi/zvbi.git",
+      "requestedRef": "main",
+      "revision": "34bb6f660c5c1bacd4a66cc7b22311e4ca3c1ab5",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "luajit",
+      "recipeSha256": "75ffc396d502c453d4606238430fc70171aebfa3e26410a4f5b65405c7c49022",
+      "repository": "https://github.com/openresty/luajit2.git",
+      "requestedRef": "v2.1-agentzh",
+      "revision": "5d8d0a27bfa4595b24b8ed36123555fcd2bb2f8c",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "lzo",
+      "recipeSha256": "dbdb89326b8a02674195a34fff54a2d98f640f178fe62211fb7e2a6675cf3aa4",
+      "url": "https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz",
+      "declaredHash": "SHA1=4924676a9bae5db58ef129dc1cebce3baa3c4b5d",
+      "state": "archive-hash-declared-not-downloaded",
+      "sourceVerified": false
+    },
+    {
+      "id": "mpv",
+      "recipeSha256": "cfb9b0fbaaf6013069fe3eeda7e9e9644546f09cd772dbd549f8eb7fa21c7122",
+      "repository": "https://github.com/mpv-player/mpv.git",
+      "revision": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+      "state": "fixed-from-verified-project-source",
+      "sourceVerified": false
+    },
+    {
+      "id": "mujs",
+      "recipeSha256": "226d428b98e53dd5a1dea6609f0a273293a56951f53012408e4ee57b3a28fce4",
+      "repository": "https://codeberg.org/ccxvii/mujs.git",
+      "requestedRef": "HEAD",
+      "revision": "01a75ff4324ae8a54cae91a26edd38029424edaa",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "nghttp2",
+      "recipeSha256": "d0d670835d662475e66d5083e745469f252458c0596b99c7cd34a2ba667ee872",
+      "repository": "https://github.com/nghttp2/nghttp2.git",
+      "requestedRef": "HEAD",
+      "revision": "3baf9561e09f7ac8b0dce6e84132ce3909309ef0",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "nghttp3",
+      "recipeSha256": "190be5c09681097f68656ccac9b40b6de639ef861ce1c304601abd62a2ec1f54",
+      "repository": "https://github.com/ngtcp2/nghttp3.git",
+      "requestedRef": "main",
+      "revision": "ac11a456eb9d76e55fd6c1626727111cd29d5459",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "ngtcp2",
+      "recipeSha256": "fcf6d10a3544073065b35eb8ff9d8e9efc788de979f5dedbbc6c522e87abec54",
+      "repository": "https://github.com/ngtcp2/ngtcp2.git",
+      "requestedRef": "main",
+      "revision": "bc241bcdb8e7d3b53c2b1c87f8df8aed70a276ff",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "nvcodec-headers",
+      "recipeSha256": "ada268ec2e56867a085e66f491e4bdce80bc2ccf84e591ecef75030ee04cab9f",
+      "repository": "https://github.com/FFmpeg/nv-codec-headers.git",
+      "requestedRef": "HEAD",
+      "revision": "f2053071ea93137255b6dcf42e9b4c9e0965a44e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "ogg",
+      "recipeSha256": "434cc5dd65190191772ffd44c68d10cffdb063eee3ea78f4b562b42be762bc2f",
+      "repository": "https://github.com/xiph/ogg.git",
+      "requestedRef": "HEAD",
+      "revision": "06a5e0262cdc28aa4ae6797627a783b5010440f0",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "openal-soft",
+      "recipeSha256": "7dfbca2848cbba0ff98d87b3fe4b29931ed9dddef59ccc8eb531c22aea00f5ab",
+      "repository": "https://github.com/kcat/openal-soft.git",
+      "requestedRef": "HEAD",
+      "revision": "000915f15d94798fd12cdeb0b67f01cdfba441ca",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "openssl",
+      "recipeSha256": "79cd848d11ebb59ccc55db4fa237e94d600428bbd9ae255c9abeb613ca4be8fc",
+      "repository": "https://github.com/openssl/openssl.git",
+      "requestedRef": "HEAD",
+      "revision": "8a155d34d98b1b889add6adabd47e5729c8025b3",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "opus",
+      "recipeSha256": "2762c05c3e2cabf4f3959fdf60ea88bca522151be5940bd454cc5d3a106aa428",
+      "repository": "https://github.com/xiph/opus.git",
+      "requestedRef": "main",
+      "revision": "a8b2545eec71e0f53ecead2d583e7b6baa42684d",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "rubberband",
+      "recipeSha256": "988619a42e100de14d5c05cd65fd80b49b13334324726eb6634f56b7c4b05da0",
+      "repository": "https://github.com/breakfastquay/rubberband.git",
+      "requestedRef": "default",
+      "revision": "e4296ac80b1170018a110bc326fd0d45a0eb27d6",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "shaderc",
+      "recipeSha256": "d96198710bb6747e4386c706ceedc9c542d7f6a8c368b8c4623db7ee98233daa",
+      "repository": "https://github.com/google/shaderc.git",
+      "requestedRef": "main",
+      "revision": "170316e2df47f621804bb6372e7fe00c10184105",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "speex",
+      "recipeSha256": "75a53b5a46f60bb1c09805c712fc8522e9ddeea55c02bdc033f07795d0541038",
+      "repository": "https://github.com/xiph/speex.git",
+      "requestedRef": "HEAD",
+      "revision": "f461ff44072493dde26d72862921ab5d30180cd4",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "spirv-cross",
+      "recipeSha256": "a101e31511fed851006a88ecd8df71acd5fe498d9adc800d7bd455baf1e7a56c",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Cross.git",
+      "requestedRef": "main",
+      "revision": "300681bbcb8365a8d1eacdacdbdd0249bbf1d6b1",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "spirv-headers",
+      "recipeSha256": "55f35846e4bac576a88351eba0d4e141b6786e0988004a3b1fdff111ac0ca173",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+      "requestedRef": "main",
+      "revision": "fbf86836a9b1966586faf7be7bb8a6440e156d62",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "spirv-tools",
+      "recipeSha256": "3feb4110baa93cabded6564caba08bdce883fba93797fa40860bd3713271bfc8",
+      "repository": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+      "requestedRef": "main",
+      "revision": "b8c3b64b63758042576f6853d7f0abe9251460fa",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "subrandr",
+      "recipeSha256": "cbf83815bc10a86c38151633826e413d34167410bc9569ee22c045c53a01f477",
+      "repository": "https://github.com/afishhh/subrandr.git",
+      "requestedRef": "master",
+      "revision": "77a8510458e912b7286a30c58802b56322823cfd",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "svtav1",
+      "recipeSha256": "4649b91fa340471263d52ef23fcd5dd0ff520dc60e91df564ce1059c4be27c9e",
+      "repository": "https://gitlab.com/AOMediaCodec/SVT-AV1.git",
+      "requestedRef": "HEAD",
+      "revision": "444fb6e7cdfd8a2bb021f3da1f12b58ba303d2b7",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "uchardet",
+      "recipeSha256": "8f47694c5e80817a39e78d60710b2d16a2e462b237af9a5a662e289060f104f8",
+      "repository": "https://gitlab.freedesktop.org/uchardet/uchardet.git",
+      "requestedRef": "HEAD",
+      "revision": "06029ec3340cdf6bf9a6a537dafb3f39eda0560e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "vapoursynth",
+      "recipeSha256": "af684ecd93f7c8a7b33d65e727c6de42c5dcd8492e558d0d8b6cedcc8fbc0dc6",
+      "repository": "https://github.com/vapoursynth/vapoursynth.git",
+      "requestedRef": "master",
+      "revision": "d282011169ed04e029257ce8b296adec949472c7",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "vorbis",
+      "recipeSha256": "398d8290d23fbf27eedee4a39d435c061a5fe51b20a1d67cc22e063ace9a057d",
+      "repository": "https://github.com/xiph/vorbis.git",
+      "requestedRef": "HEAD",
+      "revision": "1b75110b5a2754ba1931d82dd83cb822b266a21d",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "vulkan",
+      "recipeSha256": "d904d9ffb4a86d14849824f34a932fadf0b18c9fe58619c83392a339943a0bef",
+      "repository": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+      "requestedRef": "main",
+      "revision": "6766411fec2f1e712576e42724b465fa8273d7ec",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "x264",
+      "recipeSha256": "bc49bd473b91620a8a71f9b88bd28b85a3cc8f680cb283a6f8e1808f5f737ec7",
+      "repository": "https://code.videolan.org/videolan/x264.git",
+      "requestedRef": "HEAD",
+      "revision": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "xxhash",
+      "recipeSha256": "0e732aa5a163749cc3876e34309f48cea3fb60464f5d6c229b4ce03e5eb647bb",
+      "repository": "https://github.com/Cyan4973/xxHash.git",
+      "requestedRef": "dev",
+      "revision": "5ae18f71dbe46e580da708e742c7bd095aca3782",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "xz",
+      "recipeSha256": "d7c809cfae2f7bb73bd3b216ee412dc8155f9fef481ea367fc87e87da3ce71b7",
+      "repository": "https://github.com/tukaani-project/xz.git",
+      "requestedRef": "HEAD",
+      "revision": "299eb5c3f597f107fd6019bf156885ac8bfaa5ea",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "zlib",
+      "recipeSha256": "1946f0b75dcb229abe0323644e9453c0868fef1264c28a64f2f02fb4b0f0369d",
+      "repository": "https://github.com/zlib-ng/zlib-ng.git",
+      "requestedRef": "develop",
+      "revision": "49323f2af98b92fccf03cfc62ea2cb5591a3202e",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    },
+    {
+      "id": "zstd",
+      "recipeSha256": "84c3e98c148ab52579c99106ac5f1256e842d3dd51369ad222c1d9f71fb716cb",
+      "repository": "https://github.com/facebook/zstd.git",
+      "requestedRef": "dev",
+      "revision": "49cf51799ea051457f57243527aa2058f999f005",
+      "state": "advertised-revision-resolved",
+      "sourceVerified": false
+    }
+  ],
+  "buildVerified": false,
+  "distributionReady": false,
+  "purpose": "Proposed source inputs for a NEW separately verified runtime; never evidence of historical static library revisions",
+  "preparedSourceSnapshots": {
+    "mpv": {
+      "source": {
+        "folder": "D:\\AI\\codex\\avhub\\build\\native-fixed-mpv-5pz7vwbb",
+        "revision": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+        "scope": "Fixed official MPV source checkout only; no native build performed"
+      },
+      "snapshot": "D:\\AI\\codex\\avhub\\build\\native-source-mpv-e1dip8l2",
+      "revision": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+      "fileCount": 982,
+      "archiveSha256": "4f2242aba79715587bc0907b3686ad79c29808d6ff752e2d60f82882ece82d2e",
+      "scope": "Two actual fixed-source captures with identical archive bytes; not a compiler or decoder test",
+      "previousMatchingSnapshot": "D:\\AI\\codex\\avhub\\build\\native-source-mpv-wxzl92m8",
+      "capturePlatform": "win32"
+    }
+  },
+  "archivePreparation": [
+    {
+      "id": "libiconv",
+      "size": 5822590,
+      "sha256": "3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8",
+      "recipeDigestMatched": true,
+      "strongRecipeDigest": true,
+      "buildVerified": false,
+      "path": "build/native-rebuild-archives/libiconv-libiconv-1.18.tar.gz"
+    },
+    {
+      "id": "libopenmpt",
+      "size": 1679743,
+      "sha256": "79ab3ce3672601e525b5cc944f026c80c03032f37d39caa84c8ca3fdd75e0c98",
+      "recipeDigestMatched": true,
+      "strongRecipeDigest": true,
+      "buildVerified": false,
+      "path": "build/native-rebuild-archives/libopenmpt-libopenmpt-0.7.12+release.autotools.tar.gz"
+    },
+    {
+      "id": "lzo",
+      "size": 600622,
+      "sha256": "c0f892943208266f9b6543b3ae308fab6284c5c90e627931446fb49b4221a072",
+      "recipeDigestMatched": true,
+      "strongRecipeDigest": false,
+      "buildVerified": false,
+      "path": "build/native-rebuild-archives/lzo-lzo-2.10.tar.gz"
+    }
+  ],
+  "buildProfile": {
+    "schema": 1,
+    "scope": "New native runtime build preparation only; current application binary is unchanged",
+    "opus": {
+      "revision": "a8b2545eec71e0f53ecead2d583e7b6baa42684d",
+      "modelFeatures": {
+        "deep-plc": "disabled",
+        "dred": "disabled",
+        "osce": "disabled"
+      },
+      "mesonAdditionalOptions": [
+        "-Ddnn-debug-float=disabled",
+        "-Dpfa=disabled",
+        "-Dfloat-approx=false"
+      ],
+      "cmakeHarnessOptions": [
+        "-DOPUS_DEEP_PLC=OFF",
+        "-DOPUS_DRED=OFF",
+        "-DOPUS_OSCE=OFF",
+        "-DOPUS_PFA=OFF",
+        "-DOPUS_FLOAT_APPROX=OFF"
+      ],
+      "standardOpusDecoderRetained": true,
+      "evidenceReport": "docs/playback-refactor/31-opus-model-free-build.md"
+    },
+    "buildVerified": false,
+    "distributionReady": false
+  },
+  "excludedSourceInputs": [
+    {
+      "id": "opus-dnn",
+      "reason": "All three optional model features explicitly disabled at the reviewed Opus revision; remove unconditional model copy/download, retain standard codec"
+    }
+  ],
+  "opusModelFreeEvidence": "build/opus-model-free-mr7oapgd/report.json"
+}

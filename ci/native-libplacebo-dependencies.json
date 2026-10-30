@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "scope": "Fixed libplacebo declared submodule input; header-only for D3D11 harness",
+  "parentRevision": "275f7dea27924cdd34ab2e6c20e448b6bc4fab65",
+  "sources": [
+    {
+      "id": "libplacebo-vulkan-headers",
+      "repository": "https://github.com/KhronosGroup/Vulkan-Headers.git",
+      "revision": "74d8a6cb930c68ef617b202c3ff3c59d919e086b",
+      "pinOrigin": "Parent gitlink 3rdparty/Vulkan-Headers",
+      "sourceVerified": false
+    }
+  ],
+  "buildVerified": false,
+  "distributionReady": false
+}

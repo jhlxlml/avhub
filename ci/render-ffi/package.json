@@ -1,0 +1,8 @@
+{
+  "name": "avhub-m2-native-handle-tools",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "koffi": "3.3.4"
+  }
+}

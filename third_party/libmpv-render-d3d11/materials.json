@@ -1,0 +1,1774 @@
+{
+  "schema": 1,
+  "subject": {
+    "dllSha256": "ea82215b32d8e5c8ed8e41b97659a5bf7c0ed0d1861d1baa61e6a6500a8ffe74",
+    "mpvSourceCommit": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+    "ffmpegResolvedCommit": "31855b2a7051d07a370984f5e4029826db06be1d",
+    "builderCommit": "b120d7d8a64d17bd40b893f585429ef3845ac766",
+    "toolchainCheckoutCommit": "1f8d2e76255abc48f0456d9be99b4cab9c6566e6",
+    "workflowRun": 40191236015,
+    "job": 121162536770
+  },
+  "observedBinaryProperties": {
+    "mpv-version": "mpv v0.41.0-1308-gbaa3e11d4",
+    "mpv-configuration": "-Dprefix=/__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/install/x86_64-w64-mingw32 -Dlibdir=/__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/install/x86_64-w64-mingw32/lib -Ddefault_library=shared -Dprefer_static=true -Ddebug=true -Db_ndebug=true -Doptimization=3 -Db_lto=true -Db_lto_mode=thin -Dlibmpv=true -Dpdf-build=enabled -Dlua=enabled -Djavascript=enabled -Dsdl2-gamepad=enabled -Dlibarchive=enabled -Dlibbluray=enabled -Ddvdnav=enabled -Duchardet=enabled -Drubberband=enabled -Dlcms2=enabled -Dopenal=enabled -Dspirv-cross=enabled -Dvulkan=enabled -Dvapoursynth=enabled -Dsubrandr=enabled -Dsixel=enabled -Dgl=enabled -Degl-angle=enabled -Dlibcurl=enabled -Dc_args=-Wno-error=int-conversion --cross-file=/__w/mpv-winbuild/mpv-winbuild/mpv-winbuild-cmake/build64/meson_cross.txt",
+    "ffmpeg-version": "N-128094-g31855b2a7",
+    "libass-version": 24137728
+  },
+  "transitiveDependenciesVerified": false,
+  "distributionReady": false,
+  "scope": "Pinned workflow and checkout references; dynamic variables, runtime cache revisions and actual transitive binary inclusion are not inferred",
+  "sourceReferenceLicense": "toolchain root has no declared license in fixed tree; snapshot retained only in local build evidence, not vendored into repository",
+  "unresolvedRecipeExpressions": [
+    "${ffmpeg_davs2}",
+    "${ffmpeg_uavs3d}",
+    "${ffmpeg_x265}"
+  ],
+  "components": [
+    {
+      "id": "amf-headers",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/amf-headers.cmake",
+      "recipeSha256": "bb0628f31bfd4e6db57ef3c5381f10e8bf8fb666acb62394558e71e34b339dca",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/GPUOpen-LibrariesAndSDKs/AMF.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "angle-headers",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/angle-headers.cmake",
+      "recipeSha256": "7e4f4c7d2914f3129ed285d85b9de4a2b040bfb5233983611704fe107f2bd4de",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/google/angle.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "aom",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/aom.cmake",
+      "recipeSha256": "73c4f6335a5be0a8fb8639cea1936faa61c861f4cdb5c129e5384e3f04441eee",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://aomedia.googlesource.com/aom",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "avisynth-headers",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/avisynth-headers.cmake",
+      "recipeSha256": "4cd756ff326b00256d03d03e4f86e1554a8b1a57f7d014368b99057149ca6685",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/AviSynth/AviSynthPlus.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "brotli",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/brotli.cmake",
+      "recipeSha256": "b8554a6c7028bd3b0f1dd9361c0b7c6c6312e87d3793f3ce3dbf7f89d9fb9bc1",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/google/brotli.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "bzip2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/bzip2.cmake",
+      "recipeSha256": "22c06023a62280f46de2b3dd73daac92eff15e6c6ad48be32c5a101bf911d0ec",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.com/bzip2/bzip2.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "c-ares",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/c-ares.cmake",
+      "recipeSha256": "ff158ffb4add510160a78eef6473625d965ebf4bd57b0fc1e23275fcb48c6013",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/c-ares/c-ares.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "curl",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/curl.cmake",
+      "recipeSha256": "6d62968ba70a837e3dd760d2cdbee3706e88aec47a685e25b989b63fc13d001a",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/curl/curl.git"
+      },
+      "recipeDependencies": [
+        "brotli",
+        "c-ares",
+        "libpsl",
+        "libssh",
+        "ngtcp2",
+        "nghttp2",
+        "nghttp3",
+        "openssl",
+        "zlib",
+        "zstd"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libcurl",
+          "version": "8.23.0-DEV",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "dav1d",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/dav1d.cmake",
+      "recipeSha256": "c64418c6e46a296d414a4345eb8e7f61f68ae63490c573f6bcb7988e8b3782dc",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://code.videolan.org/videolan/dav1d.git"
+      },
+      "recipeDependencies": [
+        "xxhash"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.5.4",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/dav1d-prefix/src/dav1d-stamp/dav1d-configure-out.log",
+          "sha256": "c54b82e4a1687e69f8c270df1629d70f49f9150ef8918988a45564c1aab61349",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "fast_float",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/fast_float.cmake",
+      "recipeSha256": "3781c52eb992b862eed0df9ea3b03884e9d7330b39cbe5be24858b732b85c2aa",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/fastfloat/fast_float.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "ffmpeg",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/ffmpeg.cmake",
+      "recipeSha256": "359c9c7da360f57d3a438e6fe117af6169cbd9aa3672751fd2bfc31e02be8fff",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/FFmpeg/FFmpeg.git"
+      },
+      "recipeDependencies": [
+        "amf-headers",
+        "avisynth-headers",
+        "nvcodec-headers",
+        "bzip2",
+        "lame",
+        "lcms2",
+        "openssl",
+        "libssh",
+        "libsrt",
+        "libass",
+        "libbluray",
+        "libdvdnav",
+        "libdvdread",
+        "libmodplug",
+        "libpng",
+        "libsoxr",
+        "libbs2b",
+        "libvpx",
+        "libwebp",
+        "libzimg",
+        "libmysofa",
+        "fontconfig",
+        "harfbuzz",
+        "opus",
+        "speex",
+        "vorbis",
+        "x264",
+        "${ffmpeg_x265}",
+        "libxml2",
+        "libvpl",
+        "libopenmpt",
+        "libjxl",
+        "libplacebo",
+        "libzvbi",
+        "libaribcaption",
+        "aom",
+        "svtav1",
+        "dav1d",
+        "vapoursynth",
+        "${ffmpeg_uavs3d}",
+        "${ffmpeg_davs2}",
+        "rubberband",
+        "libva",
+        "openal-soft"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "project-license-texts-present-transitive-notices-pending",
+      "correspondingSourceStatus": "exact-project-archive-present-transitive-materials-pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "exactProjectSource": {
+        "id": "ffmpeg",
+        "repository": "FFmpeg/FFmpeg",
+        "commit": "31855b2a7051d07a370984f5e4029826db06be1d",
+        "url": "https://codeload.github.com/FFmpeg/FFmpeg/zip/31855b2a7051d07a370984f5e4029826db06be1d",
+        "archive": "build/m5-source-inputs/ffmpeg-31855b2a7051d07a370984f5e4029826db06be1d.zip",
+        "size": 24697217,
+        "sha256": "4e46245ab4141ff9a71c0e35aa3b45e55e085cb3687366c976d02ac251272b2c",
+        "notices": [
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.GPLv2",
+            "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+          },
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.GPLv3",
+            "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+          },
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.LGPLv2.1",
+            "sha256": "246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30"
+          },
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.LGPLv3",
+            "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+          },
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/LICENSE.md",
+            "sha256": "e6dc72d5665a1ebd6dcc841de59278dad4ca77ecc47b03f1064a55c3e9ea8bb8"
+          }
+        ],
+        "scope": "Exact project revision source archive; not all transitive dependencies or build-cache modifications"
+      }
+    },
+    {
+      "id": "fontconfig",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/fontconfig.cmake",
+      "recipeSha256": "c20c10d75476bf1f99818e5dda7644c94ae157372b9fd396c09f1b2122b006aa",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.freedesktop.org/fontconfig/fontconfig.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "libxml2",
+        "freetype2",
+        "zlib",
+        "libiconv"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "2.18.3",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/fontconfig-prefix/src/fontconfig-stamp/fontconfig-configure-out.log",
+          "sha256": "9cd47c349f7c67b7a785d78669e3b26c98f7cc91940762e3782211ac4fab78f1",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "freetype2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/freetype2.cmake",
+      "recipeSha256": "eed687f636ec335af2e341537e089857f75a659e69d02da5176715628bf3b035",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/freetype/freetype.git"
+      },
+      "recipeDependencies": [
+        "libpng",
+        "zlib",
+        "brotli"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "2.15.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/freetype2-prefix/src/freetype2-stamp/freetype2-configure-out.log",
+          "sha256": "9e41eb4a41c12cd230520744b5f7af922085a16a2a485db17f551e56174aaeb5",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "fribidi",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/fribidi.cmake",
+      "recipeSha256": "9a220a21c07099ebc6391d828a677697c4f147a781fcb54f86e038dbbf620321",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/fribidi/fribidi.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.0.17",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/fribidi-prefix/src/fribidi-stamp/fribidi-configure-out.log",
+          "sha256": "54ecaf926760c383b46a1683bebd14bbf143c69bf4757e038e96847b340747a7",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "glad",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/glad.cmake",
+      "recipeSha256": "ee80b01e4fce4561f1d9dfa9f51474cc4b48ef7ef739227db6099aed36016468",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/Dav1dde/glad.git",
+        "GIT_TAG": "glad2"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "glslang",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/glslang.cmake",
+      "recipeSha256": "164f4cef085f0224eb9b98eb7b4093880e5ad2ea4dba60bb00131f33f94a5d13",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/KhronosGroup/glslang.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "graphengine",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/graphengine.cmake",
+      "recipeSha256": "acfd98328265bee49b86a7ce64d6dd3e8c9201952385f3911625840a9a01869b",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/sekrit-twc/graphengine.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "harfbuzz",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/harfbuzz.cmake",
+      "recipeSha256": "9b8a2f9f2b7dfb440ff7f6c925489ae1cee64b3119f5556f6c103c786f653f4b",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/harfbuzz/harfbuzz.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "freetype2",
+        "libpng"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "15.0.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/harfbuzz-prefix/src/harfbuzz-stamp/harfbuzz-configure-out.log",
+          "sha256": "236169779bb056128c4d3d1626eb8b5bbf5fcfc9823feb3018b3258fabb6a113",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "highway",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/highway.cmake",
+      "recipeSha256": "26b46bc1f08f35d7fda6f2bab349224e39a3972942ccad7aca3b8b768954fa87",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/google/highway.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.4.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/highway-prefix/src/highway-stamp/highway-configure-out.log",
+          "sha256": "4844cf80354e1663a64d2810acc32fcba9550b1e4f28029479d672134026e4f5",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "lame",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/lame.cmake",
+      "recipeSha256": "2fc016fa58c3d768c9f872ca715309c7b94cf815a4c3352d325f4d25650c2fa3",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.com/shinchiro/lame.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "lcms2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/lcms2.cmake",
+      "recipeSha256": "78ac60adc47be993cf59f7f1d318d78558a2850755a8b4b5181f68434245edbe",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/mm2/Little-CMS.git"
+      },
+      "recipeDependencies": [
+        "libjpeg",
+        "zlib"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "lcms2",
+          "version": "2.20",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "2.20",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/lcms2-prefix/src/lcms2-stamp/lcms2-configure-out.log",
+          "sha256": "9bda33384a408aaf86b5dc3a5393f6d58028519b475aa10ac3efd5d461391e37",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libarchive",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libarchive.cmake",
+      "recipeSha256": "4f5dd14180a11f34159bb652ab536ffb3118f867fe76b2a7d312d0624491ed61",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/libarchive/libarchive.git"
+      },
+      "recipeDependencies": [
+        "bzip2",
+        "lzo",
+        "xz",
+        "zlib",
+        "zstd",
+        "openssl",
+        "libxml2"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libarchive",
+          "version": "3.9.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "libaribcaption",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libaribcaption.cmake",
+      "recipeSha256": "5a51204655ceaba4341b39d043c00c39bd5884bf4a6f0a70358df1f0a05e128b",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/xqq/libaribcaption.git"
+      },
+      "recipeDependencies": [
+        "fontconfig",
+        "freetype2"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libass",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libass.cmake",
+      "recipeSha256": "41ec0c08160e4d0a31b2d9dc214985056ad9b61d77530c526ee77b0acc9c84b6",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/libass/libass.git"
+      },
+      "recipeDependencies": [
+        "harfbuzz",
+        "freetype2",
+        "fribidi",
+        "libiconv",
+        "fontconfig",
+        "libunibreak"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libass",
+          "version": "0.17.5",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "0.17.5",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libass-prefix/src/libass-stamp/libass-configure-out.log",
+          "sha256": "bdd4c957259bb25aec153a1270d886e8c99231ac61cf010e916f6c7e288e4294",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libbluray",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libbluray.cmake",
+      "recipeSha256": "0a5d301070c3239a673a1b7f360d6a14cf4f3c9b366c8a29a09bb463208ca71b",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://code.videolan.org/videolan/libbluray.git"
+      },
+      "recipeDependencies": [
+        "libudfread",
+        "freetype2",
+        "libxml2"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libbluray",
+          "version": "1.5.1",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.5.1",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libbluray-prefix/src/libbluray-stamp/libbluray-configure-out.log",
+          "sha256": "6211e99b20144eea5cb32017c4c85834a0abab6404a7a828750c01007fcd4918",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libbs2b",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libbs2b.cmake",
+      "recipeSha256": "95c5f9d08215685a2cc367e302d6f248cfb66040d2d27f972f2e17f612a10ac9",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/alexmarsev/libbs2b.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libdvdnav",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libdvdnav.cmake",
+      "recipeSha256": "e1295fb2df314fca53d7a92247ee11b6592c62b49cd28dd4a79224225a1e9619",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://code.videolan.org/videolan/libdvdnav.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "dvdnav",
+          "version": "7.0.1",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "7.0.1",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libdvdnav-prefix/src/libdvdnav-stamp/libdvdnav-configure-out.log",
+          "sha256": "c00c50855a5e298120e5fbfe4917cd0e89bf3067eee573038aaeefdde58156e6",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libdvdread",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libdvdread.cmake",
+      "recipeSha256": "bc494f70ffccbc75e021def2c2f21d913161bdf2912a33d9efccd99516041676",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://code.videolan.org/videolan/libdvdread.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "dvdread",
+          "version": "7.1.1",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "7.1.1",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libdvdread-prefix/src/libdvdread-stamp/libdvdread-configure-out.log",
+          "sha256": "7cd1277eb71b48ff37241115381b6fdf6359351c1ed5defeb3795a6fd7b53d74",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libiconv",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libiconv.cmake",
+      "recipeSha256": "4ef38914020072ff0a3ea21415809cbfae6c095ad9b7ff03e82c04df3da4a20a",
+      "recipeFields": {
+        "URL": "https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz",
+        "URL_HASH": "SHA256=3B08F5F4F9B4EB82F151A7040BFD6FE6C6FB922EFE4B1659C66EA933276965E8"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libjpeg",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libjpeg.cmake",
+      "recipeSha256": "8ab2b1835ec12a5db8152146b8a814b7944b69f0b8ec0d477d79cd731a7c5019",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/libjpeg-turbo/libjpeg-turbo.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libjpeg",
+          "version": "3.2.1",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "libjxl",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libjxl.cmake",
+      "recipeSha256": "ac5b42e265fd2949fb2ed9429ca8ce96a1784fe2e4bf908cdfdec1e7fb9e4bd7",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/libjxl/libjxl.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "lcms2",
+        "libpng",
+        "zlib",
+        "libjpeg",
+        "brotli",
+        "highway"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libmodplug",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libmodplug.cmake",
+      "recipeSha256": "5c41503e29f825753f204d0e98bc2560e5d67ffbb14f4a194d8d4a0a593cf0b0",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/Konstanty/libmodplug.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libmysofa",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libmysofa.cmake",
+      "recipeSha256": "f36dca3dece42a06f1d201d2fec621dcb37e978ef7617231787a223cb2eeb532",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/hoene/libmysofa.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libopenmpt",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libopenmpt.cmake",
+      "recipeSha256": "0d5c354daa9e076768405bb2fc2aae75e8ad49800a305dfd2a2709eac61c400d",
+      "recipeFields": {
+        "URL": "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.7.12+release.autotools.tar.gz",
+        "URL_HASH": "SHA256=79AB3CE3672601E525B5CC944F026C80C03032F37D39CAA84C8CA3FDD75E0C98"
+      },
+      "recipeDependencies": [
+        "zlib",
+        "ogg",
+        "vorbis",
+        "libsdl2"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libplacebo",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libplacebo.cmake",
+      "recipeSha256": "64c407a343a43bfe8b372b12d5dac4621d1362f094239cfb2c215e6ce213332f",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/haasn/libplacebo.git"
+      },
+      "recipeDependencies": [
+        "vulkan",
+        "shaderc",
+        "spirv-cross",
+        "lcms2",
+        "glad",
+        "fast_float",
+        "xxhash"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libplacebo",
+          "version": "7.387.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "7.387.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libplacebo-prefix/src/libplacebo-stamp/libplacebo-configure-out.log",
+          "sha256": "23134276b45250ec94ee8467743cf80425d406b9cb4d28c4867a11e48c86c9a8",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libpng",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libpng.cmake",
+      "recipeSha256": "b6d7aa5b712c87b0d023e1506fefe0190eeab6849c3e63eeba9f329d65657720",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/glennrp/libpng.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libpsl",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libpsl.cmake",
+      "recipeSha256": "de81de4a2791976cc1d52c114f3861ceae2154f825b3dcb0e609e09163d8b56f",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/rockdaboot/libpsl.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "0.23.1",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libpsl-prefix/src/libpsl-stamp/libpsl-configure-out.log",
+          "sha256": "bc9a84b1b2a31c21105ed0bc1f3587ff71a46b0e3eb891f6ecf9b5554850ca40",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libsamplerate",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libsamplerate.cmake",
+      "recipeSha256": "aec154ae791c215ef7669c30718bbc0dec7f6b727ea90145892b2ed664875b65",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/libsndfile/libsamplerate.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libsdl2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libsdl2.cmake",
+      "recipeSha256": "e323098f27a92e23b406698ff1de547ca64c2d53c026fadd56a3e8d1e8732473",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/libsdl-org/SDL.git",
+        "GIT_TAG": "SDL2"
+      },
+      "recipeDependencies": [
+        "vulkan",
+        "libiconv"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "sdl2",
+          "version": "2.33.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "libsixel",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libsixel.cmake",
+      "recipeSha256": "999c757d24a44da84b37b00cc7227750f86fb10302f0179af87a59f880b1ee77",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/saitoha/libsixel.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libsixel",
+          "version": "1.8.7",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "libsoxr",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libsoxr.cmake",
+      "recipeSha256": "cec59d2ed74e2de1d3984eee656d475df047a2331d4b68219677d3a363bde38e",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.com/shinchiro/soxr.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libsrt",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libsrt.cmake",
+      "recipeSha256": "ab11608addcf34fac0f738a5abe3c35ead91e9bf1802373b2e5a94c6312b22b7",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/Haivision/srt.git"
+      },
+      "recipeDependencies": [
+        "openssl"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libssh",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libssh.cmake",
+      "recipeSha256": "31a497f6b79da6d518f3422456fdbaca58d354455a3ebf8832bc0f0bd2f568d6",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.com/libssh/libssh-mirror.git"
+      },
+      "recipeDependencies": [
+        "zlib",
+        "openssl"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libudfread",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libudfread.cmake",
+      "recipeSha256": "0607b8034ca0feaebb4caff99cfca1ed1be8108c8c35b29b85a58ec0d872112a",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://code.videolan.org/videolan/libudfread.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.2.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libudfread-prefix/src/libudfread-stamp/libudfread-configure-out.log",
+          "sha256": "a1f4cc319386948767506e78db533e6b46b22effda3b0a9f3705a0ca33a52187",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libunibreak",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libunibreak.cmake",
+      "recipeSha256": "049156f79446ae26709c711abc0321c38ed723f5e45815de7cd5d2a11a74c00a",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/adah1972/libunibreak.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libva",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libva.cmake",
+      "recipeSha256": "93ec04ce9d24844d548c69d20cc077c7c1a187901886d3956e021ed1b9aeb718",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/intel/libva.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "libva",
+          "version": "1.25.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        },
+        {
+          "dependency": "libva-win32",
+          "version": "1.25.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "2.25.0.1",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/libva-prefix/src/libva-stamp/libva-configure-out.log",
+          "sha256": "b26a427138943c857c223483870f858a76ac8bbf34a3377033cef81584ebdbe9",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "libvpl",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libvpl.cmake",
+      "recipeSha256": "f590f3290564e30bb17237ba2ea77e1e434a0e30dea524fbecd8bdbea8031527",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/intel/libvpl.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libvpx",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libvpx.cmake",
+      "recipeSha256": "728c41fd3b6613fb0df4025b65c2ea8bb66781441cba23569c94cb36e9342164",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://chromium.googlesource.com/webm/libvpx.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libwebp",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libwebp.cmake",
+      "recipeSha256": "390d3b131e2dfa8a4fa093b7d05b2d3e6967962240057f0c183d4201f045aa45",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://chromium.googlesource.com/webm/libwebp.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "zlib",
+        "libpng",
+        "libjpeg"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libxml2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libxml2.cmake",
+      "recipeSha256": "49de5caa0199c4291564408254f830539073721286aa3c715650d2fb791706fd",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/GNOME/libxml2.git"
+      },
+      "recipeDependencies": [
+        "zlib",
+        "libiconv"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "libzimg",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libzimg.cmake",
+      "recipeSha256": "918aac808ae4d526a9148c16735a615c6e7467ccda623afca07d34aee4b87c06",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/sekrit-twc/zimg.git"
+      },
+      "recipeDependencies": [
+        "graphengine"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "zimg",
+          "version": "3.0.6",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "libzvbi",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/libzvbi.cmake",
+      "recipeSha256": "a647dbfaf97d65e6cc60a0ed0c19cca2a5316f1d3ec9fadd45e368d4f66bb2e9",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/zapping-vbi/zvbi.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "libpng",
+        "libiconv"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "luajit",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/luajit.cmake",
+      "recipeSha256": "75ffc396d502c453d4606238430fc70171aebfa3e26410a4f5b65405c7c49022",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/openresty/luajit2.git",
+        "GIT_TAG": "v2.1-agentzh"
+      },
+      "recipeDependencies": [
+        "libiconv"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "luajit",
+          "version": "2.1.0-beta3",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "lzo",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/lzo.cmake",
+      "recipeSha256": "dbdb89326b8a02674195a34fff54a2d98f640f178fe62211fb7e2a6675cf3aa4",
+      "recipeFields": {
+        "URL": "https://www.oberhumer.com/opensource/lzo/download/lzo-2.10.tar.gz",
+        "URL_HASH": "SHA1=4924676a9bae5db58ef129dc1cebce3baa3c4b5d"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "mpv",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/mpv.cmake",
+      "recipeSha256": "cfb9b0fbaaf6013069fe3eeda7e9e9644546f09cd772dbd549f8eb7fa21c7122",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/mpv-player/mpv.git"
+      },
+      "recipeDependencies": [
+        "angle-headers",
+        "ffmpeg",
+        "fribidi",
+        "lcms2",
+        "libarchive",
+        "libass",
+        "libdvdnav",
+        "libdvdread",
+        "libiconv",
+        "libjpeg",
+        "libpng",
+        "luajit",
+        "rubberband",
+        "uchardet",
+        "openal-soft",
+        "mujs",
+        "vulkan",
+        "shaderc",
+        "libplacebo",
+        "spirv-cross",
+        "vapoursynth",
+        "libsdl2",
+        "subrandr",
+        "libsixel",
+        "curl"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "project-license-texts-present-transitive-notices-pending",
+      "correspondingSourceStatus": "exact-project-archive-present-transitive-materials-pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "0.41.0-UNKNOWN",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/mpv-prefix/src/mpv-stamp/mpv-configure-out.log",
+          "sha256": "9c3d6e6f31ccfc371eead54ffe167c2db1859be78c03778aa7a65728900d8fdb",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ],
+      "exactProjectSource": {
+        "id": "mpv",
+        "repository": "mpv-player/mpv",
+        "commit": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+        "url": "https://codeload.github.com/mpv-player/mpv/zip/baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+        "archive": "build/m5-source-inputs/mpv-baa3e11d42cb7978da634a8a6a3a55fe074d01be.zip",
+        "size": 8144175,
+        "sha256": "95ed6c68bae87e0a6e4fae9afa5ceded710733ce0d21796cf4909a40e3dbf887",
+        "notices": [
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/mpv/Copyright",
+            "sha256": "bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23"
+          },
+          {
+            "path": "third_party/libmpv-render-d3d11/notices/mpv/LICENSE.GPL",
+            "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+          }
+        ],
+        "scope": "Exact project revision source archive; not all transitive dependencies or build-cache modifications"
+      }
+    },
+    {
+      "id": "mujs",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/mujs.cmake",
+      "recipeSha256": "226d428b98e53dd5a1dea6609f0a273293a56951f53012408e4ee57b3a28fce4",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://codeberg.org/ccxvii/mujs.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "mujs",
+          "version": "1.3.11-1-g18aaaf8",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "nghttp2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/nghttp2.cmake",
+      "recipeSha256": "d0d670835d662475e66d5083e745469f252458c0596b99c7cd34a2ba667ee872",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/nghttp2/nghttp2.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "nghttp3",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/nghttp3.cmake",
+      "recipeSha256": "190be5c09681097f68656ccac9b40b6de639ef861ce1c304601abd62a2ec1f54",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/ngtcp2/nghttp3.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "ngtcp2",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/ngtcp2.cmake",
+      "recipeSha256": "fcf6d10a3544073065b35eb8ff9d8e9efc788de979f5dedbbc6c522e87abec54",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/ngtcp2/ngtcp2.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "openssl"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "nvcodec-headers",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/nvcodec-headers.cmake",
+      "recipeSha256": "ada268ec2e56867a085e66f491e4bdce80bc2ccf84e591ecef75030ee04cab9f",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/FFmpeg/nv-codec-headers.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "ffnvcodec",
+          "version": "13.1.15.1.2",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "ogg",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/ogg.cmake",
+      "recipeSha256": "434cc5dd65190191772ffd44c68d10cffdb063eee3ea78f4b562b42be762bc2f",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/xiph/ogg.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "openal-soft",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/openal-soft.cmake",
+      "recipeSha256": "7dfbca2848cbba0ff98d87b3fe4b29931ed9dddef59ccc8eb531c22aea00f5ab",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/kcat/openal-soft.git"
+      },
+      "recipeDependencies": [
+        "libsdl2"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "openal",
+          "version": "1.25.2",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "openssl",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/openssl.cmake",
+      "recipeSha256": "79cd848d11ebb59ccc55db4fa237e94d600428bbd9ae255c9abeb613ca4be8fc",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/openssl/openssl.git"
+      },
+      "recipeDependencies": [
+        "zlib",
+        "zstd",
+        "brotli"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "opus",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/opus.cmake",
+      "recipeSha256": "2762c05c3e2cabf4f3959fdf60ea88bca522151be5940bd454cc5d3a106aa428",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/xiph/opus.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "opus-dnn"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.6.1-85-ga8b2545",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/opus-prefix/src/opus-stamp/opus-configure-out.log",
+          "sha256": "16569599ceebd7b4d79b8e4ea84d75505d5b1d6aca111a3ea7defccdae84233a",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "opus-dnn",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/opus-dnn.cmake",
+      "recipeSha256": "6d0290f20a218b724317b260eace7e69da8529c644a7cbc0e4ae533c0d2adbed",
+      "recipeFields": {
+        "URL": "https://media.xiph.org/opus/models/opus_data-8a07d57c4fce6fb30f23b3e0d264004e04f1d7b421f5392ef61543d021a439af.tar.gz",
+        "URL_HASH": "SHA256=8a07d57c4fce6fb30f23b3e0d264004e04f1d7b421f5392ef61543d021a439af"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "rubberband",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/rubberband.cmake",
+      "recipeSha256": "988619a42e100de14d5c05cd65fd80b49b13334324726eb6634f56b7c4b05da0",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/breakfastquay/rubberband.git",
+        "GIT_TAG": "default"
+      },
+      "recipeDependencies": [
+        "libsamplerate"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "rubberband",
+          "version": "4.0.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ],
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "4.0.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/rubberband-prefix/src/rubberband-stamp/rubberband-configure-out.log",
+          "sha256": "f1a9b849c1d08fba7998f3b6fad3f82f8f095950684e8fed2124507f07cac897",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "shaderc",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/shaderc.cmake",
+      "recipeSha256": "d96198710bb6747e4386c706ceedc9c542d7f6a8c368b8c4623db7ee98233daa",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/google/shaderc.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [
+        "glslang",
+        "spirv-headers",
+        "spirv-tools"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "shaderc",
+          "version": "2026.5.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "speex",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/speex.cmake",
+      "recipeSha256": "75a53b5a46f60bb1c09805c712fc8522e9ddeea55c02bdc033f07795d0541038",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/xiph/speex.git"
+      },
+      "recipeDependencies": [
+        "ogg"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.2.1",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/speex-prefix/src/speex-stamp/speex-configure-out.log",
+          "sha256": "892111ea6cc779e8367d362effded4f905b74fbfd1c5ffbba95f93ffcfaecc5a",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    },
+    {
+      "id": "spirv-cross",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/spirv-cross.cmake",
+      "recipeSha256": "a101e31511fed851006a88ecd8df71acd5fe498d9adc800d7bd455baf1e7a56c",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/KhronosGroup/SPIRV-Cross.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "spirv-cross-c-shared",
+          "version": "0.68.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "spirv-headers",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/spirv-headers.cmake",
+      "recipeSha256": "55f35846e4bac576a88351eba0d4e141b6786e0988004a3b1fdff111ac0ca173",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/KhronosGroup/SPIRV-Headers.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "spirv-tools",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/spirv-tools.cmake",
+      "recipeSha256": "3feb4110baa93cabded6564caba08bdce883fba93797fa40860bd3713271bfc8",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/KhronosGroup/SPIRV-Tools.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "subrandr",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/subrandr.cmake",
+      "recipeSha256": "cbf83815bc10a86c38151633826e413d34167410bc9569ee22c045c53a01f477",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/afishhh/subrandr.git",
+        "GIT_TAG": "master"
+      },
+      "recipeDependencies": [
+        "freetype2",
+        "harfbuzz",
+        "fontconfig"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "subrandr",
+          "version": "1.4.0",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "svtav1",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/svtav1.cmake",
+      "recipeSha256": "4649b91fa340471263d52ef23fcd5dd0ff520dc60e91df564ce1059c4be27c9e",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.com/AOMediaCodec/SVT-AV1.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "uchardet",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/uchardet.cmake",
+      "recipeSha256": "8f47694c5e80817a39e78d60710b2d16a2e462b237af9a5a662e289060f104f8",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://gitlab.freedesktop.org/uchardet/uchardet.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "uchardet",
+          "version": "0.0.8",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "vapoursynth",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/vapoursynth.cmake",
+      "recipeSha256": "af684ecd93f7c8a7b33d65e727c6de42c5dcd8492e558d0d8b6cedcc8fbc0dc6",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/vapoursynth/vapoursynth.git",
+        "GIT_TAG": "master"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "vapoursynth-script",
+          "version": "72",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "vorbis",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/vorbis.cmake",
+      "recipeSha256": "398d8290d23fbf27eedee4a39d435c061a5fe51b20a1d67cc22e063ace9a057d",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/xiph/vorbis.git"
+      },
+      "recipeDependencies": [
+        "ogg"
+      ],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "vulkan",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/vulkan.cmake",
+      "recipeSha256": "d904d9ffb4a86d14849824f34a932fadf0b18c9fe58619c83392a339943a0bef",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/KhronosGroup/Vulkan-Loader.git",
+        "GIT_TAG": "main"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "vulkan",
+          "version": "1.4.366",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "x264",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/x264.cmake",
+      "recipeSha256": "bc49bd473b91620a8a71f9b88bd28b85a3cc8f680cb283a6f8e1808f5f737ec7",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://code.videolan.org/videolan/x264.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "xxhash",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/xxhash.cmake",
+      "recipeSha256": "0e732aa5a163749cc3876e34309f48cea3fb60464f5d6c229b4ce03e5eb647bb",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/Cyan4973/xxHash.git",
+        "GIT_TAG": "dev"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "xz",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/xz.cmake",
+      "recipeSha256": "d7c809cfae2f7bb73bd3b216ee412dc8155f9fef481ea367fc87e87da3ce71b7",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/tukaani-project/xz.git"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion"
+    },
+    {
+      "id": "zlib",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/zlib.cmake",
+      "recipeSha256": "1946f0b75dcb229abe0323644e9453c0868fef1264c28a64f2f02fb4b0f0369d",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/zlib-ng/zlib-ng.git",
+        "GIT_TAG": "develop"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "configuredVersionEvidence": [
+        {
+          "dependency": "zlib",
+          "version": "1.3.2.zlib-ng",
+          "scope": "MPV configure dependency result, not precise source revision"
+        }
+      ]
+    },
+    {
+      "id": "zstd",
+      "recipe": "build/m5-source-inputs/toolchain-reference/packages/zstd.cmake",
+      "recipeSha256": "84c3e98c148ab52579c99106ac5f1256e842d3dd51369ad222c1d9f71fb716cb",
+      "recipeFields": {
+        "GIT_REPOSITORY": "https://github.com/facebook/zstd.git",
+        "GIT_TAG": "dev"
+      },
+      "recipeDependencies": [],
+      "binaryRevision": null,
+      "noticeStatus": "pending",
+      "correspondingSourceStatus": "pending",
+      "scope": "recipe-reference-not-proof-of-binary-inclusion",
+      "projectConfigurationEvidence": [
+        {
+          "projectVersion": "1.6.0",
+          "artifactMember": "mpv-winbuild-cmake/build64/packages/zstd-prefix/src/zstd-stamp/zstd-configure-out.log",
+          "sha256": "1b73b0ab51922ab5b0e5602c57e0e902e61f33c355cbc130cbe3ddf22f246779",
+          "scope": "Project configure log may have been retained from source cache"
+        }
+      ]
+    }
+  ],
+  "unresolvedRecipeNames": [],
+  "buildArtifactEvidence": {
+    "artifactId": 12599005134,
+    "name": "64_logs",
+    "workflowRun": 40191236015,
+    "job": 121162536770,
+    "sha256": "7a25f827f79c2f44bbce7845a75174bcd59e356ddfd9d3d89a90d7b5c18ca65b",
+    "observations": "third_party/libmpv-render-d3d11/build-observations.json",
+    "configurationLogs": 21,
+    "mpvDependenciesFound": 35
+  },
+  "exactProjectSources": [
+    {
+      "id": "mpv",
+      "repository": "mpv-player/mpv",
+      "commit": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+      "url": "https://codeload.github.com/mpv-player/mpv/zip/baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+      "archive": "build/m5-source-inputs/mpv-baa3e11d42cb7978da634a8a6a3a55fe074d01be.zip",
+      "size": 8144175,
+      "sha256": "95ed6c68bae87e0a6e4fae9afa5ceded710733ce0d21796cf4909a40e3dbf887",
+      "notices": [
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/mpv/Copyright",
+          "sha256": "bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23"
+        },
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/mpv/LICENSE.GPL",
+          "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+        }
+      ],
+      "scope": "Exact project revision source archive; not all transitive dependencies or build-cache modifications"
+    },
+    {
+      "id": "ffmpeg",
+      "repository": "FFmpeg/FFmpeg",
+      "commit": "31855b2a7051d07a370984f5e4029826db06be1d",
+      "url": "https://codeload.github.com/FFmpeg/FFmpeg/zip/31855b2a7051d07a370984f5e4029826db06be1d",
+      "archive": "build/m5-source-inputs/ffmpeg-31855b2a7051d07a370984f5e4029826db06be1d.zip",
+      "size": 24697217,
+      "sha256": "4e46245ab4141ff9a71c0e35aa3b45e55e085cb3687366c976d02ac251272b2c",
+      "notices": [
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.GPLv2",
+          "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+        },
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.GPLv3",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.LGPLv2.1",
+          "sha256": "246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30"
+        },
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/COPYING.LGPLv3",
+          "sha256": "da7eabb7bafdf7d3ae5e9f223aa5bdc1eece45ac569dc21b3b037520b4464768"
+        },
+        {
+          "path": "third_party/libmpv-render-d3d11/notices/ffmpeg/LICENSE.md",
+          "sha256": "e6dc72d5665a1ebd6dcc841de59278dad4ca77ecc47b03f1064a55c3e9ea8bb8"
+        }
+      ],
+      "scope": "Exact project revision source archive; not all transitive dependencies or build-cache modifications"
+    }
+  ]
+}

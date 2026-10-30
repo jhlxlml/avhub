@@ -23,7 +23,7 @@ export function BackupTools({busy,changeBusy,scanning,reload}:{busy:boolean;chan
     return()=>{
     window.removeEventListener('avhub-before-quit',quitting);
     mounted.current=false;controller.current?.abort();
-    if(active.current&&active.current.stage!=='committing')navigator.sendBeacon(`/api/data-jobs/${active.current.id}/cancel`);
+    if(active.current&&!['committing','review'].includes(active.current.stage))navigator.sendBeacon(`/api/data-jobs/${active.current.id}/cancel`);
   };},[]);
   function update(value:Job){active.current=value;if(mounted.current)setJob(value);}
   async function finish(value:Job){
@@ -38,7 +38,9 @@ export function BackupTools({busy,changeBusy,scanning,reload}:{busy:boolean;chan
     return value;
   }
   async function release(){
-    if(active.current&&active.current.stage!=='committing')await request(`/api/data-jobs/${active.current.id}/cancel`,{method:'POST'},async response=>{
+    // A failed restore's evidence is intentionally retained server-side. Detach
+    // this screen without deleting it, so another backup can still be made.
+    if(active.current&&!['committing','review'].includes(active.current.stage))await request(`/api/data-jobs/${active.current.id}/cancel`,{method:'POST'},async response=>{
       const value=await readJson<{detail?:string}>(response);
       // Expired private previews are already released; let another file be chosen.
       if(!response.ok&&response.status!==404)throw new Error(value.detail||'释放数据任务失败');

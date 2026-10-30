@@ -1,5 +1,7 @@
 html.native-player-overlay,html.native-player-overlay body,html.native-player-overlay #root{margin:0!important;width:100%;height:100%;overflow:hidden!important;background:transparent!important;color:#fff;}
 .native-stage{position:fixed;inset:0;margin:0;padding:0;border:0;max-width:none;background:transparent!important;color:#fff;font:14px system-ui,sans-serif;user-select:none;color-scheme:dark;}
+.native-stage.native-inline-stage{position:absolute;inset:0;z-index:1;}
+.native-render-canvas{max-width:none;max-height:none;}
 .native-stage.cursor-hidden,.native-stage.cursor-hidden *{cursor:none!important;}
 .native-stage button{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0;flex-shrink:0;border:0!important;border-radius:50%;background:rgba(10,15,22,.7);color:#fff;box-shadow:0 1px 5px #0005;cursor:pointer;}
 .native-stage .ui-icon{flex:none;pointer-events:none;}

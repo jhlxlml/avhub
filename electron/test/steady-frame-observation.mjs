@@ -1,7 +1,7 @@
 // Explicit acceptance-only sampler; no React updates or playback mutations.
 export function startSteadyFrames(video) {
  const frames=[],animations=[],samples=[],events=[];
- const sample=()=>{const q=video.getVideoPlaybackQuality();return {at:performance.now(),time:video.currentTime,total:q.totalVideoFrames,dropped:q.droppedVideoFrames,paused:video.paused,seeking:video.seeking,ready:video.readyState,visible:document.visibilityState,focused:document.hasFocus()};};
+ const sample=()=>{const q=video.getVideoPlaybackQuality();let ahead=null;for(let i=0;i<(video.buffered?.length??0);i++)if(video.currentTime>=video.buffered.start(i)&&video.currentTime<=video.buffered.end(i))ahead=video.buffered.end(i)-video.currentTime;return {at:performance.now(),time:video.currentTime,total:q.totalVideoFrames,dropped:q.droppedVideoFrames,paused:video.paused,seeking:video.seeking,ready:video.readyState,visible:document.visibilityState,focused:document.hasFocus(),rate:video.playbackRate??null,ahead,error:video.error?.code??null,width:video.videoWidth??null,height:video.videoHeight??null};};
  let stopped=false,frameId,animationId,omitted=0,result;
  const append=(list,row,limit)=>{if(list.length<limit)list.push(row);else omitted++;};
  const frame=(_,m)=>{append(frames,{at:performance.now(),mediaTime:m.mediaTime,presented:m.presentedFrames,expected:m.expectedDisplayTime,processingMs:m.processingDuration*1000},4096);if(!stopped)frameId=video.requestVideoFrameCallback(frame);};

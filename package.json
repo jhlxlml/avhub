@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "build:electron": "tsc -p electron/tsconfig.json",
     "electron:dev": "npm run build && npm run build:electron && electron .",
-    "package:windows": "electron-builder --win portable --x64",
+    "package:windows": "electron-builder --config electron/desktop-release.builder.cjs --win portable --x64",
     "test:ui": "playwright test",
     "test:backend": "python scripts/python-runtime.py scripts/test-backend.py",
     "test:backend:short-path": "python scripts/python-runtime.py scripts/test-backend.py --short-path --require-alias",
@@ -41,7 +41,8 @@
     "test:electron:recycle-records": "npm run build && npm run build:electron && node electron/test/recycle-records.mjs",
     "test:electron:data-commit": "npm run build && npm run build:electron && node electron/test/data-commit.mjs",
     "test:electron:data-location": "npm run build && npm run build:electron && node electron/test/data-location.mjs",
-    "test:electron:shutdown": "npm run build && npm run build:electron && node electron/test/shutdown-policy.mjs && node electron/test/shutdown.mjs"
+    "test:electron:shutdown": "npm run build && npm run build:electron && node electron/test/shutdown-policy.mjs && node electron/test/shutdown.mjs",
+    "prepackage:windows": "python scripts/folder-portable.py --verify-backend-notices"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
@@ -77,6 +78,7 @@
     },
     "files": [
       "electron/dist/**/*",
+      "electron/mpv-runtime.json",
       "package.json",
       "app/build-info.json"
     ],
@@ -96,6 +98,10 @@
         "filter": [
           "avhub.png"
         ]
+      },
+      {
+        "from": "LICENSE",
+        "to": "licenses/AVHub-LICENSE.txt"
       }
     ],
     "win": {

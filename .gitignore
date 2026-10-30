@@ -33,6 +33,7 @@ frame-inspection/
 *.wmv
 *.flv
 *.mts
+!/scripts/frontend-notices.d.mts
 *.m2ts
 *.mpeg
 *.mpg

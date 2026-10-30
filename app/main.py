@@ -17,7 +17,7 @@ import tempfile
 import threading
 import time
 import uuid
-from contextlib import contextmanager, asynccontextmanager, suppress, nullcontext, closing
+from contextlib import contextmanager, asynccontextmanager, suppress, nullcontext, closing, ExitStack
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Annotated
@@ -815,16 +815,32 @@ def storage_snapshot(rollback_days):
 def storage_cleanup(value:StorageCleanupInput):
     preview=storage_snapshot(value.rollback_days)
     if not hmac.compare_digest(preview['cleanup']['token'],value.token):raise HTTPException(409,'可清理内容已变化，请刷新预览后再确认')
-    # Cache candidates exclude every indexed source. Keep DB publication and
-    # restore fenced, without serializing unrelated original-file Range reads
-    # on file_service.lock for the whole deletion batch.
-    with scanner.lock,playback.lock,thumbnail_service.mutation(),DB_READ_GATE.read(),DB_LOCK,artwork_readers.lock:
-        scanner.require_idle()
-        if data_jobs.active:raise HTTPException(409,'请先完成数据备份或恢复任务')
-        with closing(sqlite3.connect(DB.absolute().as_uri()+'?mode=ro',uri=True)) as db:
-            db.execute('BEGIN')
-            storage_management.validate(DATA,db,preview,set(playback.sessions))
-        return storage_management.clean(DATA,preview)
+    result={'ok':True,'removed':0,'freed_bytes':0,'skipped':0,'recoverable':False,'remaining':0}
+    offset=0;backups=preview['_backups'];deadline=time.monotonic()+storage_management.CLEAN_REQUEST_SECONDS
+    while offset<len(preview['_files']):
+        end=min(len(preview['_files']),offset+storage_management.CLEAN_BATCH_FILES)
+        batch={**preview,'_files':preview['_files'][offset:end],'_folders':preview['_folders'] if end==len(preview['_files']) else [],
+               '_backups':backups,'_deadline':time.monotonic()+storage_management.CLEAN_BATCH_SECONDS}
+        try:
+            with scanner.lock,playback.lock,thumbnail_service.mutation(),DB_READ_GATE.read(),DB_LOCK,artwork_readers.lock:
+                scanner.require_idle()
+                if data_jobs.active:raise HTTPException(409,'请先完成数据备份或恢复任务')
+                with closing(sqlite3.connect(DB.absolute().as_uri()+'?mode=ro',uri=True)) as db:
+                    db.execute('BEGIN')
+                    if offset==0:storage_management.validate(DATA,db,preview,set(playback.sessions))
+                    else:storage_management.validate_batch(DATA,db,batch,set(playback.sessions))
+                cleaned=storage_management.clean(DATA,batch)
+                try:backups=storage_management.rollback_inventory(DATA)
+                except OSError:result['stopped_reason']='无法核对回滚副本，已停止，请检查磁盘后刷新预览'
+            offset+=cleaned['_processed']
+            for key in ('removed','freed_bytes','skipped'):result[key]+=cleaned[key]
+        except HTTPException as exc:
+            if offset==0:raise
+            result['stopped_reason']=exc.detail;break
+        if result.get('stopped_reason') or time.monotonic()>=deadline:break
+        storage_management.yield_batch()
+    result['remaining']=len(preview['_files'])-offset
+    return result
 
 
 class MissingArtworkCleanupInput(BaseModel):
@@ -938,8 +954,14 @@ def set_preferences(body:PreferencesInput):
                 db.execute('''INSERT INTO preferences VALUES(?,?,?) ON CONFLICT(key) DO UPDATE
                     SET value=excluded.value,updated_at=excluded.updated_at WHERE preferences.updated_at<=excluded.updated_at''',
                     (key,json.dumps(value),body.updated_at))
+        # Return the accepted value, including when a stale/import-only write
+        # was ignored. The transaction must commit before this receipt is sent.
+        appearance_receipt = {}
+        if 'appearance' in values:
+            row = db.execute("SELECT value FROM preferences WHERE key='appearance'").fetchone()
+            appearance_receipt['appearance'] = json.loads(row[0]) if row else None
     if 'nativePrepare' in values and not native_prepare_enabled():native_prepare.cancel_pending()
-    return {'ok':True}
+    return {'ok':True,**appearance_receipt}
 
 class ScreenshotSettingsInput(BaseModel):
     directory: str = ''
@@ -1006,6 +1028,7 @@ def diagnostics():
         result['thumbnail_jobs']={row['state']:row['count'] for row in db.execute('SELECT state,COUNT(*) AS count FROM thumbnail_jobs GROUP BY state')}
     result['database_timing']=database_timing.report()
     result['database_write_queue']=DB_LOCK.status()
+    result['data_job_recovery']=dict(data_jobs.recovery)
     result['scan_readiness']=scan_readiness.report()
     result['database_lifecycle']=db_anchor.status()
     result['service_lifecycle']=service_lifecycle.report()
@@ -1268,12 +1291,8 @@ def create_backup(full: bool = False, thumbnails: bool = False):
     destination = backup_dir / f"avhub-backup-{stamp}.{'zip' if full else 'db'}"
     snapshot=backup_dir/f'.snapshot-{uuid.uuid4().hex}.db' if full else destination
     try:
-        with DB_LOCK:
-            source = sqlite3.connect(DB)
-            target = sqlite3.connect(snapshot)
-            try: source.backup(target)
-            finally: target.close(); source.close()
-            if full:library_backup.create(destination,snapshot,DATA,thumbnails,valid_thumbnail,build=BUILD)
+        with backup_snapshot(snapshot):
+            if full:library_backup.create(destination,snapshot,DATA,thumbnails,valid_thumbnail,build=BUILD,open_image=open_backup_image)
     except Exception as exc:
         destination.unlink(missing_ok=True)
         raise HTTPException(500, f"创建备份失败：{exc}") from exc
@@ -1337,7 +1356,7 @@ def prepare_restore(uploaded:Path,staging:Path):
         raise HTTPException(503,'恢复未完成，已尝试回滚并保留恢复前数据库；请检查数据目录或磁盘后再试') from exc
 
 
-def install_library_backup(uploaded:Path,images=None,staging=None):
+def install_library_backup(uploaded:Path,images=None,staging=None,reserve=None):
     backup_dir=DATA/'backups'
     rollback = backup_dir / f"before-restore-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}.db"
     new_covers=[];old_thumbnails=[]
@@ -1347,6 +1366,18 @@ def install_library_backup(uploaded:Path,images=None,staging=None):
         if file_service.readers or any(value[1]>time.monotonic() for value in file_service.activities.values()):raise HTTPException(409,'请先关闭正在打开的视频再恢复媒体库')
         old_scan_job=scanner.snapshot()
         if playback.sessions: raise HTTPException(409, "请先关闭正在播放的视频再恢复备份")
+        # Reserve the commit's peak before touching the live DB or artwork.
+        # Inspection's upload/unpack budget alone does not cover rollback and
+        # replaced-thumbnail staging. A budget failure must precede mutation.
+        with closing(sqlite3.connect(DB.absolute().as_uri()+'?mode=ro',uri=True)) as current:
+            additional=current.execute('PRAGMA page_count').fetchone()[0]*current.execute('PRAGMA page_size').fetchone()[0]
+        for relative in images or ():
+            if relative.startswith('covers/'):additional+=(uploaded.parent/relative).stat().st_size
+            elif (old:=DATA/relative).exists():
+                if old.is_symlink() or old.resolve()!=DATA.resolve()/relative:raise ValueError('缩略图位置含链接，恢复已取消')
+                additional+=old.stat().st_size
+        if reserve:reserve(additional)
+        elif shutil.disk_usage(DATA).free<128*1024**2+additional:raise OSError('恢复所需磁盘空间不足，尚未修改媒体库')
         live = sqlite3.connect(DB)
         saved = sqlite3.connect(rollback)
         try: live.backup(saved)
@@ -1441,14 +1472,58 @@ class BackupJobInput(BaseModel):
     full: bool = True
     thumbnails: bool = False
 
+
+@contextmanager
+def backup_snapshot(snapshot,check=lambda:None,reserve=lambda size:None):
+    # Restore exclusion remains for the job, not the ordinary writer queue.
+    # Pin immutable manual-cover names before edits can discard old references.
+    with DB_READ_GATE.read(),ExitStack() as pins:
+        with DB_LOCK:
+            with closing(sqlite3.connect(DB)) as source,closing(sqlite3.connect(snapshot)) as target:
+                reserve(source.execute('PRAGMA page_count').fetchone()[0]*source.execute('PRAGMA page_size').fetchone()[0])
+                source.backup(target,pages=256,progress=lambda *_:check())
+                references=[row[0] for row in target.execute('SELECT DISTINCT custom_cover FROM media WHERE custom_cover IS NOT NULL')]
+            paths=[path for relative in references if (path:=covers.owned_path(DATA,relative))]
+            pins.enter_context(artwork_readers.pin(paths))
+        try:yield
+        finally:
+            pins.close()
+            # A concurrent edit may have retired a pinned cover. Recheck after
+            # releasing the pins; ordinary/current references stay untouched.
+            with suppress(OSError,sqlite3.DatabaseError):
+                with closing(sqlite3.connect(DB.absolute().as_uri()+'?mode=ro',uri=True)) as db:
+                    for relative in references:covers.discard(db,DATA,relative)
+
+
+@contextmanager
+def open_backup_image(path,row):
+    source=None
+    try:
+        # backup_snapshot already owns restore exclusion. Do not nest a read
+        # gate: a waiting restore writer would deadlock a reentrant reader.
+        with DB_LOCK,covers.reader_lock:
+            # Same-ID automatic thumbnails can be republished for a changed
+            # source. Omit those instead of associating the wrong image with
+            # the immutable database snapshot. Manual covers have unique names.
+            current=True
+            if path.parent==THUMBS:
+                with closing(sqlite3.connect(DB.absolute().as_uri()+'?mode=ro',uri=True)) as db:
+                    live=db.execute('SELECT path,size,modified,thumbnail FROM media WHERE id=?',(row[0],)).fetchone()
+                current=live is not None and tuple(live)==(*row[3:],row[2])
+            if current:
+                if path.is_symlink() or path.resolve()!=DATA.resolve()/path.relative_to(DATA):raise ValueError('封面位置含链接，备份已取消')
+                source=path.open('rb')
+        yield source
+    finally:
+        if source:source.close()
+
+
 def build_backup_job(job,value):
     snapshot=job.folder/'library.db';destination=job.folder/('avhub-library.zip' if value.full else 'avhub-backup.db')
     job.progress('snapshot',0,1)
-    with DB_READ_GATE.read(),DB_LOCK:
-        with closing(sqlite3.connect(DB)) as source,closing(sqlite3.connect(snapshot)) as target:
-            source.backup(target,pages=256,progress=lambda *_:job.check())
+    with backup_snapshot(snapshot,job.check,job.reserve):
         job.progress('snapshot',1,1)
-        if value.full:library_backup.create(destination,snapshot,DATA,value.thumbnails,valid_thumbnail,job.progress,job.check,BUILD)
+        if value.full:library_backup.create(destination,snapshot,DATA,value.thumbnails,valid_thumbnail,job.progress,job.check,BUILD,open_backup_image,job.reserve)
         else:snapshot.replace(destination)
     return {'filename':destination.name,'bytes':destination.stat().st_size}
 
@@ -1461,7 +1536,7 @@ def inspect_backup_job(job):
     with uploaded.open('rb') as file:full=file.read(16).startswith(b'PK')
     build=None
     if full:
-        database,images=library_backup.unpack(uploaded,job.folder/'unpacked',validate_backup,valid_thumbnail,job.progress,job.check)
+        database,images=library_backup.unpack(uploaded,job.folder/'unpacked',validate_backup,valid_thumbnail,job.progress,job.check,job.reserve)
         import zipfile
         with zipfile.ZipFile(uploaded) as archive:build=json.loads(archive.read('manifest.json')).get('build')
     else:
@@ -1482,6 +1557,7 @@ async def start_inspect_job(request:Request):
             async for chunk in request.stream():
                 total+=len(chunk)
                 if total>library_backup.MAX_ARCHIVE:raise HTTPException(413,'完整备份不能超过 2 GB')
+                job.reserve(len(chunk))
                 file.write(chunk)
         data_jobs.run(job,inspect_backup_job);return job.public()
     except BaseException:
@@ -1502,7 +1578,7 @@ def commit_data_job(identity:str):
     file_service.require_idle()
     def commit(job):
         job.progress('committing')
-        try:return install_library_backup(job.database,job.images,job.folder)
+        try:return install_library_backup(job.database,job.images,job.folder,job.reserve)
         except (OSError,sqlite3.DatabaseError) as exc:raise HTTPException(503,'恢复未完成，已尝试回滚并保留恢复前数据库；请检查磁盘或权限') from exc
     return data_jobs.commit(identity,commit).public()
 
@@ -1611,7 +1687,7 @@ def media_thumbnail_status(media_id: int):
 
 
 class ThumbnailRetry(BaseModel):
-    frame_time: float | None = Field(default=None,ge=0,le=604800,allow_inf_nan=False)
+    frame_time: float | None = Field(default=None,ge=0,allow_inf_nan=False)
 
 
 @app.post('/api/media/{media_id}/thumbnail/retry')
@@ -1977,11 +2053,12 @@ def indexed_native_path(media_id:int):
     # Resolve an indexed ID only. OS actions belong to trusted Electron IPC.
     return {'path':str(native_media_path(media_id))}
 
-from .native_playback import NativeReadLeases,verify_original_color,probe_original_color
+from .native_playback import NativeReadLeases
 native_read_leases = NativeReadLeases(file_service)
 
 class NativeReadInput(BaseModel):
     owner:str=Field(pattern=r'^[a-f0-9]{32}$')
+    engine:Literal['legacy','render-d3d11']='legacy'
 
 @app.post('/api/media/{media_id}/native-read')
 def acquire_native_read(media_id:int,body:NativeReadInput,request:Request):
@@ -1990,21 +2067,13 @@ def acquire_native_read(media_id:int,body:NativeReadInput,request:Request):
     def resolve(value):
         item=media_record(value)
         resolved['title']=item['title']
-        color=item.get('video_color') or {}
         source=native_media_path(value)
         actual=source.stat()
         if (item.get('size') is not None and item['size']!=actual.st_size) or (item.get('modified') is not None and abs(item['modified']-actual.st_mtime)>.000001):
             raise HTTPException(409,'源视频已变化，请刷新索引后再启动原生播放')
-        # Old indexes need only a bounded colour/header probe, not a full index
-        # rebuild. Persist verified metadata once; never guess unknown as SDR.
-        if color.get('verified') is not True or not color.get('pix_fmt') or type(color.get('bit_depth')) is not int:
-            color=probe_original_color(source,scan_process,executable('ffprobe'))
-            if media_identity.encoded(source.stat())!=media_identity.encoded(actual):raise HTTPException(409,'色彩探测期间源文件变化，请刷新后重试')
-            color.update(source_size=actual.st_size,source_modified=actual.st_mtime)
-            with connection() as db:db.execute('UPDATE media SET video_color=? WHERE id=? AND path=?',(json.dumps(color),value,item['path']))
-        # Do not silently enable mpv's default HDR-to-SDR mapping. The native
-        # HDR display pipeline needs separate hardware acceptance first.
-        verify_original_color(color)
+        resolved['color']=item.get('video_color') or {}
+        # MPV owns legacy-window decoding and source interpretation. Metadata
+        # completeness is diagnostic, never a prerequisite for a read lease.
         return source
     source=native_read_leases.acquire(body.owner,media_id,resolve)
     try:
@@ -2014,7 +2083,7 @@ def acquire_native_read(media_id:int,body:NativeReadInput,request:Request):
     except BaseException:
         native_read_leases.release(body.owner)
         raise
-    return {'path':str(source),'title':resolved['title']}
+    return {'path':str(source),'title':resolved['title'],'color':resolved['color']}
 
 @app.delete('/api/native-read/{owner}')
 def release_native_read(owner:str,request:Request):

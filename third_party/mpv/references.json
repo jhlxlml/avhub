@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "sourceCommit": "7c4f662c088d55fdb4f7049e9226de061ecad8c5",
+  "references": [
+    {
+      "path": "third_party/mpv/upstream-preview/Copyright",
+      "url": "https://github.com/mpv-player/mpv/blob/7c4f662c088d55fdb4f7049e9226de061ecad8c5/Copyright",
+      "sha256": "bfe9ee4cceabcb8ecbfadf208d04156f73d801e6a57369a5606bb8341e204a23"
+    },
+    {
+      "path": "third_party/mpv/upstream-preview/ci/build-mingw64-full.sh",
+      "url": "https://github.com/mpv-player/mpv/blob/7c4f662c088d55fdb4f7049e9226de061ecad8c5/ci/build-mingw64-full.sh",
+      "sha256": "fac6eea27bc065b675cd5c76b9f1d8dad4b778d4fb2f2bfcfe8fe9d34b915e92"
+    },
+    {
+      "path": "third_party/mpv/upstream-preview/ci/publish-release.sh",
+      "url": "https://github.com/mpv-player/mpv/blob/7c4f662c088d55fdb4f7049e9226de061ecad8c5/ci/publish-release.sh",
+      "sha256": "c52c38d5f1e6b83a842d2232f5d3f8b495492b33f4db2e506298e6c51c11cc19"
+    }
+  ],
+  "completeDistributionMaterials": false
+}

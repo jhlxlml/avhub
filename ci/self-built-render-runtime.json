@@ -1,0 +1,123 @@
+{
+  "schema": 1,
+  "id": "selfbuilt-sdr-2cf60d001765",
+  "platform": "win32-x64",
+  "scope": "single-display-SDR-D3D11-development-only",
+  "dllSha256": "2cf60d001765b91cf3f40a7ef115da010385ecc46442d609d8a75d3db3defa88",
+  "sourceRevision": "baa3e11d42cb7978da634a8a6a3a55fe074d01be",
+  "dependencies": [
+    {
+      "name": "avcodec-63.dll",
+      "sha256": "e492a97714aeeb5e70db9b0cb431fa99137d22860304812600e1c38ae0e691a8"
+    },
+    {
+      "name": "avdevice-63.dll",
+      "sha256": "d26f3abbc8eb18aab8e84096c13b08ba683372649101f2b7ebb100ebb61f4d91"
+    },
+    {
+      "name": "avfilter-12.dll",
+      "sha256": "82d4c92b95d9c04d3b4b3ff69e6175d46cafbfbb002a315920c7e4ca697cedcd"
+    },
+    {
+      "name": "avformat-63.dll",
+      "sha256": "696625b70d36a77b9140aa9d13f459a5a3e4ff7d34f106371a2e6b2e36667958"
+    },
+    {
+      "name": "avutil-61.dll",
+      "sha256": "1eef78d2f1d7d2deb62f056e475d571a5f530a82c2a9134259514377425089e2"
+    },
+    {
+      "name": "libass-9.dll",
+      "sha256": "f62f9187d1c9a10ba427e89cea9681e4728893c8696d194bbeea6368da7a446b"
+    },
+    {
+      "name": "libbrotlicommon.dll",
+      "sha256": "663145c2fff11d4e82b9f8bf110b64f63835ce4329813a22ab73b4eb20952fa8"
+    },
+    {
+      "name": "libbrotlidec.dll",
+      "sha256": "bba3b14c6d84b38334a7d6f1c2b1c0d5d489f947649594d4f0f2119dc5cc2c45"
+    },
+    {
+      "name": "libbrotlienc.dll",
+      "sha256": "6ad0e41dbe3035cde8d6f33a55667b72ddf89bacbf1586e08782a95095266422"
+    },
+    {
+      "name": "libdav1d.dll",
+      "sha256": "877f6aed8a78a86f8c2ab072861071b3a60fc0ae8ed213d9e179053c47120a0a"
+    },
+    {
+      "name": "libfreetype-6.dll",
+      "sha256": "4f154d0bf07e129a69d0d396824edbbf6826c196d4dbd50b5af7a03aebd366ee"
+    },
+    {
+      "name": "libfribidi-0.dll",
+      "sha256": "e34e8c6c1c8b87b07a437c1d7c71bd26c8e1c9b08fc2f3366d6d58a4f0b3a8b6"
+    },
+    {
+      "name": "libgcc_s_seh-1.dll",
+      "sha256": "306983c483d96a6d08a2df044e360f0962e21dac021baf8311d3c0cb3b2c9def"
+    },
+    {
+      "name": "libharfbuzz-0.dll",
+      "sha256": "6163c5234f0a096a4975d3c6a7025871bbb009a04cbd5683c1d817bc6a678230"
+    },
+    {
+      "name": "liblcms2-2.dll",
+      "sha256": "9fe80e812cfe519a3a68f9c4383394553f80652745876d02c1033092a2d96919"
+    },
+    {
+      "name": "liblcms2_fast_float-2.dll",
+      "sha256": "8d5b1b169e0f8859050f301645e77fd648f39739b6f01add48aee52f4d208e7b"
+    },
+    {
+      "name": "liblcms2_threaded-2.dll",
+      "sha256": "c7ff43a8c1cd14d51b6b4a2eb9c6242e2921954e75bdf40c1c8218e97cebedbb"
+    },
+    {
+      "name": "libplacebo-387.dll",
+      "sha256": "9b182ec5a0b5c2f798dd934181b4d0e1b24a17ee276f924a9f635bf0aece82a7"
+    },
+    {
+      "name": "libpng18.dll",
+      "sha256": "c28b9863ad9dd3035dc6c54afb59af5f071e15b99eb81d6a530713a9fdc6b750"
+    },
+    {
+      "name": "libshaderc_shared.dll",
+      "sha256": "4801922a8afe100101b21dd52972aaa5f5aa4f1fdac97b2edc458755fdff09bd"
+    },
+    {
+      "name": "libspirv-cross-c-shared.dll",
+      "sha256": "e7c437077bad3151419cf6b4f4a6fda0300a7561e780eeeecbb862c5378cff47"
+    },
+    {
+      "name": "libssp-0.dll",
+      "sha256": "0b4cf4b0a5f4ceb08bc2b95e7837b72ce24c2a5e906c93edd2661facbcfe5173"
+    },
+    {
+      "name": "libstdc++-6.dll",
+      "sha256": "dc04a17d6e9fe93bcb0639e93aca2811ad53c81c523e1909a2c24daf827fd2cd"
+    },
+    {
+      "name": "libwinpthread-1.dll",
+      "sha256": "fc9f14551f6609dd51801daec2c194579d35345551ef84fe465cbdb3339c2a6f"
+    },
+    {
+      "name": "libxxhash.dll",
+      "sha256": "e91e64d9ec3f45cc6f7da5429527ab4ecc698dca95b13c40a6534b48ce89a9bd"
+    },
+    {
+      "name": "swresample-7.dll",
+      "sha256": "4a92a92306d6ca1557dfbb6a3fcf08334a48d8f168fe73f25cfa9e2357a88adf"
+    },
+    {
+      "name": "swscale-10.dll",
+      "sha256": "8b69a5a107263bd91953860da52507a1336c8e12a0218c7d5e2ec438ef7567a3"
+    },
+    {
+      "name": "zlib1.dll",
+      "sha256": "46fa4d57c93cb226283dc34eba0b7bc372a7bcc10400f1ad5b3e1b2914c00531"
+    }
+  ],
+  "distributionReady": false
+}

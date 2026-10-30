@@ -1,3 +1,4 @@
+import {nativeColorsJson,type NativeColors} from './nativeTheme';
 /** App-owned native ASS controls. Runs inside MPV, never in an Electron overlay.
  * Fixed commands only; media titles are data, not Lua/ASS or command strings.
  */
@@ -18,7 +19,28 @@ local boxes,parts = {},{}
 local pending,last_state,cursor_locked = nil,'',false
 local last_w,last_h,last_visible,last_toast=nil,nil,nil,false
 local accent,white,muted = 'FFBC9B','F4F2F2','CAC3C3'
+local backdrop,panel_bg,hover_bg,selected_bg,selected_text = '161414','242020','393432','393432','FFBC9B'
+local theme_rgb = nil -- AVHUB_INITIAL_THEME
+local theme_revision=0
 local request,render
+local function ass_color(value) return (value:sub(6,7)..value:sub(4,5)..value:sub(2,3)):upper() end
+local function apply_theme(value)
+    if type(value)~='table' then return end
+    local expected={accent=true,surface=true,raised=true,hover=true,text=true,muted=true,selection=true,selectionText=true}
+    local count=0
+    for key,color in pairs(value) do
+        if not expected[key] or type(color)~='string' or not color:match('^#%x%x%x%x%x%x$') then return end
+        count=count+1
+    end
+    if count~=8 then return end
+    theme_rgb=value;theme_revision=theme_revision+1
+    accent=ass_color(value.accent);white=ass_color(value.text);muted=ass_color(value.muted)
+    backdrop=ass_color(value.surface);panel_bg=ass_color(value.raised);hover_bg=ass_color(value.hover)
+    selected_bg=ass_color(value.selection);selected_text=ass_color(value.selectionText)
+    mp.set_property_native('user-data/avhub-ui/theme',{colors=value,revision=theme_revision})
+    if request then request() end
+end
+apply_theme(theme_rgb or {accent='#9bbcff',surface='#141416',raised='#202024',hover='#323439',text='#f2f2f4',muted='#c3c3ca',selection='#323439',selectionText='#9bbcff'})
 local function num(name,default) return mp.get_property_number(name,default or 0) end
 local function flag(name) return mp.get_property_bool(name,false) end
 local function clamp(v,a,b) return math.max(a,math.min(b,v)) end
@@ -108,8 +130,8 @@ local function button(id,x,y,size,label,kind,active)
     local b=box(id,x,y,size,size,label)
     if not visible then return end
     local hover=contains(b)
-    round(x,y,size,size,math.min(size/2,12),id=='close' and hover and '5E5EBD' or hover and '393432' or '161414',hover and 24 or 72)
-    icon(kind or id,x+(size-21)/2,y+(size-21)/2,21,active and accent or white)
+    round(x,y,size,size,math.min(size/2,12),id=='close' and hover and '5E5EBD' or active and selected_bg or hover and hover_bg or backdrop,(hover or active) and 24 or 72)
+    icon(kind or id,x+(size-21)/2,y+(size-21)/2,21,active and selected_text or hover and id~='close' and accent or white)
 end
 local function tracks(kind)
     local list={};for _,t in ipairs(mp.get_property_native('track-list',{})) do if t.type==kind then list[#list+1]=t end end;return list
@@ -128,7 +150,7 @@ local function layout()
 end
 local function menu_row(id,y,label,value)
     local w=math.min(274,W-36);local x=W-w-18;box(id,x+6,y,w-12,34,label)
-    if contains(boxes[#boxes]) then round(x+6,y,w-12,34,8,'393432',30) end
+    if contains(boxes[#boxes]) then round(x+6,y,w-12,34,8,hover_bg,30) end
     text(x+18,y+17,label,13,white,4);text(x+w-18,y+17,fit(value,w-110,12),12,accent,6)
 end
 render=function()
@@ -146,7 +168,7 @@ render=function()
         local titleWidth=math.max(0,topX-30)
         if titleWidth>80 then
             local label,used=fit('AVHub · '..title,titleWidth-45,13)
-            round(14,12,math.min(titleWidth,used+48),32,10,'161414',72)
+            round(14,12,math.min(titleWidth,used+48),32,10,backdrop,72)
             icon('play',21,19,17,accent)
             text(45,28,label,13,white,4)
         end
@@ -173,32 +195,32 @@ render=function()
     local duration,position=num('duration'),drag and drag.id=='timeline' and drag.target or num('time-pos')
     local sy=H-86;box('timeline',margin,sy-11,W-2*margin,22,'播放进度')
     if visible then
-        round(margin,sy-3,W-2*margin,6,3,'161414',45)
+        round(margin,sy-3,W-2*margin,6,3,backdrop,45)
         round(margin,sy-2,W-2*margin,4,2,'F4F2F2',130)
         local ratio=duration>0 and clamp(position/duration,0,1) or 0
         if ratio>0 then round(margin,sy-2,(W-2*margin)*ratio,4,2,accent,0) end
         round(margin+(W-2*margin)*ratio-5,sy-5,10,10,5,white,0)
-        round(margin,sy-36,70,23,7,'161414',65);text(margin+9,sy-24,time(position),12,white,4)
-        round(W-margin-70,sy-36,70,23,7,'161414',65);text(W-margin-9,sy-24,time(duration),12,white,6)
+        round(margin,sy-36,70,23,7,backdrop,65);text(margin+9,sy-24,time(position),12,white,4)
+        round(W-margin-70,sy-36,70,23,7,backdrop,65);text(W-margin-9,sy-24,time(duration),12,white,6)
         if W>800 then text(W/2,sy-24,'原文件 · 原画',11,muted,5) end
         local target=hit()
         if target and target.id=='timeline' and duration>0 then
             local tx=clamp(mx,margin+40,W-margin-40)
-            round(tx-38,sy-66,76,25,8,'161414',25)
+            round(tx-38,sy-66,76,25,8,backdrop,25)
             text(tx,sy-54,time(duration*clamp((mx-margin)/(W-margin*2),0,1)),12,white,5)
         end
     end
     if panel and visible then
         local pw=math.min(274,W-36);local px,py=W-pw-18,math.max(8,H-304)
         box('panel',px,py,pw,190,'播放设置')
-        round(px,py,pw,190,14,'242020',8)
+        round(px,py,pw,190,14,panel_bg,8)
         menu_row('speed',py+10,'倍速',string.format('%g×',num('speed',1)))
         menu_row('audio',py+44,'音轨',track_label('audio'))
         menu_row('subtitle',py+78,'字幕',track_label('sub'))
         text(px+18,py+129,pw<250 and '延迟' or '字幕延迟',13,white,4)
         box('delay-down',px+pw-146,py+112,26,34,'字幕延迟 − 0.25 秒')
         box('delay-up',px+pw-40,py+112,26,34,'字幕延迟 + 0.25 秒')
-        round(px+pw-146,py+116,26,26,7,'393432',20);round(px+pw-40,py+116,26,26,7,'393432',20)
+        round(px+pw-146,py+116,26,26,7,hover_bg,20);round(px+pw-40,py+116,26,26,7,hover_bg,20)
         text(px+pw-133,py+129,'−',13,white,5);text(px+pw-27,py+129,'+',13,white,5)
         text(px+pw-78,py+129,string.format('%+.2fs',num('sub-delay')),11,accent,5)
         menu_row('rotate',py+146,'旋转画面',string.format('%d°',num('video-rotate')))
@@ -207,11 +229,11 @@ render=function()
     if visible and hover and hover.label and hover.id~='timeline' and hover.id~='title' and hover.id~='panel' and not panel and not drag then
         local label=hover.label;local tw=math.min(W-28,math.max(70,#label*5.5))
         local tx=clamp(hover.x+hover.w/2,tw/2+12,W-tw/2-12);local ty=hover.y<60 and 55 or y-31
-        round(tx-tw/2,ty,tw,24,8,'161414',16);text(tx,ty+12,label,11,white,5)
+        round(tx-tw/2,ty,tw,24,8,backdrop,16);text(tx,ty+12,label,11,white,5)
     end
     if toast then
         local label,used=fit(toast.text,W-72,13);local tw=math.min(W-36,used+34)
-        round((W-tw)/2,66,tw,36,12,'161414',24)
+        round((W-tw)/2,66,tw,36,12,backdrop,24)
         text(W/2,84,label,13,toast.error and 'A5A5F4' or accent,5)
     end
     local data=table.concat(parts,'\n')
@@ -307,6 +329,10 @@ mp.observe_property('mouse-pos','native',function(_,pos)
 end)
 for _,name in ipairs({'time-pos','duration','pause','mute','volume','fullscreen','window-maximized','ontop','speed','aid','sid','sub-delay','video-rotate','osd-dimensions'}) do mp.observe_property(name,'native',request) end
 mp.register_script_message('title',function(value) title=safe(value,180);request() end)
+mp.register_script_message('theme',function(value)
+    if type(value)~='string' or #value>1024 then return end
+    apply_theme(utils.parse_json(value))
+end)
 mp.register_script_message('capture',function(status)
     local labels={pending='正在保存截图…',saved='截图已保存',error='截图未保存，请返回媒体库查看'}
     if not labels[status] then return end
@@ -319,3 +345,9 @@ mp.register_event('shutdown',function() if pending then pending:kill() end;if to
 mp.add_timeout(1.05,request)
 request()
 `;
+
+/** Only validated HEX literals enter owned Lua, never titles or arbitrary settings. */
+export function independentControllerForTheme(colors:NativeColors){
+ const encoded=nativeColorsJson(colors);
+ return independentController.replace('local theme_rgb = nil -- AVHUB_INITIAL_THEME',`local theme_rgb = utils.parse_json('${encoded}') -- AVHUB_INITIAL_THEME`);
+}

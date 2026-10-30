@@ -3,13 +3,14 @@ import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 import {MpvClient} from './mpvClient';
 import {independentInput} from './independentInput';
-import {independentController} from './independentController';
+import {independentControllerForTheme} from './independentController';
+import {nativeAppearance,nativeThemeColors,nativeColorsJson,type NativeColors} from './nativeTheme';
 import {captureNativeFrame} from './nativeCapture';
 import {nativeTrackChoice,rememberedTrack,type MediaPlaybackState} from './nativeTrackMemory';
 import {defaultSubtitleAppearance,subtitleOptions,subtitleStyle} from './nativeSubtitle';
 import {startupFailure} from './nativeFailure';
 type Deps={data:()=>string;runtime:()=>string;origin:()=>string;token:()=>string;log:(text:string)=>void;api:(route:string,method?:string,body?:unknown)=>Promise<any>;send:(channel:string,value:unknown)=>void};
-type Session={client:MpvClient;mediaId:number;title:string;owner:string;directory?:string;closing:boolean;stopped:boolean;cleanupError:string;failed:boolean;failure?:unknown;ended:boolean;ready:boolean;timer:ReturnType<typeof setInterval>;publishTimer?:ReturnType<typeof setTimeout>;persist:Promise<unknown>;pending?:Promise<unknown>;capture?:Promise<unknown>;memory:MediaPlaybackState;externalSubtitles:string[];memoryRetired:boolean;lastMemory:string;lastAudio:string;saveError:string;revision:number;started:number};
+type Session={client:MpvClient;mediaId:number;title:string;owner:string;directory?:string;closing:boolean;stopped:boolean;cleanupError:string;failed:boolean;failure?:unknown;ended:boolean;ready:boolean;timer:ReturnType<typeof setInterval>;publishTimer?:ReturnType<typeof setTimeout>;persist:Promise<unknown>;pending?:Promise<unknown>;capture?:Promise<unknown>;memory:MediaPlaybackState;externalSubtitles:string[];memoryRetired:boolean;lastMemory:string;lastAudio:string;saveError:string;revision:number;started:number;theme?:NativeColors;themeSent?:string;themePending?:Promise<void>};
 type Activity={owner:string;media_id:number;present:boolean;playing:boolean;preparing:boolean};
 /** A true MPV-owned window: no Electron video host or controls renderer. */
 export class IndependentPlayer{
@@ -54,7 +55,10 @@ export class IndependentPlayer{
       if((await lstat(parent)).isSymbolicLink()||await realpath(parent)!==path.join(await realpath(this.deps.data()),'native-inputs'))throw new Error('独立播放器配置目录含外部链接');
       s.directory=await mkdtemp(path.join(parent,'session-'));const input=path.join(s.directory,'input.conf');
       await writeFile(input,independentInput(prefs.values?.mouseSeekSeconds??5),{encoding:'utf8',flag:'wx'});
-      const controller=path.join(s.directory,'avhub_ui.lua');await writeFile(controller,independentController,{encoding:'utf8',flag:'wx'});
+      s.theme??=nativeThemeColors(prefs.values?.appearance);
+      const initialTheme=s.theme;
+      const controller=path.join(s.directory,'avhub_ui.lua');await writeFile(controller,independentControllerForTheme(initialTheme),{encoding:'utf8',flag:'wx'});
+      s.themeSent=nativeColorsJson(initialTheme);
       if(this.cancelled)throw new Error('独立播放启动已取消');
       const restore=async()=>{
         const tracks=await client.command(['get_property','track-list']) as any[];
@@ -73,7 +77,11 @@ export class IndependentPlayer{
       if(!uiReady)throw new Error('独立播放控制栏初始化失败，请重试或切回内嵌模式');
       await client.command(['script-message-to','avhub_ui','title',s.title]);
       if(this.active!==s||s.closing||this.cancelled||['closed','error'].includes(client.snapshot.phase))throw new Error(client.snapshot.error||'独立播放启动已取消');
-      s.ready=true;this.publish(s);this.deps.log('native-player-start engine=mpv presentation=independent source=original');
+      s.ready=true;
+      // Appearance is optional UI state; a late color sync must not tear down
+      // an already decoded video or release its active-reader protection.
+      try{await this.flushTheme(s);}catch{this.deps.log('native-theme-sync failed');}
+      this.publish(s);this.deps.log('native-player-start engine=mpv presentation=independent source=original');
       return {session:client.session,presentation:'independent'};
     }catch(error){
       if(s){s.failed=true;s.failure=error;try{await this.close(true);}catch(cleanup){throw startupFailure(error,cleanup);}}
@@ -129,6 +137,25 @@ export class IndependentPlayer{
       try{await s.client.command(['script-message-to','avhub_ui','capture','pending']);const result=await captureNativeFrame(this.deps,s);await s.client.command(['script-message-to','avhub_ui','capture','saved']).catch(()=>{});return result;}
       catch(error){await s.client.command(['script-message-to','avhub_ui','capture','error']).catch(()=>{});this.event(s,'error',error instanceof Error?error.message:'截图失败');throw error;}
     })();s.capture=task;void task.finally(()=>{if(s.capture===task)s.capture=undefined;}).catch(()=>{});return task;
+  }
+  async updateAppearance(input:unknown){
+    const value=input as {session?:unknown;appearance?:unknown};
+    if(!value||typeof value!=='object'||Object.keys(value).length!==2||typeof value.session!=='string'||!(/^[a-f0-9]{32}$/).test(value.session))throw new Error('原生窗口配色会话无效');
+    const colors=nativeThemeColors(nativeAppearance(value.appearance)),s=this.active;
+    if(!s||s.client.session!==value.session||s.closing||s.stopped)return {applied:false};
+    s.theme=colors;
+    try{await this.flushTheme(s);}catch(error){if(s.closing||s.stopped||this.active!==s)return {applied:false};throw error;}
+    return {applied:s.ready&&s.themeSent===nativeColorsJson(colors)};
+  }
+  private flushTheme(s:Session):Promise<void>{
+    if(s.themePending)return s.themePending;
+    if(!s.ready||!s.theme||s.themeSent===nativeColorsJson(s.theme))return Promise.resolve();
+    const task=(async()=>{
+      while(this.active===s&&s.ready&&!s.closing&&!s.stopped&&s.theme){
+        const encoded=nativeColorsJson(s.theme);if(encoded===s.themeSent)break;
+        await s.client.command(['script-message-to','avhub_ui','theme',encoded]);s.themeSent=encoded;
+      }
+    })();s.themePending=task.finally(()=>{s.themePending=undefined;});return s.themePending;
   }
   async invoke(action:unknown,input:unknown){
     const s=this.active;if(!s)throw new Error('独立播放已关闭');

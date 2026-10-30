@@ -4,12 +4,13 @@ import json
 import os
 import subprocess
 import runpy
+import zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent.parent
 def digest(file):
     with file.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
 def names(version):
-    return (f'AVHub-portable-{version}-x64.exe',f'AVHub-folder-portable-{version}-x64.zip')
+    return (f'AVHub-portable-{version}-x64.exe',f'AVHub-folder-portable-{version}-x64.zip',f'AVHub-source-materials-{version}.zip')
 def checksums(records):
     return ''.join(f"{item['sha256']}  {item['filename']}\n" for item in records)
 def verify(directory,version,commit):
@@ -17,12 +18,21 @@ def verify(directory,version,commit):
     if info.get('schema')!=2 or info.get('version')!=version or info.get('commit')!=commit:raise ValueError('Artifact version/source mismatch')
     if not isinstance(info.get('build_id'),str) or not info['build_id']:raise ValueError('Missing build identity')
     records=info.get('artifacts',[])
-    if not isinstance(records,list) or tuple(item.get('filename') for item in records)!=names(version):raise ValueError('Exact EXE and ZIP manifest required')
+    if not isinstance(records,list) or tuple(item.get('filename') for item in records)!=names(version):raise ValueError('Exact EXE, folder ZIP and corresponding source manifest required')
     for item in records:
         file=directory/item['filename']
         if file.is_symlink() or not file.is_file() or file.stat().st_size!=item.get('bytes') or digest(file)!=item.get('sha256'):raise ValueError('Artifact digest/size mismatch')
     if (directory/'SHA256SUMS.txt').read_text(encoding='utf-8')!=checksums(records):raise ValueError('Checksum file mismatch')
     runpy.run_path(str(ROOT/'scripts/folder-portable.py'))['verify'](directory/names(version)[1],version,info.get('build_id'))
+    with zipfile.ZipFile(directory/names(version)[2]) as sources:
+        index=json.loads(sources.read('DELIVERY-INDEX.json'))
+        if (sources.testzip() is not None or index.get('applicationBuild',{}).get('version')!=version
+            or index.get('applicationBuild',{}).get('build_id')!=info['build_id']
+            or index.get('nativeSourceArchives',0)<22 or index.get('controlledCliSourceArchives',0)<11):
+            raise ValueError('Corresponding source bundle does not match this application build')
+        for member in index['files']:
+            with sources.open(member['path']) as stream:
+                if hashlib.file_digest(stream,'sha256').hexdigest()!=member['sha256']:raise ValueError('Corresponding source member changed')
     return info
 def main():
     version=json.loads((ROOT/'package.json').read_text())['version']

@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "runtimeArchiveSha256": "a49811c0752c108b8260636f9c6f6fcb97406641c98b30f1e7b500dfb20177de",
+  "status": "partial-unreviewed",
+  "archives": [
+    {
+      "component": "mpv",
+      "revision": "41f6a645068483470267271e1d09966ca3b9f413",
+      "url": "https://codeload.github.com/mpv-player/mpv/zip/41f6a645068483470267271e1d09966ca3b9f413",
+      "name": "mpv-41f6a645068483470267271e1d09966ca3b9f413.zip",
+      "size": 7833866,
+      "sha256": "56116d55aab308c0f1c6d7e48a2e8a34ff50f516f7f06ec863e1eef82a5b6ccc"
+    },
+    {
+      "component": "ffmpeg",
+      "revision": "1fcb201ab10cbc98d931e340da6ace292e82b1e1",
+      "url": "https://codeload.github.com/FFmpeg/FFmpeg/zip/1fcb201ab10cbc98d931e340da6ace292e82b1e1",
+      "name": "ffmpeg-1fcb201ab10cbc98d931e340da6ace292e82b1e1.zip",
+      "size": 22876208,
+      "sha256": "2358b01dd8ec76fa8fe2a07ce8c96b01a471ef1c224221ee77afe545687fb9da"
+    }
+  ]
+}

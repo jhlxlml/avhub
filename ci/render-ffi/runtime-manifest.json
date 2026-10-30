@@ -1,0 +1,61 @@
+{
+  "version": "3.3.4",
+  "license": "MIT",
+  "platform": "win32-x64",
+  "source": "https://github.com/Koromix/koffi",
+  "scope": "Isolated M2 trusted main-process Win32 handle ownership only",
+  "archives": [
+    {
+      "prefix": "node_modules/koffi",
+      "url": "https://registry.npmjs.org/koffi/-/koffi-3.3.4.tgz",
+      "integrity": "sha512-31Vr+LM+w1dEsNcOJtJWvYyUTjVc/SWOxNDZJxfhsBC6qZ5YVn98n5x1oBbDq5skxCbWD4SByJpNmq63fvg9Aw=="
+    },
+    {
+      "prefix": "node_modules/@koromix/koffi-win32-x64",
+      "url": "https://registry.npmjs.org/@koromix/koffi-win32-x64/-/koffi-win32-x64-3.3.4.tgz",
+      "integrity": "sha512-/SpehfYrO9DtkoB0ZOgGyco4GH4zwhEyFqgCm0x8lbzXnrKiwnHXWmPpfuXhFYohFvoSO5jlLQz/hc1fJ5G0AQ=="
+    }
+  ],
+  "files": [
+    {
+      "name": "node_modules/koffi/package.json",
+      "size": 2304,
+      "sha256": "c0060beaf0e14ea08ba221fb19878fdc9da930de1d115b370a9d4d62bb3cdbc0"
+    },
+    {
+      "name": "node_modules/koffi/index.cjs",
+      "size": 50,
+      "sha256": "a200e15ec168d00cb3155794808a98243051c61dd7f6989c23c57ee220c918b9"
+    },
+    {
+      "name": "node_modules/koffi/src/koffi/index.cjs",
+      "size": 10999,
+      "sha256": "72a1d3026409f8c896a59f51b085c21d7eacbf273dca4ccd21da6f47e70b3425"
+    },
+    {
+      "name": "node_modules/koffi/src/koffi/src/static.cjs",
+      "size": 3591,
+      "sha256": "522a9d98e271b565de4013910b8c81bb061a34d3460e43fd9a92daab8fbadddc"
+    },
+    {
+      "name": "node_modules/koffi/LICENSE.txt",
+      "size": 1117,
+      "sha256": "22bcbbbacd739b026a8dc484f62a31484ce4c4e31f3408b60b29b4e41d62b290"
+    },
+    {
+      "name": "node_modules/@koromix/koffi-win32-x64/package.json",
+      "size": 644,
+      "sha256": "1be050186663778724acd9e184a4b5f5b702c8b8aa412545ffe7cf67973c692b"
+    },
+    {
+      "name": "node_modules/@koromix/koffi-win32-x64/index.js",
+      "size": 52,
+      "sha256": "f9991ec70a0f775487ffadc2461d69edd1555e3d9bf80de0bbdd2eec7d245c49"
+    },
+    {
+      "name": "node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node",
+      "size": 1051648,
+      "sha256": "a77b6bb6f60cdd360a41cc4e9f8a0e2a4c5b8e6dd83f43e756af285c59a7c4c2"
+    }
+  ]
+}
