@@ -1,11 +1,16 @@
 # Architecture optimization baseline
 
-**Current checkpoint, 2026-10-31:** user-authorized local rebuild
-3f5396166505433f passes actual EXE/ZIP and physical 125%/175% SDR/HDR
-cross-screen acceptance, including 4K PQ/HLG coded charts and the mDCV
-screenshot regression. The older build 084031ef4f398db9 remains historical.
-Local acceptance is not release approval, hosted CI or colorimetric HDR
-certification. See 70's final local-rebuild checkpoint.
+**Current checkpoint, 2026-11-01:** main
+559863dc1a4b167f4aeaf49bec5cc3a1db24c372 includes App-owned scoped session
+coordination and the clean-source CI repair. Root application build
+7db3a3b77514122b has bounded real Electron acceptance and an identical-source
+frontend/Electron build replay; bounded current-root endurance has passed while
+matching hosted source CI has passed.
+Earlier packaged build 3f5396166505433f and its physical SDR/HDR cross-screen
+checks remain historical evidence, not acceptance of this root implementation.
+Current local product packaging and migration/exit acceptance have passed;
+new stable publication and colorimetric HDR certification are not claimed.
+See 70's final local RC checkpoint and explicit limits.
 
 2026-10-30, Windows x64; repository jhlxlml/avhub, branch main.
 
@@ -403,3 +408,64 @@ exposed missing release notes in source capture and failed one check; retain it.
 The corrected isolated-source probe completed: 787 run, 763 pass / 24 explicit
 skips, exit 0. Current-root 20+10 minute Electron soak remains in progress.
 No product playback/quality/default-engine changes were required for this repair.
+
+## Current-root close-out results, 2026-11-01
+
+The actual detached Git checkout at 559863d passed normal npm ci, explicit
+Electron preparation, both builds and the exact full workflow native control
+queue regression group. This uses explicit CI tools, not private native build
+dossiers. The frozen source snapshot independently rebuilt frontend/Electron
+with normal lifecycle policy and zero-vulnerability audit: replay DGEvmh,
+build 7db3a3b77514122b, identical Electron modules and dependency notices; it does
+not claim a clean OS or newly rebuilt Python/native runtime.
+
+Root opt-in real Electron endurance completed: 1,200 seconds / 108 library
+cycles / 5,335 active frames, zero drops/waiting/stalled/unexpected reloads;
+one application root throughout, generations 1 through 215 strictly increasing.
+The subsequent 600-second original-sized 4K SDR10 compositor-pixel run completed
+with zero decoder/output drops and real balanced shutdown. Reports NURonz and
+D1iY0d are detailed in 70. Raw native range diagnostic remains false (17-handle
+range exceeds 16); the existing independent convergence criteria passed. The
+retained progress-save tail is 1,869.824 ms commit / 1,879 ms fetch. Neither a
+zero-drop bounded run nor convergence is a claim of leak/tail-latency freedom.
+
+Source readiness has improved; stable publication remains unapproved by the
+technical gates until full matching hosted CI and current-source packaged
+EXE/ZIP/source-material acceptance complete. Version stays 0.2.17; no new tag,
+package or upload in this close-out. User-deferred external acceptance remains
+explicitly deferred. User planning document is unchanged.
+
+## Final local architecture RC checkpoint
+
+Hosted source run 41261549364 passed at 559863d. Fresh frozen backend replay
+DGEvmh passed startup/SQLite/notices verification. Restoring the long-tested
+timestamp reproduced the exact application payload; the first timestamp-
+mismatched assembly remains unaccepted. Candidate
+build/root-desktop-acceptance-x346zn8l passes actual independent MPV, dual-mode
+coexistence and D3D11/Chromium handoff, plus 9 physical mixed-DPI cases at
+125%/175% for SDR8, SDR10 and PQ-content playback/capture/fullscreen/restore.
+Electron reports BT709/sRGB and P3/sRGB outputs; no PQ scanout certification.
+
+Source ZIP verifies all 1,215 members and corresponding native/controlled CLI
+sources. Mandatory actual local material gate: 15 pass, zero skips. Ordinary
+release configuration wraps the exact accepted application and verifies final
+identity. Actual single EXE and extracted folder ZIP each pass three-launch
+synthetic legacy upgrade/data relocation/preference/exit acceptance. Extracted
+EXE/ASAR and complete runtime trees match the accepted product. Artifact hashes,
+timings and limits are in LOCAL-ACCEPTANCE.json and document 70.
+
+A–D and E's local RC scope are complete at these documented limits. Keep the
+coordinator default-off; retain observed persistence tails and false raw-range
+diagnostic. External-device testing is deferred, clean Windows and physical
+HDR color accuracy are not certified. No new stable identity, commit/tag or
+publication in this continuation. Version remains 0.2.17; a future stable
+version needs its own synchronized version/notes and actual artifact evidence.
+
+0.2.18 release preparation is now authorized and started. Version/lock/fallback
+metadata and bilingual release input are synchronized. Fresh install/audit/build
+and 60 contracts pass; workflow/version contracts pass. Existing fixed native
+source/material bytes are retained after an unsuccessful newline-normalization
+probe (all native pins match); no binary provenance check was bypassed. New
+matching source CI and actual 0.2.18 artifacts still require acceptance. This
+supersedes the preceding version-stays-0.2.17 statement only for preparation;
+no new stable tag/publication is claimed. Details and logs are in 70.

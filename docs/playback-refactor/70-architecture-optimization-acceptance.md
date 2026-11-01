@@ -4,13 +4,17 @@ Current implementation task, not a published-release or hardware certificate. Ba
 
 **Latest local security gate (2026-10-31): PASS after the build-tool follow-up below.** Standard npm ci/npm ls/audit and related builds/integration pass, with zero vulnerabilities. The intermediate 15-moderate minimatch failure and rejected incompatible attempts remain recorded. Fresh packaged/hosted-CI/hardware acceptance is still separate and is not declared complete.
 
-**Current gate: PASS LOCAL REBUILD, NOT RELEASE APPROVAL.** Following explicit
-user authorization, new EXE/ZIP build 3f5396166505433f passes same-application
-packaged acceptance, actual extracted-ZIP HDR/mixed-DPI/screenshot tests and
-single-EXE startup/migration/exit checks. Old build 084031ef4f398db9 still lacks
-the fix. External-computer tests are deferred by user, hosted CI is unrun and
-physical color accuracy is not certified. Version remains 0.2.17; nothing was
-committed, pushed, tagged or published. Latest details are at the end.
+**Current gate (2026-11-01): LOCAL ARCHITECTURE RC ACCEPTED, NOT A NEW STABLE RELEASE.**
+Current main is 559863dc1a4b167f4aeaf49bec5cc3a1db24c372; the root coordinator
+implementation is committed, and its compiled application payload is unchanged
+by the clean-source CI fixture repair. Current-root real Electron endurance has
+passed its bounded checks; matching hosted source CI has passed. Earlier EXE/ZIP build 3f5396166505433f remains historical
+packaged evidence and cannot certify the new root implementation. Fresh current
+EXE/ZIP/source materials now pass local acceptance (final checkpoint below). External
+testing remains deferred, and physical color accuracy is not certified. Version
+remains 0.2.17. Ordinary source commits were pushed; no new stable tag or Release
+was created. New packages are local candidates only. Latest evidence is at the end; earlier
+tables and command observations below retain their original checkpoint scope.
 
 | Stage | State | Evidence |
 | --- | --- | --- |
@@ -661,3 +665,193 @@ Source closure fixes and test-only fixtures do not change the frozen application
 payload d50dc1f5e9c206b651734c8db9abafd869d260f8e181a6f825e24fc283011090.
 Stable release remains blocked pending matching hosted CI and current product
 acceptance; no version bump/tag/upload during this repair.
+
+## Current-root endurance and clean checkout, 2026-11-01
+
+Source main is 559863dc1a4b167f4aeaf49bec5cc3a1db24c372. This repair changes
+test/source-delivery prerequisites, not the compiled application payload
+d50dc1f5e9c206b651734c8db9abafd869d260f8e181a6f825e24fc283011090.
+The coordinator remains default-off; endurance explicitly opts in.
+
+| Check | Result | Actual evidence / exit |
+| --- | --- | --- |
+| detached Git checkout, normal npm ci / explicit Electron install / frontend and Electron builds | PASS | exit 0; build/ci-clean-checkout-3fajh10i at 559863d; build/root-session-closeout/clean-node-workflow.log and clean-node-exit.json |
+| exact full workflow Native playback control queue regression group in that checkout | PASS | exit 0; scripts/verify-windows.py --execute --step "Native playback control queue regression (no runtime download)"; no developer native dossiers copied |
+| current frozen application snapshot install/audit/build replay | PASS | exit 0 each; build/application-build-replay-DGEvmh/replay-report.json; source copies verified, build 7db3a3b77514122b matches, all Electron modules identical, dependency notices match; existing toolchain/cache, not a clean OS or new backend/native build |
+| real Electron library / playback / scanning / covers / preview, 1,200 seconds | PASS bounded | exit 0; build/desktop-usage-avhub-desktop-usage-NURonz/soak.json; 108 cycles, 324 previews, 372 published covers, 5,335 active decoded frames, zero active/startup drops, waiting/stalled/unexpected reloads; clean exit and unchanged generated sources |
+| real shared-root continuity across all library Player remounts | PASS | same actual root f7744924-3cf2-44fb-bb3c-7d8d50dce107 throughout; generation strictly increases from 1 to 215 |
+| current 600-second 4K SDR10 native compositor-pixel endurance | PASS bounded / raw range diagnostic FAIL retained | exit 0; build/render-app-soak-D1iY0d/report.json; root-render-soak.log / root-render-soak-exit.json; details below |
+
+The library is generated 320x180 H264 SDR content, not 4K/HDR/long-GOP or the
+deferred problem file. Normal GPU/sandbox with Playwright attached is not a
+no-inspector cold-start or memory benchmark. Final WAL is zero; service steps
+report zero failures. Durable-write tails remain observable: retained maximum
+commit 1,869.824 ms (progress-save), maximum progress fetch 1,879 ms. Existing
+publication-gate wait reaches 5,235.973 ms and finishes with no active/waiting
+owner. These observations are not erased by the playback PASS and do not prove
+tail-latency or leak freedom. They are not attributed to the coordinator without
+a paired baseline. Sources under E:\downloads were not mutated or used here.
+
+Hosted run https://github.com/jhlxlml/avhub/actions/runs/41261549364 is still
+in progress for exactly 559863d; backend and short-path steps have passed, but
+the entire workflow is not declared green yet. No new stable tag/version,
+EXE/ZIP or Release has been created in this checkpoint.
+
+### Completed current-root native endurance
+
+Actual duration 600.0394652 seconds after fixed warmup, coordinator opt-in true,
+source build 7db3a3b77514122b / payload d50dc1f5e9c206b651734c8db9abafd869d260f8e181a6f825e24fc283011090.
+Actual compositor frame-code progression / wall time ratio 1.0000066580130162;
+decoder drops 0 (budget 0), output drops 0 (budget 15). Generated 4K25 SDR10
+fixture repeats six-second content over a 960-second timeline; this is not
+unique movie content, exact decoded-frame counting or physical scanout/HDR
+color accuracy. No source reload was allowed by the harness.
+
+Keep **rawRangePassed=false**, unchanged. Late native handle range is 17,
+exceeding that historical diagnostic's 16 limit; private range 1,327,104 bytes,
+GPU range 66,846,720 bytes. The existing separate convergence policy passed:
+handle baseline 820 / peak 825 / settled 816 / idle range 0; private peak growth
+2,019,328 bytes and settled growth 905,216 bytes; GPU peak/settled positive growth
+0. No policy or threshold was changed to obtain this result. Late Electron
+private range is 71,140 KiB. Bounded convergence does not prove leak freedom.
+
+Real shutdown: helperAlive=false, sourceLeaseReleased=true; 15,795 imports /
+15,795 releases, one lease / one closed lease; timer requests/releases 2/2,
+inactive after close. The owned sample copy's SHA256/mtime matched before
+cleanup; only that generated copy was removed after real resource release.
+Both sequential long-test commands exited 0. No new package, stable tag or
+publication has occurred; fresh matching distributable acceptance remains next.
+
+## Hosted source CI completed / fresh product acceptance started
+
+Run https://github.com/jhlxlml/avhub/actions/runs/41261549364 completed
+**success** for exact main 559863dc1a4b167f4aeaf49bec5cc3a1db24c372.
+Windows source-verification job 124715681670 passed; publishing job 124724916426
+was intentionally skipped on an ordinary source push. Retained observation:
+build/root-session-closeout/ci-559863d-success.json. This supersedes the previous
+running observation, not the retained failed d9c1efb run. Source-only native
+material SKIPs remain explicit and are not GPU/source-build certification.
+
+Stage A hosted source gate is restored. The user-authorized next step is local
+candidate packaging and real packaged dual-runtime acceptance using this root
+implementation, without a version bump, tag or upload. Backend replay starts
+from frozen current source build/application-build-replay-DGEvmh, not the old
+3f5396166505433f executable. Package acceptance is pending, not inferred from CI.
+
+### Fresh packaged application acceptance (no publication)
+
+New backend replay DGEvmh: PASS / exit 0; existing Python build toolchain,
+fresh frozen backend executable, verified SQLite 3.54.1 and bundled notices.
+The first assembly q240cp3c exposed a changed working build timestamp
+01:59:42.445Z instead of the tested 00:54:34.812Z; it is retained and not accepted.
+Frozen rebuild restored the exact tested payload d50dc1f5e9c206b651734c8db9abafd869d260f8e181a6f825e24fc283011090
+(candidate-frozen-payload.log, exit 0); no source or hash guard was weakened.
+
+Accepted ordinary desktop candidate: build/root-desktop-acceptance-x346zn8l,
+actual backend build/m5-controlled-backend-35thne88/AVHubServer, bound by
+M5-BUILD-INPUTS.json; native and independent runtimes remain the verified
+source-built inputs, never the unrelated default developer mpv.exe. Version
+0.2.17, build 7db3a3b77514122b. All three real packaged subjects agree on EXE
+SHA256 3c7f5bfa8ce5e6322dfe91dacaa101dcc694d1649369ca3b627740af6068eefb and ASAR
+SHA256 1078d42d6dda6b4a2fe61776a425625097f3df2ca727c3213158e05297d12a3d.
+
+| Actual packaged scope | Result | Evidence / exit |
+| --- | --- | --- |
+| independent window / controls / screenshots / queue / clean exit | PASS | exit 0; build/native-independent-0mDf1F/acceptance.json; coordinator opt-in |
+| independent / embedded preference coexistence, default coordinator compatibility | PASS | exit 0; build/mpv-window-coexistence-jcJVUX/report.json; same EXE/ASAR, source unchanged |
+| D3D11 compositor targets / transformations / fullscreen / capture / Chromium return | PASS | exit 0; build/render-app-flow-JjgTh1/report.json; coordinator and handoff enabled |
+| current physical mixed-DPI desktop flow | PASS bounded | exit 0; build/physical-app-ILYsuL/report.json; coordinated=true, 9 cases across 1080p SDR8 / 4K SDR10 / PQ HDR chart and both displays, screenshot / fullscreen / minimize-restore / balanced cleanup |
+
+Actual displays are 125% 8-bit BT709/sRGB and 175% 10-bit P3/sRGB as reported by
+Electron. PQ content playback and code-value capture checks are not a claim that
+the physical output is PQ or colorimetrically accurate. No system display setting
+was changed. External-machine testing remains user-deferred. Matching source
+materials, final portable EXE/ZIP and extracted-product migration/startup remain
+pending; these candidate tests alone do not authorize PublicationReady=true.
+
+### Final local RC / A–E close-out checkpoint
+
+All commands in this checkpoint exited **0**. Version stays 0.2.17; no new
+commit/push/tag/Release in this continuation. Application payload remains
+d50dc1f5e9c206b651734c8db9abafd869d260f8e181a6f825e24fc283011090.
+Coordinator remains default-off; no UI rewrite, old-engine deletion or quality
+conversion was introduced.
+
+| Final check | Result / actual evidence |
+| --- | --- |
+| matched source-material ZIP | PASS; 1,215 members individually verified; 22 native archives, 3 native support packages and 11 controlled CLI archives; current-source-delivery.log |
+| mandatory actual local material audits | PASS; 15 checks, zero skips; current-release-inputs.log; actual same-application schema 2 receipt generated |
+| ordinary release configuration wraps accepted prepackaged application | PASS; current-portable-build.log; unchanged afterAllArtifactBuild verifies actual EXE/ASAR/resources |
+| folder portable ZIP content/CRC/hash/pinned runtime | PASS; current-folder-build.log |
+| actual portable EXE legacy upgrade / migration / repeat launch / exit | PASS; build/portable-release-test-EMBsJX/startup-timings.json; current-portable-acceptance.log; 3 launches |
+| actual extracted ZIP legacy upgrade / migration / repeat launch / exit | PASS; current-folder-acceptance.log; exact report location in LOCAL-ACCEPTANCE.json; 3 launches |
+| extracted ZIP identity versus accepted application | PASS; release-evidence.cjs artifact verifies actual EXE/ASAR and complete backend/native/MPV/CLI resource trees |
+
+Migration uses synthetic old-schema metadata/progress/playlist and retains the
+old directory, not a real user backup. The actual packaged Electron startup
+harness explicitly sets CI=true only to mock the manual-update GitHub response;
+no automatic update requests occur. This is not browser-only acceptance.
+
+Library ready times (ms): EXE **12,559 / 12,099 / 11,991**; folder
+**1,978 / 1,113 / 819**. Includes self-extraction, 250ms polling granularity,
+initial legacy upgrade and run-2 relocation. No OS cache flush, clean Windows
+or controlled cold-start benchmark is claimed. Durable-save tails and
+rawRangePassed=false remain retained above.
+
+Artifacts in **build/root-desktop-acceptance-x346zn8l**:
+
+| Artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| AVHub-portable-0.2.17-x64.exe | 192813209 | 8f026d986743cbd222b2063906c016dec937c92bce759915daad57146eb9e4f4 |
+| AVHub-folder-portable-0.2.17-x64.zip | 299885487 | b5c0d904252a3b2e9ff951e5ee21d03a8059c961e57e1055a238d5cc658559ba |
+| AVHub-source-materials-0.2.17.zip | 247223470 | de240a4dd712c7892c3363fdd22da927b1a5204536f9a06a694b35d1fc842f57 |
+
+LOCAL-ACCEPTANCE.json binds HEAD/build/CI/artifact hashes and actual reports.
+The source ZIP contains frozen sources, corresponding backend/native/CLI
+materials and evidence available when staged. This post-packaging ledger and
+LOCAL-ACCEPTANCE.json are separate sidecar evidence, not claimed to be inside
+the already hashed ZIP. Existing online 0.2.17 assets were not replaced.
+
+| Stage | Final scoped conclusion |
+| --- | --- |
+| A | PASS local and matching hosted source CI; audit enabled, earlier failures retained |
+| B | PASS opt-in source/current packaged root, save/close/seek and explicit handoff scope; main-process native ownership and default-off rollback retained, not a rewrite of every player internal |
+| C | PASS explicit/default/experimental decision contracts; default engine and manual original-quality paths unchanged |
+| D | PASS recorded paired measurement scope/regressions; no unsupported seek/cache tuning or quality change; sample limits retained |
+| E | PASS local RC/runtime/source scope; external-device test SKIP by user request, clean Windows not certified; physical HDR accuracy/Dolby Vision/dynamic metadata unverified |
+
+ArchitectureCloseoutLocal=true. PublicationReady remains false for a **new
+stable version**: this locally accepted 0.2.17 candidate is not a 0.2.18 release
+identity. Stable preparation must synchronize version/lock/fallback metadata/
+release notes, bind its actual rebuilt artifact acceptance and matching source
+CI before authorized tag/upload. Never call these 0.2.17 reports 0.2.18 evidence
+or replace the existing release. External testing remains explicitly deferred;
+unverified hardware is not a playback whitelist.
+
+## 0.2.18 stable preparation (new identity; not yet accepted)
+
+User continued the proposed 0.2.18 preparation. Package and lock root versions,
+fallback backend metadata and docs/RELEASE-0.2.18.md are synchronized. No frozen
+archive/version or README changelog was changed. This is a new identity; the
+completed 0.2.17 RC evidence above is historical comparison, not its acceptance.
+
+Fresh normal npm ci / explicit Electron preparation / moderate audit (zero
+vulnerabilities) / frontend and Electron builds / 60 focused playback and
+release-evidence contracts: PASS, exit 0; release-0218-*.log under
+build/root-session-closeout. CI release-note/version validator and 12 workflow
+contracts pass, exit 0. Frozen build timestamp: 2026-11-01T05:23:32.206Z.
+
+A byte-consistency probe normalized tracked eol=lf files, but comparison found
+that this changes all four fixed native C# source hashes. Do not silently repin
+unchanged native binaries or weaken validation. Reverted 136 files to exact
+recorded pre-probe bytes; one mixed-ending physical test harness remains LF,
+with no Git content change. All four native source pins match again. Probe and
+restoration ledgers are release-0218-line-endings*.json. The corresponding-source
+ZIP must preserve actual verified bytes; Git text normalization alone is not
+claimed as a bit-reproducible native/runtime build.
+
+Next: ordinary source commit/CI, fresh 0.2.18 source/backend replay, matching
+packaged/physical/portable acceptance and strict artifact sealing. No stable tag
+or release upload before those checks complete. Coordinator stays default-off;
+no playback behavior, quality policy or dependency resolution changed since
+the accepted root implementation. User planning document remains untouched.
