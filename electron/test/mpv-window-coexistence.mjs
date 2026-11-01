@@ -1,5 +1,6 @@
 // Real packaged app. Settings/UI drive both MPV presentations; no runtime,
 // coordinator or playback API implementation is mocked or replaced.
+import {desktopTestSubject} from './desktop-test-subject.mjs';
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
 import {mkdtempSync,mkdirSync,copyFileSync,readFileSync,writeFileSync} from 'node:fs';
@@ -21,6 +22,7 @@ const api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{
 const launch=async()=>{
  desktop=await _electron.launch({executablePath:exe,args:[],cwd:data,
   env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_RENDER_LOCAL_ACCEPTANCE:'',AVHUB_RENDER_RUNTIME_CANDIDATE:'',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+ const subject=await desktopTestSubject(desktop,import.meta.url);if(report.subject)assert.deepEqual(subject,report.subject);else report.subject=subject;
  page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
 };
 const settings=async()=>{await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();};

@@ -75,6 +75,24 @@ class ScreenshotTests(unittest.TestCase):
             self.assertEqual(Path(saved['path']).read_bytes(),payload)
             self.assertEqual((saved['width'],saved['height']),(7,5))
 
+    def test_real_native_hdr_capture_preserves_mastering_tags_and_sixteen_bit_samples(self):
+        payload=(Path(__file__).parent/'fixtures/native-hdr-pq.png').read_bytes()
+        saved=self.upload(payload)
+        self.assertEqual(Path(saved['path']).read_bytes(),payload)
+        self.assertEqual((saved['width'],saved['height']),(1024,256))
+        self.assertEqual(payload[24],16)
+        self.assertIn(b'mDCV',payload);self.assertIn(b'cICP',payload)
+
+    def test_hdr_color_metadata_sizes_order_crc_and_uniqueness(self):
+        original=png(1,1);cicp=chunk(b'cICP',bytes([9,16,0,1]))
+        for kind,size in ((b'mDCV',24),(b'cLLI',8)):
+            valid=chunk(kind,bytes(size));saved=self.upload(original[:33]+cicp+valid+original[33:])
+            self.assertEqual(Path(saved['path']).read_bytes(),original[:33]+cicp+valid+original[33:])
+            invalids=[original[:33]+cicp+chunk(kind,bytes(n))+original[33:] for n in (0,size-1,size+1)]
+            invalids.extend((original[:33]+cicp+valid+valid+original[33:],original[:33]+valid+original[33:],original[:-12]+cicp+valid+original[-12:],original[:33]+cicp+valid[:-1]+b'\xff'+original[33:]))
+            for payload in invalids:
+                with self.subTest(kind=kind,payload=payload),self.assertRaises(HTTPException):self.upload(payload)
+
     def test_sixteen_bit_png_must_match_its_declared_row_size(self):
         for raw in (b'\0'+b'\0'*4,b'\0'+b'\0'*1000000):
             payload=(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',1,1,16,6,0,0,0))+

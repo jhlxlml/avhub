@@ -50,7 +50,7 @@ async function waitFor(predicate, label, timeoutMs = 60_000) {
 
 try {
   assert.ok(existsSync(electronExe), `Electron runtime missing: ${electronExe}`);
-  child = spawn(electronExe, ['.', '--in-process-gpu', '--disable-gpu', '--no-sandbox'], {
+  child = spawn(electronExe, ['.'], {
     cwd: projectRoot,
     env: { ...process.env, AVHUB_DATA_DIR: dataDir, AVHUB_SMOKE_TEST: '1' },
     windowsHide: true,
@@ -67,7 +67,7 @@ try {
   await waitFor(() => readLog().includes('renderer-loaded'), 'renderer load');
   const result = await Promise.race([
     exitPromise,
-    delay(30_000).then(() => { throw new Error('Electron did not exit after smoke-test renderer load'); }),
+    delay(30_000,undefined,{ref:false}).then(() => { throw new Error('Electron did not exit after smoke-test renderer load'); }),
   ]);
   assert.equal(result.code, 0, `Electron exited with ${result.code} (${result.signal ?? 'no signal'})`);
 

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import {Html5Delivery,type DeliveryOptions} from './playback/Html5Delivery';
 import {Html5Engine} from './playback/Html5Engine';
 import {PlaybackController} from './playback/PlaybackController';
+import {PlaybackSessionCoordinator,type SessionSnapshot,type SessionCoordinator} from './playback/PlaybackSessionCoordinator';
+import {ChromiumSessionAdapter} from './playback/ChromiumSessionAdapter';
 import {selectEngine} from './playback/EngineSelector';
 import type {TrackPorts} from './playback/types';
 import {confirmInApp} from './AppConfirm';
@@ -42,6 +44,8 @@ const TEXT_SUBTITLE_CODECS = new Set(['subrip', 'srt', 'ass', 'ssa', 'mov_text',
 const PLAYBACK_SPEEDS = [.5, .75, 1, 1.25, 1.5, 2];
 // Also serialize task creation across Player remounts (next video / playlist).
 const playbackTasks = { creation: Promise.resolve(), retirement: Promise.resolve() };
+// Failed opt-in retirement stays retryable and fences the next source attach.
+const sessionRetirements=new Set<()=>Promise<void>>();
 let nextPlayerControlsHidden=false;
 function loadPlaybackSpeed(): number {
   try {
@@ -95,7 +99,7 @@ function ChromiumPlayerWithMemory(props:Parameters<typeof ChromiumPlayer>[0]){
   return loaded?.id===props.media.id?<ChromiumPlayer {...props} initialPlaybackState={loaded.value}/>:<div className="player-shell"><div className="player-top"><Button icon="arrowLeft" onClick={props.close}>返回媒体库</Button><span>{props.media.title}</span></div><div className="video-wrap"><p role="status">正在读取播放设置…</p></div></div>;
 }
 
-function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,onUseNative,close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify,initialPlaybackState }: {
+function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,onUseNative,close, playNext, queue, changePlaylistPlayback, update, favoriteBusy, changeFavorite, registerNavigationGuard, notify,initialPlaybackState,sessionRoot }: {
   media: Media; automatic?:boolean; close: () => void; playNext: (media: Media, automatic?:boolean) => void; update: (value: MediaUpdate) => void;
   queue?: PlaylistSource;
   changePlaylistPlayback:(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>)=>void;
@@ -104,6 +108,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
   notify:(message:string,autoDismissMs?:number)=>void;
   initialPlaybackState?:MediaPlaybackState|null;
   initialPosition?:number;initialPaused?:boolean;onUseNative?:(position:number,paused?:boolean)=>void;
+  sessionRoot?:PlaybackSessionCoordinator;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const videoWrap = useRef<HTMLDivElement>(null);
@@ -220,6 +225,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
   const [subtitleSource, setSubtitleSource] = useState<SubtitleSource | null>(null);
   const [subtitleUrl, setSubtitleUrl] = useState('');
   const [subtitleDelay, setSubtitleDelay] = useState(0);
+  const subtitleDelayRef=useRef(subtitleDelay);subtitleDelayRef.current=subtitleDelay;
   const [subtitleOffset, setSubtitleOffset] = useState(0);
   const metadataDirty = useRef(false);
   const metadataChanged = useCallback((dirty: boolean) => { metadataDirty.current = dirty; }, []);
@@ -254,6 +260,9 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
   const hls = useRef(false);
   const hlsInstance = useRef<Html5Delivery | null>(null);
   const playbackController=useRef<PlaybackController|null>(null);
+  const chromiumSession=useRef<SessionCoordinator|null>(null);
+  const [sessionEnabled]=useState(()=>preference<boolean>('playbackSessionCoordinatorEnabled',false));
+  const [sessionPhase,setSessionPhase]=useState('idle');
   const [controllerEnabled]=useState(()=>preference<boolean>('playbackControllerEnabled',false));
   const trackPorts=useRef<TrackPorts|null>(null);
   trackPorts.current={
@@ -267,7 +276,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     delay:seconds=>{subtitleUserChanged.current=true;setSubtitleDelay(seconds);},
   };
   function controlError(error:unknown){if(!(error instanceof DOMException&&error.name==='AbortError')&&activePlayer.current)notify(`播放操作失败：${errorText(error)}`,3000);}
-  function seekVideoRelative(seconds:number){if(playbackController.current)void playbackController.current.seekTo(seconds+offset.current).catch(controlError);else if(video.current)video.current.currentTime=seconds;}
+  function seekVideoRelative(seconds:number){const session=chromiumSession.current;if(session?.getState().phase==='ready')void session.seekTo(seconds+offset.current).catch(controlError);else if(playbackController.current)void playbackController.current.seekTo(seconds+offset.current).catch(controlError);else if(video.current)video.current.currentTime=seconds;}
   function playVideo(){return playbackController.current?.play()??video.current!.play();}
   function pauseVideo(){if(playbackController.current)void playbackController.current.pause().catch(controlError);else video.current?.pause();}
   function volumeVideo(value:number){if(playbackController.current)void playbackController.current.setVolume(value).catch(controlError);else if(video.current)video.current.volume=value;}
@@ -324,21 +333,21 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
   });
   updateRef.current = update;
 
-  const save = useCallback(async (keepalive = false,explicitPosition?:number) => {
+  const save = useCallback(async (keepalive = false,explicitPosition?:number,captured?:{snapshot:SessionSnapshot;ended:boolean}) => {
     // Independent durable writes may run together. Every caller still confirms
     // its current memory barrier, including when sharing an in-flight progress
     // write. A slow track preference must not postpone sending the position.
     const memoryTask=keepalive?Promise.resolve(true):flushMediaPlaybackState();
     const v = video.current;
     // Opening a resume prompt or preparing a stream must never overwrite saved progress.
-    if (!v || !Number.isFinite(v.currentTime) ||
-        !played.current && (sourceChanging.current || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA)) {
+    if (!captured&&(!v || !Number.isFinite(v.currentTime) ||
+        !played.current && (sourceChanging.current || v.readyState < HTMLMediaElement.HAVE_CURRENT_DATA))) {
       if(!await memoryTask){setSaveError('播放记忆尚未保存，请重试');throw new Error('播放记忆尚未保存');}
       return;
     }
-    const total = media.duration || (Number.isFinite(v.duration) ? v.duration + offset.current : 0);
-    const current = typeof explicitPosition==='number'&&Number.isFinite(explicitPosition)?explicitPosition:ended.current && total ? total : v.currentTime + offset.current;
-    const watched=ended.current || (total > 0 && current / total >= .92);
+    const total = media.duration || (v&&Number.isFinite(v.duration) ? v.duration + offset.current : 0);
+    const current = captured?.snapshot.positionSec??(typeof explicitPosition==='number'&&Number.isFinite(explicitPosition)?explicitPosition:ended.current && total ? total : v!.currentTime + offset.current);
+    const watched=(captured?.ended??ended.current) || (total > 0 && current / total >= .92);
     const pending=progressSave.current;
     // pause + explicit back/next/quit can request the same durable snapshot.
     // Share only the latest identical in-flight write; never debounce a save,
@@ -370,12 +379,13 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     }
     if(updated_at>=stamp.current)setSaveError('');
   }, [media.id, media.duration]);
+  const flushPlayback=()=>chromiumSession.current?.getState().identity?chromiumSession.current.flush():save();
 
   useEffect(()=>registerNavigationGuard(async()=>{
     if(navigationBusy.current)return false;
     if(!await canDiscardMetadata())return false;
     navigationBusy.current=true;setClosing(true);video.current?.pause();
-    try {await save();return await flushMediaPlaybackState();}
+    try {await flushPlayback();return await flushMediaPlaybackState();}
     catch {return false;}
     finally {if(activePlayer.current){navigationBusy.current=false;setClosing(false);}}
   }),[save,registerNavigationGuard]);
@@ -391,7 +401,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
       desktopQuitting.current = true; setDesktopClosing(true);
       video.current?.pause();
       if(metadataDirty.current) (event as CustomEvent<Promise<unknown>[]>).detail.push(Promise.resolve(false));
-      (event as CustomEvent<Promise<unknown>[]>).detail.push(save().then(()=>true).catch(()=>false));
+      (event as CustomEvent<Promise<unknown>[]>).detail.push(flushPlayback().then(()=>true).catch(()=>false));
     };
     const cancelled = () => { desktopQuitting.current = false; setDesktopClosing(false); };
     window.addEventListener('pagehide', leaving);
@@ -410,6 +420,9 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     let disposed = false;
     let instance: Html5Delivery | null = null;
     let controller:PlaybackController|null=null;
+    let coordinator:SessionCoordinator|null=null;
+    let adapter:ChromiumSessionAdapter|null=null;
+    let stopSessionEvents=()=>{};
     let sessionToken: string | null = null;
     let heartbeat: number | undefined;
     let browserLoadTimer: number | undefined;
@@ -420,11 +433,12 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     let heartbeatBusy = false;
     let heartbeatFailures = 0;
     const creationController = new AbortController();
-    const stop = async () => {
+    const stop = async (strict=false) => {
       const value = sessionToken;
+      if(strict&&value)await api(`/api/playback/${value}`, { method: 'DELETE', keepalive: true });
       sessionToken = null;
       if (token.current === value) token.current = null;
-      if (value) await api(`/api/playback/${value}`, { method: 'DELETE', keepalive: true }).catch(() => {});
+      if (!strict&&value) await api(`/api/playback/${value}`, { method: 'DELETE', keepalive: true }).catch(() => {});
     };
     const fail = (message: string) => {
       if (disposed || desktopQuitting.current) return;
@@ -432,7 +446,9 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
       clearTimeout(browserLoadTimer);
       trace.finish(true);
       void save().catch(() => {});
-      v.pause();void controller?.dispose();instance?.destroy(); void stop();
+      v.pause();
+      if(coordinator)void coordinator.close().catch(()=>{});
+      else{void controller?.dispose();instance?.destroy();void stop();}
       hlsInstance.current = null;
       diagnostics.abortTiming();
       setError(message); setPhase('error');
@@ -529,6 +545,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
         // A late creation response still owns a token. Retire it before opening
         // the next task; aborting POST would lose that token and leak FFmpeg.
         await Promise.all([previousCreation, playbackTasks.retirement]);
+        await Promise.all([...sessionRetirements].map(retire=>retire()));
         if (disposed) return;
         trace.advance('api');
         // Client-known ownership also retires a creation whose response timed
@@ -674,14 +691,30 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
               else fail('转码视频播放失败，请重试或检查文件');
           },
         };
-        if(controllerEnabled&&selectEngine({preference:'html5'}).kind==='html5'){
+        if((controllerEnabled||sessionEnabled)&&selectEngine({preference:'html5'}).kind==='html5'){
           const engine=new Html5Engine(deliveryOptions,{
             list:()=>trackPorts.current!.list(),
             select:(type,id)=>trackPorts.current!.select(type,id),
             delay:seconds=>trackPorts.current!.delay(seconds),
           },instance);
           controller=new PlaybackController(engine);playbackController.current=controller;
-          await engine.init(v);await controller.load(source,{signal:creationController.signal});
+          await engine.init(v);
+          if(sessionEnabled){
+            adapter=new ChromiumSessionAdapter(engine,v,{
+              open:(source,_identity,signal)=>controller!.load(source,{signal}),
+              tracks:()=>({sourceIdentity:initialPlaybackState?.source??null,audio:trackPorts.current!.list().find(t=>t.type==='audio'&&t.selected)?.id??null,subtitle:trackPorts.current!.list().find(t=>t.type==='subtitle'&&t.selected)?.id??null,delaySec:subtitleDelayRef.current}),
+              save:async(snapshot,ended)=>{
+                if(snapshot)await save(false,undefined,{snapshot,ended});
+                else if(!await flushMediaPlaybackState())throw new Error('播放记忆尚未保存');
+              },
+              release:async()=>{await controller!.dispose();await stop(true);played.current=false;sourceChanging.current=true;v.pause();v.removeAttribute('src');v.load();},
+            });
+            coordinator=(sessionRoot??new PlaybackSessionCoordinator({})).scope('chromium',()=>adapter!);chromiumSession.current=coordinator;
+            stopSessionEvents=coordinator.subscribe(state=>{if(!disposed)setSessionPhase(state.phase);});
+            const cancel=()=>{void coordinator!.close().catch(()=>{});};creationController.signal.addEventListener('abort',cancel,{once:true});
+            try{await coordinator.load({...source,resumePositionSec:playbackStart,autoplay:currentRequest.autoplay!==false},'chromium');}
+            finally{creationController.signal.removeEventListener('abort',cancel);}
+          }else await controller.load(source,{signal:creationController.signal});
         }else await instance.load(v,source,deliveryOptions,creationController.signal);
         if(disposed)return;
         if(hls.current&&indexedTsPending.current){
@@ -721,6 +754,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     }
     void start();
     return () => {
+      adapter?.captureForClose();
       disposed = true;
       trace.discard();
       creationController.abort();
@@ -730,13 +764,21 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
       v.removeEventListener('loadeddata', hasVideoFrameTrack);
       played.current = false;
       diagnostics.cancelObservation();
-      void controller?.dispose();if(playbackController.current===controller)playbackController.current=null;
-      v.pause(); instance?.destroy(); v.removeAttribute('src'); v.load();
+      if(playbackController.current===controller)playbackController.current=null;
+      if(chromiumSession.current===coordinator)chromiumSession.current=null;
+      stopSessionEvents();
+      if(coordinator){
+        v.pause();
+        const retire=()=>coordinator!.close().then(()=>{sessionRetirements.delete(retire);});
+        if(!sessionRoot)sessionRetirements.add(retire);void retire().catch(()=>{});
+      }else{
+        void controller?.dispose();v.pause(); instance?.destroy(); v.removeAttribute('src'); v.load();
+        playbackTasks.retirement = Promise.all([playbackTasks.retirement, stop()]).then(() => undefined);
+      }
       if (hlsInstance.current === instance) hlsInstance.current = null;
       hlsAvailableEnd.current = 0;
       hlsAvailableStart.current = 0;
       indexedTsPending.current = false;
-      playbackTasks.retirement = Promise.all([playbackTasks.retirement, stop()]).then(() => undefined);
     };
   }, [request, media.id, save]);
 
@@ -840,7 +882,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     if (!await canDiscardMetadata()) return;
     navigationBusy.current = true;
     setClosing(true); video.current?.pause();
-    try { await save(); if(!await flushMediaPlaybackState())throw new Error('播放记忆尚未保存');if (activePlayer.current) close(); }
+    try { await flushPlayback(); if(!await flushMediaPlaybackState())throw new Error('播放记忆尚未保存');if (activePlayer.current) close(); }
     catch { navigationBusy.current = false; setClosing(false); }
   }
   async function switchToNative(){
@@ -859,6 +901,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
       if(document.fullscreenElement)await document.exitFullscreen();
       if(document.pictureInPictureElement)await document.exitPictureInPicture();
       if(purePlayback)await setWindowMode({purePlayback:false});
+      await chromiumSession.current?.close();
       if(activePlayer.current&&!desktopQuitting.current)onUseNative(current,paused);
     }catch(e){if(activePlayer.current)notify(`暂未切换播放器：${errorText(e)}`);}
     finally{if(activePlayer.current){navigationBusy.current=false;setClosing(false);}}
@@ -1398,7 +1441,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
         {subtitleFiles.length === 0 && !uploadedSubtitle && media.subtitles.length === 0 && <small className="subtitle-hint">可选择同目录的 SRT/VTT/ASS/SSA 字幕，或加载本地字幕；支持 UTF-8 与常见简体中文编码。</small>}
       </section>
   );
-  return <div className={`player-shell${purePlayback?' is-pure-playback':''}`} data-playback-controller={controllerEnabled?'unified':'legacy'}>
+  return <div className={`player-shell${purePlayback?' is-pure-playback':''}`} data-playback-controller={controllerEnabled||sessionEnabled?'unified':'legacy'} data-playback-session-kind={sessionEnabled?'chromium':undefined} data-playback-session-phase={sessionEnabled?sessionPhase:undefined} data-playback-session-root={chromiumSession.current?.getState().rootId} data-playback-session-generation={chromiumSession.current?.getState().identity?.generation}>
     <div className="player-top"><button className="ui-button" onClick={() => void back()} disabled={closing || nextStarting}><Icon name="arrowLeft"/>{closing ? '正在保存…' : nextStarting ? '正在切换…' : '返回媒体库'}</button>
       <span>{media.title}</span>
       <ThemeToggle/>

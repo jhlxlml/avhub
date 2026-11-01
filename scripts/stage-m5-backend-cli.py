@@ -49,7 +49,10 @@ def stage():
     if actual_python != {item['path'] for item in python_inputs} or any(hashlib.sha256((ROOT / item['path']).read_bytes()).hexdigest() != item['sha256'] for item in python_inputs):
         raise ValueError('Python runtime source changed; rebuild the frozen backend before reusing its executable')
     backend = folder / 'AVHubServer'
-    shutil.copytree(original, backend)
+    # Electron's resource copier excludes development-agent metadata. Keep the
+    # staged payload byte-exact with the deliverable instead of weakening the
+    # complete resource-tree hash at release admission.
+    shutil.copytree(original, backend, ignore=shutil.ignore_patterns('.agents'))
     original_exe = hashlib.sha256((original / 'AVHubServer.exe').read_bytes()).hexdigest()
     # PyInstaller onedir stores these data files outside its Python archive.
     # Reuse the verified unchanged Python executable, but refresh the frontend

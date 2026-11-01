@@ -4,10 +4,12 @@ The workflow is the single command inventory. Tool installation, tag gates,
 packaging and uploads stay in their explicit CI workflows.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
 import subprocess
+import time
 import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -30,6 +32,7 @@ def plan(workflow):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--execute',action='store_true',help='Run source verification; without this flag only list commands')
+    parser.add_argument('--report',type=Path,help='Write step results to an owned build/ JSON file')
     selection=parser.add_mutually_exclusive_group()
     selection.add_argument('--step',help='Run/list exactly one named verification step')
     selection.add_argument('--from-step',help='Run/list this verification step and every later source verification step')
@@ -51,11 +54,25 @@ def main():
     if not powershell:raise SystemExit('PowerShell is required')
     # This mirrors deterministic hosted test behavior, not real update API testing.
     env={**os.environ,'CI':'true','PYTHONUTF8':'1'}
+    report={'kind':'local-Windows-workflow-replay','hostedCi':False,'completed':False,'steps':[]}
+    destination=args.report.resolve() if args.report else None
+    if destination:
+        if not destination.is_relative_to((ROOT/'build').resolve()) or destination.is_symlink():
+            raise ValueError('Report must be an owned build/ file')
+        destination.parent.mkdir(parents=True,exist_ok=True)
     for name,command in commands:
         print(f'[{name}]',flush=True)
-        subprocess.run([powershell,'-NoProfile','-NonInteractive','-Command',
+        started=time.monotonic()
+        result=subprocess.run([powershell,'-NoProfile','-NonInteractive','-Command',
                         "$ErrorActionPreference = 'Stop'\n"+command+'\nexit $LASTEXITCODE'],
-                       cwd=ROOT,env=env,check=True)
+                       cwd=ROOT,env=env)
+        report['steps'].append({'name':name,'command':command,'exitCode':result.returncode,
+                                'seconds':round(time.monotonic()-started,3)})
+        report['exitCode']=result.returncode
+        if destination:destination.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
+        if result.returncode:raise SystemExit(result.returncode)
+    report['completed']=True
+    if destination:destination.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
 
 
 if __name__=='__main__':main()

@@ -197,8 +197,10 @@ try{
   const originalPlaybackSource=await page.locator('video').evaluate(v=>{v.pause();return v.currentSrc;});
   for(const theme of ['light','dark']){
     if(theme==='dark')await page.getByRole('button',{name:'切换至深色模式',exact:true}).click();
-    const bar=await page.locator('.player-controls').boundingBox();await page.mouse.move(bar.x+bar.width/2,bar.y+bar.height-6);
-    await page.getByRole('button',{name:'画质',exact:true}).click();
+    const quality=page.getByRole('button',{name:'画质',exact:true});
+    await quality.scrollIntoViewIfNeeded();await quality.hover({force:true});
+    await expect(page.locator('.video-wrap')).not.toHaveClass(/controls-hidden/);
+    await quality.click();
     const popover=page.getByRole('region',{name:'画质设置',exact:true});await expect(popover).toBeVisible();await expect(popover).toHaveCSS('backdrop-filter','none');
     await shot(`player-settings-mira-${theme}`);await page.keyboard.press('Escape');
     assert.equal(await page.locator('video').evaluate(v=>v.currentSrc),originalPlaybackSource);

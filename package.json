@@ -4,6 +4,7 @@
   "version": "0.2.17",
   "main": "electron/dist/main.js",
   "scripts": {
+    "postinstall": "node scripts/patch-build-toolchain.cjs",
     "prebuild": "node scripts/write-build-info.mjs",
     "dev": "npm run electron:dev",
     "build": "tsc -b && vite build",
@@ -68,6 +69,15 @@
   "overrides": {
     "@electron/get": {
       "global-agent": "4.1.3"
+    },
+    "@electron/asar": {
+      ".": "4.3.1",
+      "glob": "14.0.3"
+    },
+    "@electron/universal": "3.0.6",
+    "minimatch": "11.0.3",
+    "electron-winstaller": {
+      "temp": "npm:tmp@0.2.7"
     }
   },
   "build": {

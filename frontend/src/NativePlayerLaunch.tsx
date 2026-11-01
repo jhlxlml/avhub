@@ -1,5 +1,7 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {createRenderDesktop} from './playback/renderDesktop';
+import {createIndependentDesktop} from './playback/independentDesktop';
+import {PlaybackSessionFailure,type PlaybackSessionCoordinator} from './playback/PlaybackSessionCoordinator';
 import {isNativePathUnavailable,mayReturnAfterNativeOpenFailure} from './playback/nativeRecovery';
 import {NativePlayerOverlay} from './NativePlayerOverlay';
 import {api,duration,errorText,type Media,type MediaUpdate,type PlaylistSource,type QueuePage} from './api';
@@ -16,19 +18,23 @@ import {MediaActions} from './MediaActions';
 import {nativeErrorText} from './nativeError';
 import {confirmInApp} from './AppConfirm';
 
-export function NativePlayerLaunch({media,automatic=false,initialPosition,initialPaused,claimAutomaticFallback,close,playNext,queue,changePlaylistPlayback,update,notify,fallback,registerNavigationGuard,favoriteBusy,changeFavorite}:{
+export function NativePlayerLaunch({media,automatic=false,initialPosition,initialPaused,claimAutomaticFallback,close,playNext,queue,changePlaylistPlayback,update,notify,fallback,registerNavigationGuard,favoriteBusy,changeFavorite,sessionRoot}:{
   media:Media;automatic?:boolean;close:()=>void;playNext:(media:Media,automatic?:boolean)=>void;queue?:PlaylistSource;
   initialPosition?:number;initialPaused?:boolean;update:(value:MediaUpdate)=>void;notify:(message:string,ms?:number)=>void;fallback:(position:number,paused?:boolean)=>void;registerNavigationGuard:(guard:()=>Promise<boolean>)=>()=>void;
   claimAutomaticFallback?:(unverifiedColor?:boolean)=>boolean;
   changePlaylistPlayback:(change:Partial<Pick<PlaylistSource,'mode'|'autoNext'>>)=>void;
   favoriteBusy:boolean;changeFavorite:(media:Media)=>Promise<void>;
+  sessionRoot?:PlaybackSessionCoordinator;
 }){
   const viewport=useRef<HTMLDivElement>(null),windowMode=useWindowMode();
   const [renderMode]=useState(()=>preference<boolean>('nativeRenderEnabled',false));
-  const renderDesktop=useMemo(()=>renderMode&&window.avhubDesktop?createRenderDesktop(window.avhubDesktop):null,[renderMode]);
-  const nativeDesktop=renderDesktop??window.avhubDesktop;
+  const [coordinatorEnabled]=useState(()=>preference<boolean>('playbackSessionCoordinatorEnabled',false));
+  const renderDesktop=useMemo(()=>renderMode&&window.avhubDesktop?createRenderDesktop(window.avhubDesktop,{sessionCoordinatorEnabled:coordinatorEnabled,sessionRoot}):null,[renderMode,coordinatorEnabled,sessionRoot]);
   const [attachedSession,setAttachedSession]=useState<string|null>(null);
   const [independent,setIndependent]=useState(()=>!renderMode&&preference<string>('mpvWindowMode','embedded')==='independent');
+  const independentDesktop=useMemo(()=>!renderMode&&independent&&coordinatorEnabled&&window.avhubDesktop?createIndependentDesktop(window.avhubDesktop,sessionRoot):null,[renderMode,independent,coordinatorEnabled,sessionRoot]);
+  const sessionDesktop=renderDesktop??independentDesktop;
+  const nativeDesktop=sessionDesktop??window.avhubDesktop;
   const [independentProgress,setIndependentProgress]=useState<{position:number;length:number;paused:boolean}|null>(null);
   const [independentStopped,setIndependentStopped]=useState(false),[saveError,setSaveError]=useState('');
   const [recovery,setRecovery]=useState<'save'|'cleanup'|null>(null),[recoveryBusy,setRecoveryBusy]=useState(false);
@@ -54,7 +60,7 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
   const stopping=useRef<Promise<void>|null>(null);
   function stop(trace?:(stage:string)=>void){
     if(stopping.current)return stopping.current;
-    const task=(async()=>{trace?.('waiting-open');await opening.current;trace?.('closing-session');if(session.current){const id=session.current;await nativeDesktop!.nativePlayer('close',id);session.current=null;}else await nativeDesktop!.nativePlayer('recover');trace?.('source-closed');})();
+    const task=(async()=>{trace?.('waiting-open');await sessionDesktop?.cancelOpeningSession();await opening.current;trace?.('closing-session');if(session.current){const id=session.current;await nativeDesktop!.nativePlayer('close',id);session.current=null;}else await nativeDesktop!.nativePlayer('recover');trace?.('source-closed');})();
     stopping.current=task;void task.finally(()=>{if(stopping.current===task)stopping.current=null;}).catch(()=>{});return task;
   }
   useEffect(()=>registerNavigationGuard(async()=>{if(retrying.current)return false;try{await stop();return true;}catch(e){setError(errorText(e));return false;}}),[registerNavigationGuard]);
@@ -104,9 +110,9 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
       const p=value.properties;
       if(typeof p?.['time-pos']==='number')setIndependentProgress({position:p['time-pos'],length:Number(p.duration)||0,paused:p.pause===true});
     });
-    const quitting=(event:Event)=>{(event as CustomEvent<Promise<boolean>[]>).detail.push((async()=>{try{await opening.current;if(stopping.current)await stopping.current;else if(session.current)await desktop.nativePlayer('flush',session.current);return true;}catch{return false;}})());};
+    const quitting=(event:Event)=>{(event as CustomEvent<Promise<boolean>[]>).detail.push((async()=>{try{await sessionDesktop?.cancelOpeningSession();await opening.current;if(stopping.current)await stopping.current;else if(session.current)await desktop.nativePlayer('flush',session.current);return true;}catch{return false;}})());};
     window.addEventListener('avhub-before-quit',quitting);
-    return()=>{alive.current=false;unsubscribe();events();states?.();window.removeEventListener('avhub-before-quit',quitting);void stop().finally(()=>renderDesktop?.disposeEvents()).catch(()=>{});};
+    return()=>{alive.current=false;unsubscribe();events();states?.();window.removeEventListener('avhub-before-quit',quitting);void stop().finally(()=>sessionDesktop?.disposeEvents()).catch(()=>{});};
   },[media.id]);
   useEffect(()=>{
     if(start===null)return;
@@ -125,9 +131,9 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
           setIndependent(result.presentation==='independent');setState(result.presentation==='independent'?'MPV · 独立窗口播放原文件':'MPV · 原文件直接播放');setAttachedSession(result.session);launching.current=false;
           for(const event of earlyEvents.current.splice(0))if(event.value.session===result.session){if(event.closed)receiveClosed.current(event.value);else void receiveEvent.current(event.value);}
         }
-      }catch(e){if(!cancelled&&alive.current){const detail=nativeErrorText(e);
-        if(renderMode&&isNativePathUnavailable(detail)&&claimAutomaticFallback?.(true)){setState('正在使用现有原画播放…');setPathFallback(true);setFailedLaunch(attempt);}
-        else{setError(detail);setState('原生播放启动失败');setFailedLaunch(mayReturnAfterNativeOpenFailure(detail)?attempt:null);}
+      }catch(e){if(e instanceof PlaybackSessionFailure&&e.kind==='cancelled'||e instanceof DOMException&&e.name==='AbortError')return;if(!cancelled&&alive.current){const detail=nativeErrorText(e),failure=e instanceof PlaybackSessionFailure?e:detail;
+        if(renderMode&&isNativePathUnavailable(failure)&&claimAutomaticFallback?.(true)){setState('正在使用现有原画播放…');setPathFallback(true);setFailedLaunch(attempt);}
+        else{setError(detail);setState('原生播放启动失败');setFailedLaunch(mayReturnAfterNativeOpenFailure(failure)?attempt:null);}
       }}
       finally{
         launching.current=false;earlyEvents.current=[];
@@ -195,7 +201,7 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
     <div className="player-top"><Button icon="arrowLeft" busy={leaving} disabled={retryBusy} onClick={()=>void back()}>返回媒体库</Button><span>{media.title}</span><ThemeToggle/>
       <Button icon="favorite" disabled={favoriteBusy} aria-pressed={Boolean(media.favorite)} onClick={()=>void changeFavorite(media)}>{media.favorite?'已收藏':'收藏'}</Button>
       <MediaActions media={media} update={update} notify={notify}/></div>
-    <div className={`video-wrap native-embedded-viewport${independent?' native-independent-card':''}`} ref={viewport} aria-label="MPV 原生播放区域">
+    <div className={`video-wrap native-embedded-viewport${independent?' native-independent-card':''}`} ref={viewport} aria-label="MPV 原生播放区域" data-playback-session-kind={sessionDesktop?.getSessionState()?.identity?.engineKind} data-playback-session-phase={sessionDesktop?.getSessionState()?.phase} data-playback-session-generation={sessionDesktop?.getSessionState()?.identity?.generation} data-playback-session-root={sessionDesktop?.getSessionState()?.rootId}>
       {renderDesktop&&attachedSession&&<NativePlayerOverlay desktop={nativeDesktop!} session={attachedSession} inline/>}
       {independent&&attachedSession&&<section className="native-embedded-placeholder"><Icon name={independentStopped?'info':nativeFailure?'warning':'play'} size={36}/><h2>{independentStopped?'播放窗口已关闭':nativeFailure?'原生播放失败':'正在独立窗口播放'}</h2>
         {independentStopped?<><p>{recovery==='save'?'播放记录尚未保存，可重试或明确放弃本次未保存内容。':'正在确认退出并清理播放会话。'}</p>{recovery&&<div><Button icon="refresh" busy={recoveryBusy} onClick={()=>void resolveRecovery(false)}>{recovery==='save'?'重试保存并关闭':'重试清理'}</Button>{recovery==='save'&&<> <Button disabled={recoveryBusy} onClick={()=>void resolveRecovery(true)}>放弃未保存进度</Button></>}</div>}</>:nativeFailure?<p>查看下方原因后，可重试同一原文件；不会自动静音、转码或切换引擎。</p>:<><p>原文件原画播放 · 进度与连播由 AVHub 管理</p>{independentProgress&&<p>{independentProgress.paused?'已暂停':'播放中'} · {duration(independentProgress.position)} / {duration(independentProgress.length)}</p>}<p>空格暂停 · ← / → 跳转 · C 截图 · F 全屏</p><div><Button icon="play" onClick={()=>void independentAction('show')}>恢复播放窗口</Button> <Button icon="camera" onClick={()=>void independentAction('screenshot')}>保存截图</Button></div></>}

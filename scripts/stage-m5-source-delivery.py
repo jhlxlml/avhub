@@ -8,14 +8,29 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def replay_build_identity(application, inventory, replay):
+    """Bind generated metadata to the successful replay of this exact snapshot."""
+    receipt=json.loads((replay/'replay-report.json').read_text(encoding='utf-8'))
+    if receipt.get('passed') is not True or Path(receipt['source']).resolve()!=application.resolve():
+        raise ValueError('Successful replay of the selected source snapshot required')
+    identity=json.loads((replay/'app/build-info.json').read_text(encoding='utf-8'))
+    version=json.loads((application/'package.json').read_text(encoding='utf-8'))['version']
+    if identity!=inventory['buildIdentityReference'] or identity['version']!=version:
+        raise ValueError('Replayed metadata differs from frozen source identity/version')
+    return identity
+
+
 def stage():
-    parser=argparse.ArgumentParser();parser.add_argument('--directory',type=Path,default=ROOT/'build/m5-final-sdr-20261029');parser.add_argument('--name',default='AVHub-M5-source-materials-0.2.16.zip')
+    parser=argparse.ArgumentParser();parser.add_argument('--directory',type=Path,required=True);parser.add_argument('--name')
     args=parser.parse_args();output=args.directory.resolve()
     if not output.is_relative_to((ROOT/'build').resolve()):raise ValueError('Owned local M5 directory required')
     application = Path(json.loads((ROOT / 'build/application-source-review-latest.json').read_text(encoding='utf-8'))['folder'])
     native = Path(json.loads((ROOT / 'build/native-replayed-source-materials-latest.json').read_text(encoding='utf-8'))['folder'])
     cli = Path(json.loads((ROOT / 'build/controlled-cli-runtime-latest.json').read_text(encoding='utf-8'))['folder'])
     app_index = json.loads((application / 'source-review-inventory.json').read_text(encoding='utf-8'))
+    replay=Path(json.loads((ROOT/'build/application-build-replay-latest.json').read_text(encoding='utf-8'))['folder'])
+    identity=replay_build_identity(application,app_index,replay)
+    if args.name is None:args.name='AVHub-source-materials-'+identity['version']+'.zip'
     native_index = json.loads((native / 'inventory.json').read_text(encoding='utf-8'))
     profile = json.loads((ROOT / 'ci/controlled-ffmpeg.json').read_text(encoding='utf-8'))
     if Path(args.name).name!=args.name or not args.name.endswith('.zip'):raise ValueError('Expected a ZIP basename')
@@ -35,10 +50,15 @@ def stage():
 
     for item in app_index['files']:
         add(application / item['path'], 'APPLICATION/' + item['path'], item['sha256'])
+    # Generated metadata is intentionally absent from the source inventory, but
+    # the delivery must bind its exact tested build as well as source bytes.
+    if not any(item['path']=='app/build-info.json' for item in app_index['files']):
+        add(replay/'app/build-info.json','APPLICATION/app/build-info.json')
     add(application / 'source-review-inventory.json', 'APPLICATION/source-review-inventory.json')
     add(ROOT / 'docs/playback-refactor/M5-LOCAL-ACCEPTANCE.md', 'APPLICATION/docs/playback-refactor/M5-LOCAL-ACCEPTANCE.md')
     add(ROOT / 'docs/playback-refactor/62-playback-compatibility-without-whitelist.md', 'APPLICATION/docs/playback-refactor/62-playback-compatibility-without-whitelist.md')
-    replay=Path(json.loads((ROOT/'build/application-build-replay-latest.json').read_text(encoding='utf-8'))['folder'])
+    for name in ('69-architecture-optimization-baseline.md','70-architecture-optimization-acceptance.md'):
+        add(ROOT/'docs/playback-refactor'/name,'APPLICATION/docs/playback-refactor/'+name)
     for name in ('replay-report.json','backend-replay-report.json'):
         add(replay/name,'APPLICATION/build-evidence/'+name)
     backend=json.loads((replay/'backend-replay-report.json').read_text(encoding='utf-8'))
@@ -54,6 +74,8 @@ def stage():
                 raise ValueError('Delivered frontend/Electron sources differ from actual replay: '+product)
 
     binding=json.loads((output/'M5-BUILD-INPUTS.json').read_text(encoding='utf-8'))
+    if any(binding['buildIdentity'].get(key)!=identity.get(key) for key in ('version','build_id')):
+        raise ValueError('Actual package binding differs from frozen application version/build')
     add(output/'M5-BUILD-INPUTS.json','APPLICATION/build-evidence/actual-package-inputs.json')
     actual_backend=Path(binding['actualBackendSourceReplay'])
     for name in ('replay-report.json','backend-replay-report.json'):
@@ -105,7 +127,7 @@ def stage():
     add(ROOT / 'build/controlled-cli-source-cache/report.json', 'CLI/build-records/source-recapture.json')
     acceptance = Path(json.loads((ROOT / 'build/controlled-cli-validation-latest.json').read_text(encoding='utf-8'))['folder'])
     add(acceptance / 'report.json', 'CLI/build-records/windows-cli-verification.json')
-    info = {'schema': 1, 'scope': 'M5 dual-MPV Windows desktop materials; no sample/HDR admission whitelist; no default-engine promotion or publication',
+    info = {'schema': 1, 'buildIdentity':identity, 'backendExecutableSha256':hashlib.file_digest((ROOT/ binding['actualBackend']/'AVHubServer.exe').open('rb'),'sha256').hexdigest(), 'scope': 'M5 dual-MPV Windows desktop materials; no sample/HDR admission whitelist; no default-engine promotion or publication',
         'application': str(application.relative_to(ROOT)), 'applicationBuild': app_index.get('buildIdentityReference'),
         'nativeSourceArchives': native_index['gitSourceArchives'] + bool(independent),
         'nativeSupportSourcePackages': native_index['supportSourcePackages'], 'controlledCliSourceArchives': len(profile['sources']),

@@ -10,6 +10,7 @@ export function NativePlayerSettings({busy,changeBusy}:{busy:boolean;changeBusy:
   // independent window without migrating any existing saved choice.
   const [windowMode,setWindowMode]=useState(()=>preference('mpvWindowMode',preference<string>('playerEngine','chromium')==='mpv'?'embedded':'independent'));
   const [controllerEnabled,setControllerEnabled]=useState(()=>preference<boolean>('playbackControllerEnabled',false));
+  const [sessionCoordinator,setSessionCoordinator]=useState(()=>preference<boolean>('playbackSessionCoordinatorEnabled',false));
   const [renderEnabled,setRenderEnabled]=useState(()=>preference<boolean>('nativeRenderEnabled',false)),[renderAvailable,setRenderAvailable]=useState(false);
   const [available,setAvailable]=useState<boolean|null>(null),[error,setError]=useState('');
   const [packaged,setPackaged]=useState<boolean|null>(null);
@@ -46,6 +47,7 @@ export function NativePlayerSettings({busy,changeBusy}:{busy:boolean;changeBusy:
     catch(e){setControllerEnabled(previous);setError(errorText(e));}finally{changeBusy(false);}
   }
   async function changeRender(value:boolean){changeBusy(true);setError('');try{await api('/api/preferences',json('PATCH',{values:{nativeRenderEnabled:value}}));rememberSavedPreference('nativeRenderEnabled',value);setRenderEnabled(value);}catch(e){setError(errorText(e));}finally{changeBusy(false);}}
+  async function changeSessionCoordinator(value:boolean){changeBusy(true);setError('');try{await api('/api/preferences',json('PATCH',{values:{playbackSessionCoordinatorEnabled:value}}));rememberSavedPreference('playbackSessionCoordinatorEnabled',value);setSessionCoordinator(value);}catch(e){setError(errorText(e));}finally{changeBusy(false);}}
   return <section className="settings-section autoplay-settings" aria-label="播放引擎设置">
     <h3><Icon name="play"/>播放引擎</h3>
     <label className="autoplay-toggle"><input type="checkbox" checked={controllerEnabled} disabled={busy} onChange={e=>void changeController(e.target.checked)}/>统一播放控制（试验）</label>
@@ -55,6 +57,7 @@ export function NativePlayerSettings({busy,changeBusy}:{busy:boolean;changeBusy:
     </select></label>
     {engine==='mpv'&&<label className="autoplay-toggle"><input type="checkbox" checked={renderEnabled} disabled={busy||!renderAvailable&&!renderEnabled} onChange={e=>void changeRender(e.target.checked)}/>D3D11 原生嵌入（试验）</label>}
     {renderEnabled&&<small>通过共享纹理复用应用内控件，允许 SDR、HDR 和色彩标记不完整的视频尝试播放。默认关闭，由用户在设置中启用；实际解码或显示失败时可切回现有原画播放器。</small>}
+    <label className="autoplay-toggle"><input type="checkbox" checked={sessionCoordinator} disabled={busy} onChange={e=>void changeSessionCoordinator(e.target.checked)}/>增强会话管理（试验）</label><small>默认关闭，对之后打开的现有播放器、MPV 独立窗口及 D3D11 内嵌播放生效，协调跳播、保存与退出；关闭后恢复原有流程，不更改默认引擎。</small>
     {engine==='mpv'&&!renderEnabled&&<label>MPV 播放窗口 <select aria-label="MPV 播放窗口" value={windowMode} disabled={busy} onChange={e=>void changeWindow(e.target.value)}>
       <option value="embedded">应用内嵌</option><option value="independent">独立窗口（推荐）</option>
     </select></label>}

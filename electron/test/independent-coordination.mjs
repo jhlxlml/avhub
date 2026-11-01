@@ -8,7 +8,7 @@ assert.doesNotMatch(input,/screenshot-to-file|write-watch-later|loadfile|\brun\b
 const tick=()=>new Promise(r=>setTimeout(r,0));
 function fixture(api){
  const player=new IndependentPlayer({api,send:()=>{},log:()=>{}});
- const s={client:{session:'fixture',snapshot:{phase:'ready',pendingSeek:null,properties:{'time-pos':3,pause:false}}},mediaId:1,owner:'owner',title:'test',closing:false,stopped:false,cleanupError:'',saveError:'',revision:0,failed:false,ready:false,persist:Promise.resolve(),timer:setInterval(()=>{},10000)};
+ const s={client:{session:'fixture',snapshot:{phase:'ready',pendingSeek:null,properties:{'time-pos':3,pause:false}}},mediaId:1,memory:{source:'fixture-source'},owner:'owner',title:'test',closing:false,stopped:false,cleanupError:'',saveError:'',revision:0,failed:false,ready:false,persist:Promise.resolve(),timer:setInterval(()=>{},10000)};
  player.active=s;return {player,s};
 }
 {

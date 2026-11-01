@@ -26,7 +26,7 @@ export class IndependentPlayer{
     if(!s.failed)throw new Error('请先关闭当前独立播放器');
     try{await this.close(!s.ready);}catch(cleanup){throw startupFailure(s.failure??new Error(s.client.snapshot.error||'原生会话清理未完成'),cleanup);}
   }
-  private view(s:Session){return {...s.client.snapshot,session:s.client.session,mediaId:s.mediaId,title:s.title,presentation:'independent',embedded:false,revision:s.revision,saveError:s.saveError,stopped:s.stopped||s.client.snapshot.phase==='closed',recovery:s.stopped?(s.saveError?'save':'cleanup'):null,cleanupError:s.cleanupError};}
+  private view(s:Session){return {...s.client.snapshot,session:s.client.session,mediaId:s.mediaId,sourceIdentity:s.memory.source,title:s.title,presentation:'independent',embedded:false,revision:s.revision,saveError:s.saveError,stopped:s.stopped||s.client.snapshot.phase==='closed',recovery:s.stopped?(s.saveError?'save':'cleanup'):null,cleanupError:s.cleanupError};}
   private event(s:Session,kind:string,detail?:string){this.deps.send('avhub:native-event',{session:s.client.session,kind,detail});}
   private publish(s:Session){
     if(this.active!==s||s.closing)return;s.revision++;
@@ -37,7 +37,7 @@ export class IndependentPlayer{
     if(s.ready&&s.client.snapshot.phase==='ended'&&s.client.endReason==='natural'&&!s.ended){s.ended=true;this.event(s,'ended');}
     if(!s.publishTimer)s.publishTimer=setTimeout(()=>{s.publishTimer=undefined;if(this.active===s&&!s.closing)this.deps.send('avhub:native-state',this.view(s));},200);
   }
-  async open(mediaId:number,start:number){
+  async open(mediaId:number,start:number,paused=false){
     if(this.active)throw new Error('请先关闭当前独立播放器');this.cancelled=false;
     const owner=randomBytes(16).toString('hex');let s:Session|undefined;
     try{
@@ -67,7 +67,7 @@ export class IndependentPlayer{
         await client.command(['set_property','sub-delay',memory.delay]);
       };
       const audio=prefs.values?.audio||{volume:1,muted:false},style=subtitleStyle(prefs.values?.subtitleAppearance??defaultSubtitleAppearance);
-      await client.start(this.deps.runtime(),String(source.path),null,start,[`--volume=${Math.max(0,Math.min(100,Number(audio.volume)*100))}`,`--mute=${audio.muted===true?'yes':'no'}`,`--speed=${Number(prefs.values?.playbackSpeed)||1}`,'--sub-ass-override=no',...subtitleOptions(style).map(([key,value])=>`--${key}=${value}`)],memory.audio!==null||memory.subtitle!==null||memory.delay!==0?restore:undefined,input,controller);
+      await client.start(this.deps.runtime(),String(source.path),null,start,[`--volume=${Math.max(0,Math.min(100,Number(audio.volume)*100))}`,`--mute=${audio.muted===true?'yes':'no'}`,`--speed=${Number(prefs.values?.playbackSpeed)||1}`,'--sub-ass-override=no',...subtitleOptions(style).map(([key,value])=>`--${key}=${value}`)],memory.audio!==null||memory.subtitle!==null||memory.delay!==0?restore:undefined,input,controller,!paused);
       const uiDeadline=performance.now()+2000;let uiReady=false;
       do{
         try{uiReady=await client.command(['get_property','user-data/avhub-ui/version'])===1;}catch{}
@@ -177,7 +177,12 @@ export class IndependentPlayer{
       }
       return {ok:true};
     }
-    if(!input||typeof input!=='object'||(input as any).session!==s.client.session||s.closing)throw new Error('独立播放会话已过期');
+    const request=input as {session?:unknown;value?:unknown};
+    if(!request||typeof request!=='object'||request.session!==s.client.session||s.closing)throw new Error('独立播放会话已过期');
+    if(action==='seek'){
+      if(s.stopped||s.capture||typeof request.value!=='number'||!Number.isFinite(request.value)||request.value<0||request.value>1e8)throw new Error('独立播放跳播参数无效或截图正在保存');
+      s.client.seek(request.value);return {ok:true};
+    }
     if(action==='screenshot')return this.capture(s);
     throw new Error('此操作由独立 MPV 窗口控制');
   }

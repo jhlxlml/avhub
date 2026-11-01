@@ -28,7 +28,7 @@ def stage(root=ROOT):
         root_config=len(relative.parts)==1 and (relative.name in root_files or relative.match('tsconfig*.json'))
         notice=name in {'bin/FFmpeg-LICENSE.txt','bin/FFmpeg-BUILD-INFO.txt','bin/SQLite-LICENSE.txt','bin/SQLite-BUILD-INFO.txt'}
         source=len(relative.parts)>1 and relative.parts[0] in source_roots and not (set(relative.parts)&blocked)
-        source_asset=name.startswith(('frontend/public/','electron/assets/')) and relative.suffix.lower() in {'.svg','.png','.ico','.woff','.woff2','.ttf','.otf'}
+        source_asset=(name.startswith(('frontend/public/','electron/assets/')) and relative.suffix.lower() in {'.svg','.png','.ico','.woff','.woff2','.ttf','.otf'}) or name=='tests/fixtures/native-hdr-pq.png'
         if not root_config and not notice and not (source and (relative.suffix in extensions or relative.name.startswith(('LICENSE','COPYING','Copyright')) or source_asset)):
             continue
         file=root/relative

@@ -5,6 +5,9 @@ No executable/runtime download, implicit approval flag, packaging or publication
 import argparse
 import hashlib
 import json
+import subprocess
+import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -29,6 +32,9 @@ def main():
         return {'path':file.relative_to(ROOT).as_posix(),'sha256':hashlib.file_digest(file.open('rb'),'sha256').hexdigest()}
 
     binding=json.loads(owned(args.directory/'M5-BUILD-INPUTS.json').read_text(encoding='utf-8'))
+    target=subprocess.run(['node',str(ROOT/'electron/release-evidence.cjs'),'target',str(ROOT),str(owned(args.directory/'M5-BUILD-INPUTS.json'))],capture_output=True,text=True,encoding='utf-8')
+    if target.returncode:raise ValueError('Current application acceptance required: '+target.stderr.strip())
+    expected=json.loads(target.stdout)
     mpv=ROOT/binding['independentRuntime']; manifest=json.loads(owned(mpv/'runtime.json').read_text(encoding='utf-8'))
     native=ROOT/binding['nativeRoot']
     independent=json.loads(owned(args.independent_test).read_text(encoding='utf-8'))
@@ -42,12 +48,33 @@ def main():
     source=json.loads((ROOT/'build/m5-source-delivery.json').read_text(encoding='utf-8'))
     if not source['allMembersVerified'] or source['nativeSourceArchives']!=22 or not Path(source['zip']).resolve().is_relative_to(args.directory.resolve()):
         raise ValueError('Current complete source delivery required')
-    result={'schema':1,'kind':'avhub-dual-mpv-release-inputs',
+    archive=owned(Path(source['zip']))
+    if item(archive)['sha256']!=source['sha256']:raise ValueError('Source archive bytes changed')
+    with zipfile.ZipFile(archive) as bundle:
+        index=json.loads(bundle.read('DELIVERY-INDEX.json'))
+        identity=json.loads(bundle.read('APPLICATION/app/build-info.json'))
+        if identity['version']!=expected['version'] or identity['build_id']!=expected['buildId']:raise ValueError('Source ZIP application version/build differs')
+        names=bundle.namelist()
+        if len(names)!=len(set(names)):raise ValueError('Duplicate source archive members')
+        for member in index['files']:
+            with bundle.open(member['path']) as stream:
+                if hashlib.file_digest(stream,'sha256').hexdigest()!=member['sha256']:raise ValueError('Source archive member changed: '+member['path'])
+        members={member['path']:member['sha256'] for member in index['files']}
+        for name,digest in expected['sourceFiles']:
+            if members.get('APPLICATION/'+name)!=digest:raise ValueError('Current source differs from delivered ZIP: '+name)
+    result={'schema':2,'kind':'avhub-dual-mpv-release-inputs',
+            'binding':item(args.directory/'M5-BUILD-INPUTS.json'),
+            'application':{key:value for key,value in expected.items() if key!='sourceFiles'},
+            'acceptedApplication':{'exeSha256':independent.get('subject',{}).get('applicationExeSha256'),'asarSha256':independent.get('subject',{}).get('applicationAsarSha256')},
             'render':item(native/'runtime.json'),'independent':item(mpv/'runtime.json'),
             'sourceBundle':item(Path(source['zip'])),
-            'acceptance':[item(args.independent_test),item(args.coexistence_test),item(args.render_test)],
+            'acceptance':[{'role':role,**item(file)} for role,file in [('independent',args.independent_test),('coexistence',args.coexistence_test),('render',args.render_test)]],
             'scope':'Windows x64 desktop; display/HDR/mixed-DPI limits recorded, not playback admission',
-            'published':False}
+            'publicationReady':False,'hostedCi':'BLOCKED until matching current-commit Windows CI succeeds','published':False}
+    with tempfile.NamedTemporaryFile(mode='w',encoding='utf-8',prefix='desktop-release-validation-',suffix='.json',dir=ROOT/'build',delete=False) as candidate:
+        json.dump(result,candidate,indent=2);validation=Path(candidate.name)
+    check=subprocess.run(['node',str(ROOT/'electron/release-evidence.cjs'),'verify',str(ROOT),str(validation)],capture_output=True,text=True,encoding='utf-8')
+    if check.returncode:raise ValueError('Actual same-application packaged proof required: '+check.stderr.strip())
     destination=ROOT/'build/desktop-release-inputs.json'
     destination.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     print(str(destination))

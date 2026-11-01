@@ -92,7 +92,7 @@ try{
    await page.getByRole('button',{name:'媒体库设置',exact:true}).click();
    await expect(page.getByRole('tablist',{name:'设置分类'})).toHaveAttribute('aria-orientation','vertical');
    await screenshot(`settings-${theme}-1440`);
-   await page.getByRole('tab',{name:'媒体目录',exact:true}).focus();await page.keyboard.press('ArrowDown');await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toBeFocused();await screenshot(`playback-preferences-${theme}-1440`);
+   await page.getByRole('tab',{name:'媒体目录',exact:true}).focus();await page.keyboard.press('ArrowDown');await expect(page.getByRole('tab',{name:'外观',exact:true})).toBeFocused();await page.keyboard.press('ArrowDown');await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toBeFocused();await screenshot(`playback-preferences-${theme}-1440`);
    await page.getByRole('button',{name:'关闭设置',exact:true}).click();
    await page.getByRole('button',{name:'播放列表',exact:true}).click();await expect(page.locator('.playlist-video-items>li')).toHaveCount(5);await screenshot(`playlist-${theme}-1440`);await page.getByRole('button',{name:'完成',exact:true}).click();
  }

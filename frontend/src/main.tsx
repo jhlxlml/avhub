@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {AppConfirmHost} from './AppConfirm';
+import {PlaybackSessionCoordinator} from './playback/PlaybackSessionCoordinator';
 import {BatchRecycle} from './BatchRecycle';
 import {RecycleRecords} from './RecycleRecords';
 import {RecycleFeedback,RecentRecycle} from './RecentRecycle';
@@ -113,6 +114,8 @@ function mediaQuery(filters:Filters) {
 }
 
 function App() {
+  const [playbackSessions]=useState(()=>new PlaybackSessionCoordinator({}));
+  useEffect(()=>()=>{void playbackSessions.close().catch(()=>{});},[playbackSessions]);
   const privacy=usePrivacy();
   const [filters, setFilters] = useState(readFilters);
   const [treeOpen,setTreeOpen]=useState(false);
@@ -331,7 +334,7 @@ function App() {
     </section>}
     {router.route.mediaId && !routeError&&(!selected || selected.id!==router.route.mediaId) && <div className="player-loading"><StatusMessage kind="loading">正在恢复播放页…</StatusMessage><Button icon="arrowLeft" onClick={close}>返回媒体库</Button></div>}
     {selected && selected.id===router.route.mediaId && <Suspense fallback={<div className="player-loading"><StatusMessage kind="loading">正在打开播放器…</StatusMessage></div>}>
-      <Player key={selected.id} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} changePlaylistPlayback={changePlaylistPlayback} update={updateMedia}
+      <Player key={selected.id} sessionRoot={playbackSessions} media={selected} automatic={automaticMedia===selected.id} close={close} playNext={playQueueItem} queue={queue || undefined} changePlaylistPlayback={changePlaylistPlayback} update={updateMedia}
         favoriteBusy={favoritePending.includes(selected.id)} changeFavorite={changeFavorite} registerNavigationGuard={router.registerGuard} notify={setNotice} />
     </Suspense>}
     <main hidden={Boolean(router.route.mediaId)||routeLoading}>

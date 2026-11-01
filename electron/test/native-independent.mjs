@@ -1,5 +1,6 @@
 // Real Electron library + owned MPV window; native input.conf is exercised by
 // MPV keypress injection. This is not physical OS keyboard/mouse acceptance.
+import {desktopTestSubject} from './desktop-test-subject.mjs';
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
 import {mkdirSync,mkdtempSync,readFileSync,statSync,writeFileSync,readdirSync,existsSync} from 'node:fs';
@@ -20,18 +21,23 @@ mkdirSync(path.join(root,'build'),{recursive:true});
 const data=mkdtempSync(path.join(root,'build','native-independent-')),media=path.join(data,'media'),captures=path.join(data,'screenshots');mkdirSync(media);mkdirSync(captures);
 const sources=['A.mp4','B.mp4'].map(name=>path.join(media,name));
 for(const source of sources)assert.equal(spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','lavfi','-i','testsrc2=s=640x360:r=25','-t','24','-c:v','libx264','-g','50','-pix_fmt','yuv420p',source],{windowsHide:true,timeout:30000}).status,0);
-const identity=()=>sources.map(file=>({hash:createHash('sha256').update(readFileSync(file)).digest('hex'),mtime:statSync(file).mtimeMs})),before=identity();let desktop;
+const identity=()=>sources.map(file=>({hash:createHash('sha256').update(readFileSync(file)).digest('hex'),mtime:statSync(file).mtimeMs})),before=identity();let desktop,subject;
 console.log('Independent fixture:',data);
 writeFileSync(path.join(data,'runtime-subject.json'),JSON.stringify(candidate?{tag:candidate.tag,sourceCommit:candidate.sourceCommit,testOnlyOverride:true}:{source:packagedExe?'bundled packaged runtime':'installed development runtime'},null,2));
 try{
  const env={...process.env,AVHUB_DATA_DIR:data,AVHUB_APP_HOME:data,AVHUB_RENDER_LOCAL_ACCEPTANCE:'',AVHUB_RENDER_RUNTIME_CANDIDATE:'',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'};delete env.ELECTRON_RUN_AS_NODE;delete env.NODE_OPTIONS;
  desktop=await _electron.launch({...(packagedExe?{executablePath:packagedExe,args:[]}:{args:[root]}),cwd:data,env,timeout:60000});
+ subject=await desktopTestSubject(desktop,import.meta.url);
  const page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
  // Test-only main-process observation, never a production renderer command API.
  await desktop.evaluate(({app},{candidate})=>{
   const base=app.getAppPath(),require=process.getBuiltinModule('module').createRequire(base+'/package.json');
   const {MpvClient}=require(base+'/electron/dist/mpvClient.js'),start=MpvClient.prototype.start;
-  MpvClient.prototype.start=function(...args){if(candidate)args[0]=candidate.executable;globalThis.__independentTestClient=this;return start.apply(this,args);};
+  // This protocol-input harness injects mouse coordinates via MPV IPC. Disable
+  // only VO-reported physical pointer events for this owned test process: after
+  // fullscreen they can overwrite injected coordinates ~450 ms later. Real OS
+  // pointer acceptance remains separate; production options are unchanged.
+  MpvClient.prototype.start=function(...args){if(candidate)args[0]=candidate.executable;args[4]=[...(args[4]??[]),'--input-cursor=no'];globalThis.__independentTestClient=this;return start.apply(this,args);};
   const {IndependentPlayer}=require(base+'/electron/dist/independentPlayer.js'),open=IndependentPlayer.prototype.open;
   globalThis.__independentActivities=[];globalThis.__independentReleases=[];
   IndependentPlayer.prototype.open=function(...args){
@@ -53,9 +59,11 @@ try{
  await page.getByLabel('MPV 播放窗口',{exact:true}).selectOption('independent');
  await expect.poll(async()=>(await api('/api/preferences')).values.mpvWindowMode).toBe('independent');
  await page.getByRole('button',{name:'关闭设置',exact:true}).click();
- await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',mpvWindowMode:'independent',resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true},screenshots:{directory:captures,shortcut:'C'}}});
+ const coordinated=process.env.AVHUB_TEST_SESSION_COORDINATOR==='1';
+ await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',mpvWindowMode:'independent',playbackSessionCoordinatorEnabled:coordinated,resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true},screenshots:{directory:captures,shortcut:'C'}}});
  await page.reload();const started=performance.now();await page.getByRole('button',{name:'播放 A',exact:true}).click();
  await expect(page.getByText('MPV · 独立窗口播放原文件',{exact:true})).toBeVisible({timeout:30000});
+ if(coordinated)await expect(page.getByLabel('MPV 原生播放区域',{exact:true})).toHaveAttribute('data-playback-session-phase','ready');
  const snapshot=()=>page.evaluate(()=>window.avhubDesktop.nativePlayer('snapshot'));
  await expect.poll(async()=>{const s=await snapshot();return s.phase==='ready'&&Number(s.properties['time-pos'])>.05;},{timeout:30000}).toBe(true);
  const first=await snapshot(),openToDecodedMs=performance.now()-started;
@@ -99,7 +107,7 @@ try{
  // arbitrary renderer actions. Physical pointer acceptance is separate.
  const layout=()=>command(['get_property','user-data/avhub-ui/layout']);
  const point=async(id,fraction=.5)=>{const ui=await layout(),b=ui.buttons.find(b=>b.id===id);assert.ok(b,id);return {x:Math.round((b.x+b.w*fraction)*ui.scale),y:Math.round((b.y+b.h/2)*ui.scale)};};
- const move=async id=>{const p=await point(id);await command(['mouse',p.x,p.y]);await expect.poll(async()=>(await layout()).visible).toBe(true);return p;};
+ const move=async id=>{let p;await expect.poll(async()=>{p=await point(id);await command(['mouse',p.x,p.y]);const mouse=await command(['get_property','mouse-pos']);return mouse.hover===true&&Math.abs(mouse.x-p.x)<=1&&Math.abs(mouse.y-p.y)<=1&&(await layout()).visible;}).toBe(true);return p;};
  const click=async id=>{const p=await move(id);await command(['mouse',p.x,p.y,0,'single']);};
  await click('pin');await expect.poll(()=>command(['get_property','ontop'])).toBe(true);await click('pin');await expect.poll(()=>command(['get_property','ontop'])).toBe(false);
  await click('settings');await expect.poll(async()=>(await layout()).panel).toBe(true);
@@ -118,7 +126,10 @@ try{
  await expect.poll(async()=>{const d=await command(['get_property','osd-dimensions']),u=await layout();return [d.w,d.h,Math.round(u.width*u.scale),Math.round(u.height*u.scale)];}).toEqual([normalDims.w,normalDims.h,normalDims.w,normalDims.h]);
  // Hover stays visible even paused; leaving controls hides without a key
  // press revealing it again. No permanent background UI frame timer.
- await move('play');await new Promise(r=>setTimeout(r,650));assert.equal((await layout()).visible,true);
+ const hoverTarget=await move('play'),hoverTrace=[];
+ for(let i=0;i<13;i++){await new Promise(r=>setTimeout(r,50));hoverTrace.push({elapsedMs:(i+1)*50,target:hoverTarget,mouse:await command(['get_property','mouse-pos']),layout:await layout(),dimensions:await command(['get_property','osd-dimensions'])});}
+ writeFileSync(path.join(data,'hover-trace.json'),JSON.stringify(hoverTrace,null,2));
+ assert.ok(hoverTrace.every(row=>row.layout.visible),'stationary hover must remain visible; inspect hover-trace.json for native pointer/layout changes');
  const dims=await command(['get_property','osd-dimensions']);await command(['mouse',Math.round(dims.w/2),Math.round(dims.h/2)]);
  await expect.poll(async()=>(await layout()).visible).toBe(false);
  await command(['keypress','RIGHT']);await expect.poll(async()=>{const s=await snapshot();return s.seekMode===null&&s.pendingSeek===null&&s.properties.seeking!==true&&Number(s.properties['time-pos'])>16.5;},{timeout:10000}).toBe(true);
@@ -172,7 +183,7 @@ try{
  await page.getByRole('button',{name:'重新播放',exact:true}).click();
  await expect(page.getByText('MPV · 独立窗口播放原文件',{exact:true})).toBeVisible({timeout:30000});
  await desktop.close();desktop=null;assert.equal(readdirSync(path.join(data,'native-inputs')).length,0);assert.deepEqual(identity(),before);
- writeFileSync(path.join(data,'acceptance.json'),JSON.stringify({completed:true,cleanExit:true,runtime:runtimeIdentity,scope:'real Electron library; native keypress/mouse command injection; synthetic 640x360 H264; injected progress-write fault; not physical input or compositor validation',openToDecodedMs,relativeSeekMs,nativeSeek:{target:tracked.lastSeekTarget,position:tracked.lastSeekPosition,completionMs:tracked.lastSeekMs,pausedIoPriority:true},nativeUi:{pin:true,settings:true,speed:true,delay:true,fullscreen:true,scrubOneCommit:true,hoverAndKeyboardHiding:true},noElectronVideoWindows:true,sourceLoads:1,originalResolution:true,configuredScreenshot:true,naturalAutoplayAfterNearEndSeek:true,closedSaveFailureRecovery:true,confirmedDiscard:true,nativeQuitCleanup:true,applicationQuitCleanup:true,sourceUnchanged:true},null,2));
+ writeFileSync(path.join(data,'acceptance.json'),JSON.stringify({subject,completed:true,cleanExit:true,runtime:runtimeIdentity,scope:'real Electron library; native IPC input with VO pointer events isolated in this test process; synthetic 640x360 H264; injected progress-write fault; not physical input or compositor validation',pointerIsolation:{testOnly:true,voInputCursor:false,productionOptionsChanged:false,trace:'hover-trace.json'},openToDecodedMs,relativeSeekMs,nativeSeek:{target:tracked.lastSeekTarget,position:tracked.lastSeekPosition,completionMs:tracked.lastSeekMs,pausedIoPriority:true},nativeUi:{pin:true,settings:true,speed:true,delay:true,fullscreen:true,scrubOneCommit:true,hoverAndKeyboardHiding:true},noElectronVideoWindows:true,sourceLoads:1,originalResolution:true,configuredScreenshot:true,naturalAutoplayAfterNearEndSeek:true,closedSaveFailureRecovery:true,confirmedDiscard:true,nativeQuitCleanup:true,applicationQuitCleanup:true,sourceUnchanged:true},null,2));
  console.log('Independent application flow passed:',data);
 }catch(error){if(desktop){writeFileSync(path.join(data,'failure.json'),JSON.stringify({error:String(error),snapshot:await desktop.evaluate(()=>globalThis.__independentTestClient?.snapshot).catch(()=>null),windows:await Promise.all(desktop.windows().map(async p=>({url:p.url(),body:await p.locator('body').innerText().catch(()=>'<closed>')})))},null,2));await desktop.evaluate(({app})=>app.exit(1)).catch(()=>{});}throw error;}
 finally{if(desktop)await desktop.close().catch(()=>{});}

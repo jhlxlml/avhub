@@ -46,10 +46,11 @@ class NativeLeasesTest(unittest.TestCase):
             self.assertEqual(validate('mpvWindowMode',value),value)
         for value in ['auto','external',{},True,None,1]:
             with self.assertRaises(HTTPException):validate('mpvWindowMode',value)
-        for value in (True, False):
-            self.assertEqual(validate('nativeRenderEnabled',value),value)
-        for value in (1,'true',None,{}):
-            with self.assertRaises(HTTPException):validate('nativeRenderEnabled',value)
+        for key in ('nativeRenderEnabled','playbackSessionCoordinatorEnabled'):
+            for value in (True, False):
+                self.assertEqual(validate(key,value),value)
+            for value in (1,'true',None,{}):
+                with self.assertRaises(HTTPException):validate(key,value)
 
     def test_late_acquisition_after_cancellation_is_rejected(self):
         service=Service();leases=NativeReadLeases(service)

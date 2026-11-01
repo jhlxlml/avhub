@@ -2,15 +2,17 @@
 // product test, a no-inspector experiment, or a benchmark of the paused real file.
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
-import {mkdirSync,copyFileSync,readFileSync,writeFileSync,statfsSync,statSync,existsSync,realpathSync,renameSync} from 'node:fs';
+import {mkdirSync,copyFileSync,readFileSync,writeFileSync,statfsSync,statSync,existsSync,realpathSync,renameSync,readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {ownedTemporaryWorkspace} from './owned-temp-workspace.mjs';
 import {installPlaybackTimeline} from './playback-timeline.mjs';
+import {desktopTestSubject} from './desktop-test-subject.mjs';
 
 const root=path.resolve(import.meta.dirname,'../..');
+const packagedExe=process.env.AVHUB_TEST_PACKAGED_EXE;
 const option=(name,fallback)=>Number(process.argv.find(arg=>arg.startsWith(`--${name}=`))?.split('=')[1]??fallback);
 const seconds=option('seconds',1200),size=option('videos',600);
 const stopFile=process.argv.find(arg=>arg.startsWith('--stop-file='))?.slice(12);
@@ -47,7 +49,8 @@ async function memory(){
  assert.ok(values.every(m=>m.workingSetKiB<2*1024**2),'Safety stop: an Electron process exceeded 2 GiB working set');return values;
 }
 try{
- desktop=await _electron.launch({args:[root],cwd:workspace,env:{...process.env,AVHUB_DATA_DIR:profile,AVHUB_APP_HOME:workspace,AVHUB_PROFILE_PROGRESS:'1',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+ desktop=await _electron.launch({...(packagedExe?{executablePath:packagedExe,args:[]}:{args:[root]}),cwd:workspace,env:{...process.env,AVHUB_DATA_DIR:profile,AVHUB_APP_HOME:workspace,AVHUB_PROFILE_PROGRESS:'1',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+ report.subject=await desktopTestSubject(desktop,import.meta.url);
  page=await desktop.firstWindow({timeout:50000});page.on('pageerror',e=>report.errors.push(e.message));
  await page.addInitScript(()=>{
   window.__usagePointer=[];
@@ -70,7 +73,8 @@ try{
  assert.equal(report.windowPlacement.withinWorkArea,true);
  await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor({timeout:30000});
  api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{const response=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});const value=await response.json();if(!response.ok)throw new Error(JSON.stringify(value));return value;},{url,method,body});
- await api('/api/preferences','PATCH',{values:{playerEngine:'chromium',resumeBehavior:'restart',autoNext:false,hoverPreview:true,audio:{volume:0,muted:true}}});
+ report.sessionCoordinator=process.env.AVHUB_TEST_SESSION_COORDINATOR==='1';
+ await api('/api/preferences','PATCH',{values:{playerEngine:'chromium',playbackSessionCoordinatorEnabled:report.sessionCoordinator,resumeBehavior:'restart',autoNext:false,hoverPreview:true,audio:{volume:0,muted:true}}});
  await api('/api/roots','POST',{path:media});await api('/api/scan','POST');
  await expect.poll(async()=>(await api('/api/scan')).state,{timeout:180000}).toBe('completed');
  await expect.poll(async()=>{const t=await api('/api/thumbnails');return t.pending===0&&t.current===null;},{timeout:180000}).toBe(true);
@@ -124,6 +128,10 @@ try{
    const wal=path.join(profile,'library.db-wal');cycle.walBytes=existsSync(wal)?statSync(wal).size:0;
    const pauseStarted=Date.now(),pauseCommand=performance.now();
    await video.evaluate(v=>{window.__playbackTimeline.record('pause-call');v.pause();});cycle.pauseCommandMs=performance.now()-pauseCommand;
+   if(report.cycles.length%6===0){
+     const captures=path.join(profile,'screenshots'),count=()=>existsSync(captures)?readdirSync(captures).filter(name=>name.endsWith('.png')).length:0,before=count();
+     await page.keyboard.press('c');await expect.poll(count,{timeout:15000}).toBe(before+1);cycle.screenshotSaved=true;
+   }
    await delay(2500);
    const thumbnails=await api('/api/thumbnails'),scan=await api('/api/scan');
    assert.equal(thumbnails.failed,0);assert.equal(scan.error_count,0);assert.notEqual(scan.state,'failed');

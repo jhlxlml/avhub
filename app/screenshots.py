@@ -51,16 +51,20 @@ def validate_png(path):
     try:
         with path.open('rb') as image:
             if image.read(8)!=b'\x89PNG\r\n\x1a\n':raise ValueError()
-            width=height=expected=inflated=depth=color=0;decoder=None;seen_idat=False;ended_idat=False;seen_sbit=False
+            width=height=expected=inflated=depth=color=0;decoder=None;seen_idat=False;ended_idat=False;seen_sbit=False;seen_color=set()
             while True:
                 header=image.read(8)
                 if len(header)!=8:raise ValueError()
                 length,kind=struct.unpack('>I4s',header)
                 if kind==b'IEND' and length:raise ValueError()
-                if length>MAX_BYTES or kind not in (b'IHDR',b'IDAT',b'IEND',b'sRGB',b'gAMA',b'cHRM',b'pHYs',b'cICP',b'sBIT'):raise ValueError()
+                if length>MAX_BYTES or kind not in (b'IHDR',b'IDAT',b'IEND',b'sRGB',b'gAMA',b'cHRM',b'pHYs',b'cICP',b'sBIT',b'mDCV',b'cLLI'):raise ValueError()
                 # Native MPV PNGs preserve CICP color metadata. Validate its
                 # fixed size and CRC without stripping tags or re-encoding.
-                if kind==b'cICP' and (length!=4 or seen_idat):raise ValueError()
+                # PNG 3 HDR mastering/light metadata emitted by native MPV.
+                # Fixed sizes, single occurrence, before IDAT; preserve bytes.
+                if kind in (b'cICP',b'mDCV',b'cLLI'):
+                    if length!={b'cICP':4,b'mDCV':24,b'cLLI':8}[kind] or seen_idat or kind in seen_color:raise ValueError()
+                    seen_color.add(kind)
                 if not width and kind!=b'IHDR':raise ValueError()
                 if kind!=b'IDAT' and seen_idat:ended_idat=True
                 if kind==b'IHDR':
@@ -97,6 +101,7 @@ def validate_png(path):
                             pending=decoder.unconsumed_tail
                 if image.read(4)!=struct.pack('>I',crc&0xffffffff):raise ValueError()
                 if kind==b'IEND':
+                    if seen_color.intersection((b'mDCV',b'cLLI')) and b'cICP' not in seen_color:raise ValueError()
                     if not seen_idat or not decoder.eof or inflated!=expected or image.read(1):raise ValueError()
                     return width,height
     except (ValueError,struct.error,zlib.error) as exc:raise HTTPException(422,'截图 PNG 损坏、格式不支持或超过 6400 万像素；未保存图片') from exc

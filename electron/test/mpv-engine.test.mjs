@@ -12,6 +12,17 @@ const state=(s,extra={})=>({session:`session-${s.mediaId}`,generation:s.generati
 const tick=()=>new Promise(r=>setImmediate(r));
 function port(){const p={listeners:new Set(),calls:[],detachments:0,attachments:0,async attach(){p.attachments++;return async()=>{p.detachments++;};},async open(s){p.calls.push(['open',s.mediaId]);return state(s);},async command(...args){p.calls.push(['command',...args]);},async close(...args){p.calls.push(['close',...args]);},subscribe(fn){p.listeners.add(fn);return()=>p.listeners.delete(fn);},emit(s){for(const fn of p.listeners)fn(s);}};return p;}
 async function setup(){const p=port(),engine=new MpvEngine(p);await engine.init({nativeSurface:{}});return {p,engine};}
+
+test('metadata and play intent survive a temporary paused seek; malformed source identity is rejected',async()=>{
+ const {p,engine}=await setup();await engine.load(source());const native=state({mediaId:1,generation:1,startSec:0},{revision:2,status:'paused',playIntent:true,sourceIdentity:'a'.repeat(64),subtitleDelaySec:.8,presented:{serial:1,positionSec:0,seekId:0}});
+ p.emit(native);assert.equal(engine.getPlayIntent(),true);assert.equal(engine.getPresentedSerial(),1);assert.equal(engine.getTrackSelection().sourceIdentity,'a'.repeat(64));assert.equal(engine.getTrackSelection().delaySec,.8);
+ p.emit({...native,revision:3,sourceIdentity:'file:///unauthorized',subtitleDelaySec:9});assert.equal(engine.getTrackSelection().delaySec,.8);assert.equal(engine.getTrackSelection().sourceIdentity,'a'.repeat(64));await engine.dispose();
+});
+
+test('explicit seek cancellation rejects the wait and awaits native cancellation ACK',async()=>{
+ const {p,engine}=await setup();await engine.load(source());const gate=deferred();p.command=async(...args)=>{p.calls.push(['command',...args]);if(args[2]==='cancel-seek')await gate.promise;};
+ const seek=engine.seekTo(40).catch(error=>error);let done=false;const cancel=engine.cancelPendingSeek().then(()=>done=true);assert.equal((await seek).name,'AbortError');await tick();assert.equal(done,false);gate.resolve();await cancel;assert.equal(done,true);await engine.dispose();
+});
 test('init shares one attachment and dispose waits for pending attachment cleanup',async()=>{
  const p=port(),gate=deferred();p.attach=async()=>{p.attachments++;await gate.promise;return async()=>{p.detachments++;};};const engine=new MpvEngine(p),surface={};
  const init=engine.init({nativeSurface:surface}),rejected=assert.rejects(init,{name:'AbortError'});assert.equal(engine.init({nativeSurface:surface}),init);

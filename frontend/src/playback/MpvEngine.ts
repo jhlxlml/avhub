@@ -1,6 +1,6 @@
 import {cancelled,type MediaSource,type PlaybackEngine,type PlaybackState,type PlaybackTarget,type Track} from './types';
 
-export type NativeSnapshot={session:string;generation:number;mediaId:number;revision:number;status:PlaybackState['status'];positionSec:number;durationSec:number|null;volume:number;muted:boolean;rate:number;videoSize?:{width:number;height:number};tracks:Track[];error?:PlaybackState['error'];presented?:{serial:number;positionSec:number;seekId:number}};
+export type NativeSnapshot={session:string;generation:number;mediaId:number;revision:number;status:PlaybackState['status'];positionSec:number;durationSec:number|null;volume:number;muted:boolean;rate:number;videoSize?:{width:number;height:number};tracks:Track[];error?:PlaybackState['error'];presented?:{serial:number;positionSec:number;seekId:number};sourceIdentity?:string|null;subtitleDelaySec?:number;playIntent?:boolean};
 export type NativeCommand='play'|'pause'|'seek'|'cancel-seek'|'volume'|'mute'|'rate'|'track'|'subtitle-delay';
 export type NativeOpen={mediaId:number;generation:number;startSec:number;autoplay:boolean};
 export interface NativeEnginePort {
@@ -13,7 +13,7 @@ export interface NativeEnginePort {
 type Session={id:string;generation:number;mediaId:number};
 const statuses=new Set<PlaybackState['status']>(['loading','ready','playing','paused','buffering','ended','error']);
 const finite=(v:unknown,min:number,max=Number.MAX_SAFE_INTEGER):v is number=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max;
-function validSnapshot(s:NativeSnapshot){return s&&typeof s.session==='string'&&s.session.length>0&&Number.isSafeInteger(s.generation)&&s.generation>0&&Number.isSafeInteger(s.mediaId)&&s.mediaId>0&&Number.isSafeInteger(s.revision)&&s.revision>=0&&statuses.has(s.status)&&finite(s.positionSec,0)&&(s.durationSec===null||finite(s.durationSec,0))&&finite(s.volume,0,1)&&typeof s.muted==='boolean'&&finite(s.rate,.25,4)&&Array.isArray(s.tracks)&&s.tracks.length<=128&&s.tracks.every(t=>t&&typeof t.id==='string'&&t.id.length>0&&t.id.length<=64&&['audio','subtitle'].includes(t.type)&&typeof t.selected==='boolean');}
+function validSnapshot(s:NativeSnapshot){return s&&typeof s.session==='string'&&s.session.length>0&&Number.isSafeInteger(s.generation)&&s.generation>0&&Number.isSafeInteger(s.mediaId)&&s.mediaId>0&&Number.isSafeInteger(s.revision)&&s.revision>=0&&statuses.has(s.status)&&finite(s.positionSec,0)&&(s.durationSec===null||finite(s.durationSec,0))&&finite(s.volume,0,1)&&typeof s.muted==='boolean'&&finite(s.rate,.25,4)&&Array.isArray(s.tracks)&&s.tracks.length<=128&&s.tracks.every(t=>t&&typeof t.id==='string'&&t.id.length>0&&t.id.length<=64&&['audio','subtitle'].includes(t.type)&&typeof t.selected==='boolean')&&(s.sourceIdentity===undefined||s.sourceIdentity===null||typeof s.sourceIdentity==='string'&&/^[a-f0-9]{64}$/.test(s.sourceIdentity))&&(s.subtitleDelaySec===undefined||finite(s.subtitleDelaySec,-10,10))&&(s.playIntent===undefined||typeof s.playIntent==='boolean');}
 
 /** Renderer adapter only. The trusted main process resolves media IDs and
  * owns decoding/GPU/read leases. A command acknowledgement is not a shown frame. */
@@ -27,6 +27,7 @@ export class MpvEngine implements PlaybackEngine {
  private loading:AbortController|null=null;private disposed=false;private stopping:Promise<void>|null=null;private tail:Promise<void>=Promise.resolve();
  private revision=-1;private signature='';private early:NativeSnapshot[]=[];private openingGeneration:number|null=null;
  private seekId=0;private lastPresented=0;
+ private sourceIdentity:string|null=null;private subtitleDelay=0;private playIntent=false;
  private clockTimer:ReturnType<typeof setTimeout>|null=null;
  private seeking:{id:number;target:number;after:number;resolve:()=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>}|null=null;
  constructor(private port:NativeEnginePort,private seekTimeoutMs=15000){}
@@ -48,7 +49,7 @@ export class MpvEngine implements PlaybackEngine {
   const start=source.resumePositionSec??0;if(!finite(start,0))throw new RangeError('续播位置无效');
   const generation=options.generation??this.state.generation+1;if(!Number.isSafeInteger(generation)||generation<=this.state.generation)throw new Error('原生会话代次无效');
   this.loading?.abort();this.cancelSeek();const abort=new AbortController();this.loading=abort;
-  this.source=source;this.revision=-1;this.tracks=[];this.state={...this.state,status:'loading',generation,mediaId:source.mediaId,positionSec:start,durationSec:source.durationSec??null,error:undefined};this.publish();
+  this.source=source;this.revision=-1;this.tracks=[];this.sourceIdentity=null;this.subtitleDelay=0;this.playIntent=source.autoplay!==false;this.state={...this.state,status:'loading',generation,mediaId:source.mediaId,positionSec:start,durationSec:source.durationSec??null,error:undefined};this.publish();
   const cancel=()=>abort.abort();options.signal?.addEventListener('abort',cancel,{once:true});if(options.signal?.aborted)cancel();
   let rejectAbort:(e:Error)=>void=()=>{};const cancelledTask=new Promise<never>((_,reject)=>{rejectAbort=reject;});
   const onAbort=()=>rejectAbort(cancelled());abort.signal.addEventListener('abort',onAbort,{once:true});if(abort.signal.aborted)onAbort();
@@ -75,14 +76,15 @@ export class MpvEngine implements PlaybackEngine {
   const active=this.session;
   if(!active){if(this.openingGeneration===value.generation){this.early.push(value);if(this.early.length>16)this.early.shift();}return;}
   if(value.session!==active.id||value.generation!==active.generation||value.mediaId!==active.mediaId||value.generation!==this.state.generation||value.revision<=this.revision)return;
-  const before=JSON.stringify([{...this.state,positionSec:0},this.tracks]);
+  const before=JSON.stringify([{...this.state,positionSec:0},this.tracks,this.sourceIdentity,this.subtitleDelay,this.playIntent]);
   this.revision=value.revision;this.tracks=value.tracks.map(t=>({...t}));
+  this.sourceIdentity=value.sourceIdentity??null;this.subtitleDelay=value.subtitleDelaySec??0;this.playIntent=value.playIntent??(value.status==='playing'?true:value.status==='paused'?false:this.playIntent);
   this.state={...this.state,status:value.status,positionSec:value.positionSec,durationSec:value.durationSec,volume:value.volume,muted:value.muted,rate:value.rate,error:value.error,videoSize:value.videoSize?{...value.videoSize}:undefined};
   let seekComplete=false;const frame=value.presented;if(frame&&Number.isSafeInteger(frame.serial)&&frame.serial>this.lastPresented&&finite(frame.positionSec,0)){
    this.lastPresented=frame.serial;const seek=this.seeking;
    if(seek&&frame.seekId===seek.id&&frame.serial>seek.after&&Math.abs(frame.positionSec-seek.target)<=.1){this.seeking=null;clearTimeout(seek.timer);seekComplete=true;seek.resolve();}
   }
-  if(value.status==='error')this.cancelSeek(new Error(value.error?.message||'原生跳播失败'));this.publish(seekComplete||before!==JSON.stringify([{...this.state,positionSec:0},this.tracks]));
+  if(value.status==='error')this.cancelSeek(new Error(value.error?.message||'原生跳播失败'));this.publish(seekComplete||before!==JSON.stringify([{...this.state,positionSec:0},this.tracks,this.sourceIdentity,this.subtitleDelay,this.playIntent]));
  }
  private current(){if(this.disposed||!this.session||this.state.generation!==this.session.generation)throw cancelled();return this.session;}
  private async command(action:NativeCommand,value?:unknown){const active=this.current();await this.port.command(active.id,active.generation,action,value);if(this.disposed||this.session!==active||this.state.generation!==active.generation)throw cancelled();}
@@ -98,6 +100,7 @@ export class MpvEngine implements PlaybackEngine {
   });
  }
  private cancelSeek(error:Error=cancelled()){const seek=this.seeking;if(seek){this.seeking=null;clearTimeout(seek.timer);seek.reject(error);}}
+ async cancelPendingSeek(){const seek=this.seeking;this.cancelSeek();if(seek&&this.session&&!this.disposed)await this.command('cancel-seek',{seekId:seek.id});}
  async setVolume(value:number){if(!finite(value,0,1))throw new RangeError('音量无效');await this.command('volume',value);}
  async setMuted(value:boolean){if(typeof value!=='boolean')throw new TypeError('静音状态无效');await this.command('mute',value);}
  async setRate(value:number){if(!finite(value,.25,4))throw new RangeError('倍速无效');await this.command('rate',value);}
@@ -106,10 +109,13 @@ export class MpvEngine implements PlaybackEngine {
  async setSubtitleDelay(seconds:number){if(!finite(seconds,-10,10))throw new RangeError('字幕延迟无效');await this.command('subtitle-delay',seconds);}
  getState():PlaybackState{return {...this.state,bufferedRanges:[],videoSize:this.state.videoSize?{...this.state.videoSize}:undefined,error:this.state.error?{...this.state.error}:undefined};}
  getSession(){return this.session?{...this.session}:null;}
+ getPresentedSerial(){return this.lastPresented;}
+ getPlayIntent(){return this.playIntent;}
+ getTrackSelection(){return {sourceIdentity:this.sourceIdentity,audio:this.tracks.find(t=>t.type==='audio'&&t.selected)?.id??null,subtitle:this.tracks.find(t=>t.type==='subtitle'&&t.selected)?.id??null,delaySec:this.subtitleDelay};}
  private publish(immediate=true){
   if(!immediate){if(!this.clockTimer)this.clockTimer=setTimeout(()=>{this.clockTimer=null;if(!this.disposed)this.publish();},200);return;}
   if(this.clockTimer){clearTimeout(this.clockTimer);this.clockTimer=null;}
-  const state=this.getState(),signature=JSON.stringify([state,this.tracks]);if(signature===this.signature)return;this.signature=signature;for(const listener of this.listeners)listener(state);
+  const state=this.getState(),signature=JSON.stringify([state,this.tracks,this.sourceIdentity,this.subtitleDelay,this.playIntent]);if(signature===this.signature)return;this.signature=signature;for(const listener of this.listeners)listener(state);
  }
  subscribe(listener:(state:PlaybackState)=>void){if(this.disposed)return()=>{};this.listeners.add(listener);listener(this.getState());return()=>this.listeners.delete(listener);}
  dispose(){

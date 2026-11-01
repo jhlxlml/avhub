@@ -73,15 +73,18 @@ test('native preparation dialog shares light theme and fits a narrow window',asy
 });
 
 test('lossless failure stops rather than automatically escalating to video encoding',async({page})=>{
-  const bodies:any[]=[];
+  const bodies:{force_transcode?:boolean;allow_video_transcode?:boolean}[]=[];
+  // Use an authorized media-service URL so this exercises failed decoding,
+  // not the separate source-authorization guard. No check is bypassed.
+  const playlist='/media/hls/'+'f'.repeat(32)+'/index.m3u8',segment='/media/hls/'+'f'.repeat(32)+'/000000.ts';
   await page.route('**/media/2/file',r=>r.fulfill({status:404,body:'exercise original failure'}));
   await page.route('**/api/media/2/playback',async route=>{
     const body=route.request().postDataJSON();bodies.push(body);
     if(body.prefer_original)return route.continue();
-    await route.fulfill({json:{mode:'remux',state:'ready',url:'/test/invalid-native.m3u8',offset:0,complete:true,window_end:120}});
+    await route.fulfill({json:{mode:'remux',state:'ready',url:playlist,offset:0,complete:true,window_end:120}});
   });
-  await page.route('**/test/invalid-native.m3u8',r=>r.fulfill({body:'#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\n/test/invalid-native.ts\n#EXT-X-ENDLIST\n'}));
-  await page.route('**/test/invalid-native.ts',r=>r.fulfill({body:'not a video'}));
+  await page.route('**'+playlist,r=>r.fulfill({body:'#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXTINF:2,\n'+segment+'\n#EXT-X-ENDLIST\n'}));
+  await page.route('**'+segment,r=>r.fulfill({body:'not a video'}));
   await page.goto('/?video=2');
   await expect(page.getByText('暂时无法播放',{exact:true})).toBeVisible({timeout:15000});
   await expect(page.getByRole('alert')).toContainText('不会自动降低画质');

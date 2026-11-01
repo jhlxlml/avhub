@@ -63,7 +63,7 @@ export class MpvClient {
   get playbackProperties(){const p=this.finalProperties??this.snapshot.properties;return typeof p['time-pos']==='number'||this.lastPosition===null?p:{...p,'time-pos':this.lastPosition};}
   private preservePlayback(){if(!this.finalProperties)this.finalProperties={...this.playbackProperties};}
   emit(){this.publish(structuredClone(this.snapshot));}
-  async start(executable:string,source:string,handle:string|null,start:number,extra:string[]=[],beforePlay?:()=>Promise<void>,input?:string,controller?:string) {
+  async start(executable:string,source:string,handle:string|null,start:number,extra:string[]=[],beforePlay?:()=>Promise<void>,input?:string,controller?:string,autoplay=true) {
     if(this.closed)throw new Error('原生播放启动已取消');
     const pipe=`\\\\.\\pipe\\avhub-mpv-${this.session}`;
     this.nativeWindow=handle===null;
@@ -114,7 +114,7 @@ export class MpvClient {
       if(!this.fileLoaded||this.closed)throw new Error(this.snapshot.error||'原生轨道尚未就绪，未套用播放记忆');
       await beforePlay();
     }
-    this.startupStage='unpause';await this.command(['set_property','pause',false]);
+    if(autoplay){this.startupStage='unpause';await this.command(['set_property','pause',false]);}
     this.startupStage='started';
     if(this.fileLoaded&&this.latestSeek!==null&&!this.seekActive)this.sendSeek();
     this.emit();

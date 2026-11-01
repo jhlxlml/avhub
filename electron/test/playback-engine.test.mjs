@@ -24,9 +24,33 @@ async function fixture(){const video=new Video(),delivery={async load(){},destro
 test('M1 selector never invents a native adapter before M2',()=>{
  for(const preference of ['auto','html5','mpv'])assert.equal(selectEngine({preference,nativeEnabled:true,registered:['html5','mpv']}).kind,'html5');
 });
-test('M3 candidate requires explicit local SDR trial; auto/default/remote retain HTML5',()=>{
- const trial={preference:'mpv',nativeEnabled:true,registered:['html5','mpv'],nativeScope:'sdr-trial',sourceKind:'local'};assert.equal(selectEngine(trial).kind,'mpv');
+test('M3 candidate requires explicit local native experiment; auto/default/remote retain HTML5',()=>{
+ const trial={preference:'mpv',nativeEnabled:true,registered:['html5','mpv'],nativeScope:'local-native-experiment',sourceKind:'local'};assert.equal(selectEngine(trial).kind,'mpv');
  for(const change of [{preference:'auto'},{preference:'html5'},{nativeEnabled:false},{nativeScope:undefined},{sourceKind:'remote'},{registered:['html5']}])assert.equal(selectEngine({...trial,...change}).kind,'html5');
+});
+
+test('selection decision matrix keeps default, experimental auto, authorization and runtime facts distinct',()=>{
+ const native={preference:'mpv',nativeEnabled:true,registered:['html5','mpv'],nativeScope:'local-native-experiment',sourceKind:'local'};
+ const cases=[
+  [{preference:'html5'},'html5','existing-default','none'],
+  [{...native},'mpv','explicit-native','none'],
+  [{...native,preference:'auto'},'html5','auto-disabled','none'],
+  [{...native,preference:'auto',experimentalAuto:true},'html5','auto-evidence-pending','none'],
+  [{...native,authorized:false},null,'authorization-required','manual'],
+  [{...native,nativeFailure:'runtime-missing'},'html5','native-ineligible','known-initialization'],
+  [{...native,nativeFailure:'unsupported'},'html5','native-ineligible','known-incompatible'],
+  [{...native,nativeFailure:'integrity'},null,'native-manual-recovery','manual'],
+  [{...native,nativeFailure:'cleanup'},null,'native-manual-recovery','manual'],
+  [{...native,nativeFailure:'save'},null,'native-manual-recovery','manual'],
+  [{...native,nativeFailure:'source-invalid'},null,'native-manual-recovery','manual'],
+  [{...native,nativeFailure:'device-lost'},null,'native-manual-recovery','manual'],
+  [{...native,registered:[]},null,'no-eligible-engine','manual'],
+  [{...native,registered:['mpv'],preference:'auto',experimentalAuto:true},null,'auto-default-unavailable','manual'],
+  [{preference:'html5',nativeFailure:'integrity'},'html5','existing-default','none'],
+ ];
+ for(const [options,selected,reasonCode,recoveryClass] of cases){const decision=selectEngine(options);assert.equal(decision.selected,selected,JSON.stringify(options));assert.equal(decision.kind,selected);assert.equal(decision.reasonCode,reasonCode);assert.equal(decision.recoveryClass,recoveryClass);assert.ok(Object.isFrozen(decision)&&Object.isFrozen(decision.eligible));}
+ for(const sourceColor of ['sdr','hdr-unverified','unknown'])assert.equal(selectEngine({...native,sourceColor}).selected,'mpv','unverified HDR/colour is not a media admission whitelist');
+ assert.equal(selectEngine({...native,nativeScope:'sdr-trial'}).selected,'mpv','deprecated name remains a compatible alias');
 });
 test('play pause audio rate and offset seconds retain media surface identity',async()=>{
  const {video,controller}=await fixture();await controller.load({...source(),offsetSec:10});

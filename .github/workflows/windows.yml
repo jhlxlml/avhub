@@ -98,7 +98,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --test electron/test/mpv-candidate-materials.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --test electron/test/playback-engine.test.mjs
+          node --test electron/test/playback-engine.test.mjs electron/test/playback-session-coordinator.test.mjs electron/test/chromium-session.test.mjs electron/test/independent-session.test.mjs electron/test/native-open-intent.test.mjs electron/test/release-evidence.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             node --test electron/test/mpv-engine.test.mjs
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -147,6 +147,8 @@ jobs:
           node scripts/check-mpv-readiness.mjs --manifest-only
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/build-dependency-policy.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test --test-timeout=15000 electron/test/build-toolchain-compatibility.test.mjs
       - name: Windows short-path regression
         # Full suite under a real 8.3 alias; unavailable is NOT accepted as a pass.
         run: npm run test:backend:short-path
@@ -159,7 +161,7 @@ jobs:
         # Automatically includes new specs omitted from the focused groups.
         run: python scripts/test-renderer-remaining.py
       - name: Read-only route recovery and desktop runtime messages
-        run: npx playwright test tests/ui/route-recovery.spec.ts tests/ui/native-runtime-message.spec.ts tests/ui/progress-save.spec.ts
+        run: npx playwright test tests/ui/route-recovery.spec.ts tests/ui/native-runtime-message.spec.ts tests/ui/native-session-settings.spec.ts tests/ui/chromium-session.spec.ts tests/ui/progress-save.spec.ts
       - name: Renderer interaction and theme regression harness
         run: npx playwright test tests/ui/interaction-refinement.spec.ts tests/ui/controls-hover.spec.ts tests/ui/player-space.spec.ts tests/ui/ui-refinement.spec.ts tests/ui/design-system.spec.ts tests/ui/interaction-system.spec.ts tests/ui/playlists-design.spec.ts tests/ui/shutdown.spec.ts tests/ui/external-player-button.spec.ts tests/ui/media-menu-position.spec.ts tests/ui/file-management.spec.ts tests/ui/batch-recycle.spec.ts
       - name: Renderer Mira and interaction convergence harnesses

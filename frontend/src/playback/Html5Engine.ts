@@ -64,5 +64,6 @@ export class Html5Engine implements PlaybackEngine {
  }
  private publish(){if(this.destroyed)return;const state=this.getState(),signature=JSON.stringify(state);if(signature===this.signature)return;this.signature=signature;this.listeners.forEach(listener=>listener(state));}
  subscribe(listener:(state:PlaybackState)=>void){if(this.destroyed)return()=>{};this.listeners.add(listener);listener(this.getState());return()=>{this.listeners.delete(listener);};}
- async dispose(){if(this.destroyed)return;this.destroyed=true;this.status='destroyed';this.seekAbort?.abort();clearTimeout(this.clockTimer);this.cleanup.forEach(stop=>stop());this.cleanup=[];this.listeners.clear();this.delivery.destroy();this.video?.pause();}
+ cancelPending(){this.seekAbort?.abort();this.seekAbort=null;}
+ async dispose(){if(this.destroyed)return;this.destroyed=true;this.status='destroyed';this.cancelPending();clearTimeout(this.clockTimer);this.cleanup.forEach(stop=>stop());this.cleanup=[];this.listeners.clear();this.delivery.destroy();this.video?.pause();}
 }

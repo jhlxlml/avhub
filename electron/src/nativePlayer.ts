@@ -158,8 +158,8 @@ export class NativePlayer {
     }
     if(action==='open'){
       if(BrowserWindow.fromWebContents(event.sender)!==this.deps.main())throw new Error('仅媒体库窗口可以启动视频');
-      const value=input as {mediaId?:unknown;start?:unknown;viewport?:unknown};
-      if(!value||!Number.isSafeInteger(value.mediaId)||Number(value.mediaId)<=0||!finite(value.start,0,1e8))throw new Error('原生播放参数无效');
+      const value=input as {mediaId?:unknown;start?:unknown;viewport?:unknown;paused?:unknown};
+      if(!value||!Number.isSafeInteger(value.mediaId)||Number(value.mediaId)<=0||!finite(value.start,0,1e8)||value.paused!==undefined&&typeof value.paused!=='boolean')throw new Error('原生播放参数无效');
       if(this.pendingOpen||this.shuttingDown)throw new Error('原生播放器正在启动或关闭');
       if(this.active&&this.active!==this.failedStartup)throw new Error('请先关闭当前原生播放器');
       const rect=value.viewport===undefined?undefined:nativeViewport(value.viewport);
@@ -172,7 +172,7 @@ export class NativePlayer {
         await this.independent.prepareOpen();
         const prefs=await this.api('/api/preferences');
         if(this.shuttingDown)throw new Error('原生播放启动已取消');
-        return prefs.values?.mpvWindowMode==='independent'?this.independent.open(Number(value.mediaId),Number(value.start)):this.open(Number(value.mediaId),Number(value.start),rect);
+        return prefs.values?.mpvWindowMode==='independent'?this.independent.open(Number(value.mediaId),Number(value.start),value.paused===true):this.open(Number(value.mediaId),Number(value.start),rect,value.paused===true);
       })();this.pendingOpen=pending;
       try{return await pending;}finally{if(this.pendingOpen===pending)this.pendingOpen=null;}
     }
@@ -388,7 +388,7 @@ export class NativePlayer {
     active.host.setAspectRatio(ratio);active.overlay.setAspectRatio(ratio);
     active.host.setContentBounds(fitPlaybackBounds(content,work,ratio,active.expanded!==null));
   }
-  private async open(mediaId:number,start:number,viewport?:NativeViewport){
+  private async open(mediaId:number,start:number,viewport?:NativeViewport,paused=false){
     if(this.opening)throw new Error('原生播放器正在启动');
     const runtime=await this.status();
     if(!runtime.available)throw new Error(runtime.reason);
@@ -521,7 +521,7 @@ export class NativePlayer {
       };
       const hasMemory=memory.audio!==null||memory.subtitle!==null||memory.delay!==0;
       const engineBegan=performance.now();
-      const engineReady=client.start(this.deps.runtime(),String(source.path),hwnd,start,[`--volume=${Math.max(0,Math.min(100,Number(audio.volume)*100))}`,`--mute=${audio.muted===true?'yes':'no'}`,`--speed=${Number(prefs.values?.playbackSpeed)||1}`,'--sub-ass-override=no',...subtitleOptions(active.subtitleAppearance).map(([key,value])=>`--${key}=${value}`)],hasMemory?restoreMemory:undefined).then(()=>{timings.engineMs=performance.now()-engineBegan;});
+      const engineReady=client.start(this.deps.runtime(),String(source.path),hwnd,start,[`--volume=${Math.max(0,Math.min(100,Number(audio.volume)*100))}`,`--mute=${audio.muted===true?'yes':'no'}`,`--speed=${Number(prefs.values?.playbackSpeed)||1}`,'--sub-ass-override=no',...subtitleOptions(active.subtitleAppearance).map(([key,value])=>`--${key}=${value}`)],hasMemory?restoreMemory:undefined,undefined,undefined,!paused).then(()=>{timings.engineMs=performance.now()-engineBegan;});
       // Await both settlements before cleanup so a late startup branch cannot
       // touch a destroyed host or leave an unobserved rejection behind.
       const initialized=await Promise.allSettled([controlsReady,engineReady]);

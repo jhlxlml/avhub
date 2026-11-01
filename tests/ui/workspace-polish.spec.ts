@@ -10,6 +10,7 @@ for(const theme of ['light','dark'])test(`${theme}: settings navigation adapts o
   await expect(tabs).toHaveAttribute('aria-orientation','vertical');
   const left=await tabs.boundingBox(),panel=await page.getByRole('tabpanel').boundingBox();expect(left!.x+left!.width).toBeLessThan(panel!.x);
   await page.getByRole('tab',{name:'媒体目录',exact:true}).focus();await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('tab',{name:'外观',exact:true})).toBeFocused();await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toBeFocused();
   await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toHaveAttribute('aria-selected','true');
   await page.keyboard.press('End');await expect(page.getByRole('tab',{name:'帮助',exact:true})).toBeFocused();
@@ -17,6 +18,7 @@ for(const theme of ['light','dark'])test(`${theme}: settings navigation adapts o
   await page.getByRole('textbox',{name:'目录路径',exact:true}).fill('D:\\未保存的目录');
   await page.setViewportSize({width:760,height:850});await expect(tabs).toHaveAttribute('aria-orientation','horizontal');
   await page.getByRole('tab',{name:'媒体目录',exact:true}).focus();await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab',{name:'外观',exact:true})).toBeFocused();await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab',{name:'播放偏好',exact:true})).toBeFocused();
   await page.getByRole('button',{name:'关闭设置',exact:true}).click();
   const confirm=page.getByRole('dialog',{name:'放弃未保存的修改？',exact:true});await expect(confirm).toBeVisible();

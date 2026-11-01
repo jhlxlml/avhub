@@ -8,6 +8,9 @@ test('settings have accessible compact categories and lazy storage diagnostics',
   await expect(page.getByRole('tablist',{name:'设置分类'})).toBeVisible();expect(reads).toBe(0);
   await expect(page.getByRole('tab',{name:'媒体目录'})).toHaveAttribute('aria-selected','true');
   await page.getByRole('tab',{name:'媒体目录'}).focus();await page.keyboard.press('ArrowRight');
+  await expect(page.getByRole('tab',{name:'外观',exact:true})).toBeFocused();
+  await expect(page.getByRole('tabpanel',{name:'外观',exact:true})).toBeVisible();
+  await page.keyboard.press('ArrowRight');
   await expect(page.getByRole('tab',{name:'播放偏好'})).toBeFocused();await expect(page.getByRole('region',{name:'起播方式设置'})).toBeVisible();await expect(page.getByLabel('封面悬停预览')).not.toBeVisible();
   await page.keyboard.press('ArrowRight');await expect(page.getByRole('tab',{name:'数据管理'})).toBeFocused();
   await expect(page.locator('.storage-sizes>div')).toHaveCount(8);await expect(page.locator('.storage-sizes')).toContainText('无损播放副本');expect(reads).toBe(1);

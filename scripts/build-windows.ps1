@@ -15,6 +15,15 @@ if ($CandidateDirectory) {
 }
 
 if ($env:OS -ne 'Windows_NT') { throw 'This portable application must be built on Windows.' }
+$releaseInputsFile = if ($env:AVHUB_DESKTOP_RELEASE_INPUTS) { $env:AVHUB_DESKTOP_RELEASE_INPUTS } else { 'build/desktop-release-inputs.json' }
+node electron/release-evidence.cjs verify $projectRoot $releaseInputsFile
+if ($LASTEXITCODE -ne 0) { throw 'Prepare same-application schema 2 candidate acceptance before packaging; stale/version-mismatched reports cannot be reused.' }
+# Freeze the already tested metadata timestamp so rebuilding unchanged input
+# does not silently create different ASAR bytes after acceptance.
+# ConvertFrom-Json may coerce ISO text to DateTime and then localize it when
+# assigning an environment variable. Preserve the validated JSON string.
+$env:AVHUB_BUILD_TIMESTAMP = node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).application.builtAt" $releaseInputsFile
+if ($LASTEXITCODE -ne 0) { throw 'Cannot read the verified frozen build timestamp.' }
 if (-not (Test-Path 'bin\ffmpeg.exe') -or -not (Test-Path 'bin\ffprobe.exe')) {
     throw 'Missing bin\ffmpeg.exe or bin\ffprobe.exe. Provide Windows binaries first.'
 }
@@ -42,6 +51,8 @@ $desktopCli = (Get-Content -LiteralPath 'build/desktop-cli-inputs.json' -Raw | C
 
 node node_modules/electron/install.js
 if ($LASTEXITCODE -ne 0) { throw 'Electron runtime installation failed.' }
+npm audit --audit-level=moderate
+if ($LASTEXITCODE -ne 0) { throw 'Dependency security audit failed; refusing packaging.' }
 npm run build
 if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
 npm run build:electron
@@ -89,6 +100,8 @@ if ($CandidateDirectory) {
     npm run package:windows
 }
 if ($LASTEXITCODE -ne 0) { throw 'Electron Windows portable packaging failed.' }
+node electron/release-evidence.cjs artifact $projectRoot $releaseInputsFile (Join-Path $artifactDirectory 'win-unpacked')
+if ($LASTEXITCODE -ne 0) { throw 'Final executable/ASAR/resources differ from the actually tested candidate.' }
 python scripts/folder-portable.py --directory $artifactDirectory
 if ($LASTEXITCODE -ne 0) { throw 'Folder portable ZIP creation failed.' }
 

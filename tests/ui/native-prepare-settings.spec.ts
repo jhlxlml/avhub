@@ -16,6 +16,8 @@ async function toggle(page:Page,value:boolean) {
 }
 
 test('default-off blocks preparation, persists the switch and bypasses existing copies without deleting them',async({page,request})=>{
+  // Preparation policy is independent of the asynchronous resume prompt.
+  expect((await request.patch('/api/preferences',{data:{values:{resumeBehavior:'restart'}}})).ok()).toBe(true);
   await page.goto('/?q=003');
   await page.getByRole('button',{name:'更多操作 视频 003',exact:true}).click();
   await expect(page.getByRole('menuitem',{name:'无损播放准备',exact:true})).toHaveCount(0);
@@ -41,7 +43,6 @@ test('default-off blocks preparation, persists the switch and bypasses existing 
   expect((await request.post('/api/media/3/native-prepare')).status()).toBe(409);
   await page.getByRole('button',{name:'播放 视频 003',exact:true}).click();
   await expect(page.locator('.video-wrap')).toBeVisible();
-  const resume=page.getByRole('button',{name:'从头开始',exact:true});if(await resume.isVisible())await resume.click();
   await expect.poll(()=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.readyState>=2&&v.currentSrc.endsWith('/media/3/file'))).toBe(true);
   await page.getByRole('button',{name:'返回媒体库',exact:true}).click();
   await toggle(page,true);
