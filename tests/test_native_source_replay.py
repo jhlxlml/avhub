@@ -102,6 +102,7 @@ class NativeSourceReplayTests(unittest.TestCase):
             MODULE.selected_dependencies(["ffmpeg=" + str(self.root / "outside")], self.folder, self.root)
 
 
+@unittest.skipUnless((ROOT/'build/libmpv-chain-replay-1a5jyjem/report.json').is_file(),'BLOCKED: requires real local libmpv build evidence; mandatory in verify-local-build-evidence.py before release')
 class ActualReplayEvidenceTests(unittest.TestCase):
     def test_new_complete_closure_uses_rebuilt_dependencies_and_passes_windows_checks(self):
         folder = ROOT / "build/libmpv-chain-replay-1a5jyjem"

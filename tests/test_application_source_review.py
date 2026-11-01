@@ -3,6 +3,8 @@ import hashlib
 import json
 from pathlib import Path
 import unittest
+import importlib.util
+import shutil
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -10,7 +12,11 @@ ROOT=Path(__file__).resolve().parents[1]
 class ApplicationSourceReviewTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.folder=Path(json.loads((ROOT/'build/application-source-review-latest.json').read_text())['folder'])
+        spec=importlib.util.spec_from_file_location('fresh_application_review',ROOT/'scripts/stage-application-source.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        cls.folder=module.stage(publish_pointer=False)
+        if not cls.folder.resolve().is_relative_to((ROOT/'build').resolve()) or not cls.folder.name.startswith('application-source-review-'):raise ValueError('Unexpected test snapshot path')
+        cls.addClassCleanup(shutil.rmtree,cls.folder)
         cls.inventory=json.loads((cls.folder/'source-review-inventory.json').read_text())
 
     def test_current_source_and_build_inputs_are_preserved(self):

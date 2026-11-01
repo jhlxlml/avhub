@@ -106,6 +106,14 @@ try{
    await cards.first().locator('.open-video').click();
    const video=page.locator('.player-shell video');
    await expect.poll(()=>video.evaluate(v=>v.readyState>=2&&!v.paused&&v.getVideoPlaybackQuality().totalVideoFrames>0),{timeout:30000}).toBe(true);
+   if(report.sessionCoordinator){
+    const shell=page.locator('.player-shell');await expect(shell).toHaveAttribute('data-playback-session-phase','ready');
+    const owner=await shell.evaluate(el=>({root:el.dataset.playbackSessionRoot,generation:Number(el.dataset.playbackSessionGeneration)}));
+    assert.ok(owner.root&&Number.isSafeInteger(owner.generation)&&owner.generation>0);
+    if(report.sessionRoot)assert.equal(owner.root,report.sessionRoot);
+    if(report.cycles.length)assert.ok(owner.generation>report.cycles.at(-1).sessionGeneration);
+    report.sessionRoot=owner.root;cycle.sessionRoot=owner.root;cycle.sessionGeneration=owner.generation;
+   }
    await video.evaluate(installPlaybackTimeline);
    await video.evaluate(v=>{window.__usage={waiting:0,stalled:0,reloads:0};for(const name of ['waiting','stalled','loadstart'])v.addEventListener(name,()=>window.__usage[name==='loadstart'?'reloads':name]++);});
    const first=await video.evaluate(v=>({time:v.currentTime,frames:v.getVideoPlaybackQuality().totalVideoFrames,dropped:v.getVideoPlaybackQuality().droppedVideoFrames}));

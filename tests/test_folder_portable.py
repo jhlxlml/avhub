@@ -30,6 +30,16 @@ def fixture(directory,version='1.2.3'):
     (front/'frontend-notices.json').write_text(json.dumps({'schema':1,'packages':[{'name':'synthetic','notices':[{'path':'third-party/npm/demo/LICENSE','sha256':digest}]}]}))
     return source
 
+def ffi_fixture(destination):
+    # Exact pinned native bytes, copied as the shipped allowlisted closure;
+    # exclude development package/lock files from the prepared cache.
+    pin=json.loads((ROOT/'ci/render-ffi/runtime-manifest.json').read_text())
+    for item in pin['files']:
+        data=(ROOT/'build/libmpv-render-spike/ffi'/item['name']).read_bytes()
+        if len(data)!=item['size'] or hashlib.sha256(data).hexdigest()!=item['sha256']:raise ValueError('Prepared FFI input differs from pin')
+        target=destination/item['name'];target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
+    (destination/'runtime-manifest.json').write_text(json.dumps(pin),encoding='utf-8')
+
 class FolderPortableTests(unittest.TestCase):
     def test_independent_runtime_missing_or_changed_dependency_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -68,10 +78,9 @@ class FolderPortableTests(unittest.TestCase):
     def test_pinned_native_ffi_closure_roundtrip_and_tampering(self):
         # Actual pinned runtime bytes in a synthetic base package; this is not
         # another real Electron/clean-machine acceptance.
-        native=ROOT/'build/render-replayed-candidate-Aa7Otl/ffi'
         with tempfile.TemporaryDirectory() as temporary:
             directory=Path(temporary);source=fixture(directory)
-            destination=source/'resources/native-render/ffi';shutil.copytree(native,destination)
+            destination=source/'resources/native-render/ffi';ffi_fixture(destination)
             target=directory/'app.zip';folder.create(source,target,'1.2.3','test-build')
             folder.verify(target,'1.2.3','test-build')
             addon=destination/'node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node'
@@ -98,7 +107,7 @@ class FolderPortableTests(unittest.TestCase):
                       'node_modules/koffi/index.cjs','AVHub-data/library.db']:
             with self.subTest(extra=extra),tempfile.TemporaryDirectory() as temporary:
                 directory=Path(temporary);source=fixture(directory)
-                shutil.copytree(ROOT/'build/render-replayed-candidate-Aa7Otl/ffi',source/'resources/native-render/ffi')
+                ffi_fixture(source/'resources/native-render/ffi')
                 file=source/extra;file.parent.mkdir(parents=True,exist_ok=True);file.write_bytes(b'not shipped')
                 with self.assertRaises(ValueError):folder.create(source,directory/'app.zip','1.2.3','test-build')
 

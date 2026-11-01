@@ -8,3 +8,4 @@
 *.jpg binary
 *.jpeg binary
 *.webp binary
+tests/fixtures/native-support/*.dsc -text

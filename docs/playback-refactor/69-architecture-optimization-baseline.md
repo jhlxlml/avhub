@@ -364,3 +364,42 @@ Assessment: accumulated security and lifecycle fixes warrant release validation.
 Proceed first with reviewed source commit/push to validate hosted CI, keeping
 0.2.17 for this ordinary source push. No stable tag/publication until the current
 release gates pass; local packaging/upload remains the selected delivery route.
+
+## CI clean-source repair after d9c1efb
+
+Hosted run 41259696744 failed backend regression (777 run, 20 errors, 9 skips).
+Dependency installation/audit and app builds had succeeded. The errors revealed
+test prerequisites hidden by this developer workspace: hardcoded private native
+build dossiers, source-review pointer, old candidate FFI folder, cached DSC
+metadata and cached 4K reference clips. Preserve the downloaded job log under
+build/root-session-closeout/ci-d9c1efb-failure.log; no runtime playback failure is
+inferred from those missing files.
+
+Source tests now create their own actual application snapshot without changing
+the operator's selected snapshot. Source capture includes .gitattributes,
+requirements-ci.txt, pinned DSC fixtures and release notes so its build/test
+inputs are complete. FFI package/hash-negative tests still use the exact pinned
+native bytes; CI explicitly prepares them by archive/file hashes and fixture
+construction copies only the allowlisted closure. DSC parser tests use three
+byte-pinned public metadata files, not a cached external archive or a synthetic
+approval. Their signatures/actual source archives are not certified by fixtures.
+
+Negative verifier controls are self-contained: DLL load alone is mocked to reach
+an actual exit-7 child, explicitly not GPU/DLL acceptance; the empty decoder is
+tested against newly generated tiny H264 reference clips, never claimed to be
+real 4K/HEVC/AV1 parity. Real build-dossier audit classes remain unchanged inside
+their methods and explicitly skip as BLOCKED if prerequisites are absent during
+source-only CI. A new mandatory verify-local-build-evidence.py profile reruns all
+six real evidence classes and fails if anything skips/fails or no checks run;
+prepare-desktop-release-inputs.py invokes it with check=True. Thus a green source
+CI cannot replace the separate native/materials gate before packaging.
+
+Targeted affected tests pass. Strict actual local evidence: 15 pass, no skips.
+An isolated source snapshot with no private native build dossiers rejects that
+same strict gate with expected exit 1 / 15 missing checks. A complete backend
+probe uses only explicit CI tools plus the existing Python environment; it is
+not described as a clean OS or newly compiled native runtime. Its first run
+exposed missing release notes in source capture and failed one check; retain it.
+The corrected isolated-source probe completed: 787 run, 763 pass / 24 explicit
+skips, exit 0. Current-root 20+10 minute Electron soak remains in progress.
+No product playback/quality/default-engine changes were required for this repair.

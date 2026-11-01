@@ -14,7 +14,7 @@ import yaml
 
 ROOT=Path(__file__).resolve().parents[1]
 EXCLUDED={'Validate release tag before downloading tools','Require successful exact-commit release candidate',
-          'Prepare pinned FFmpeg','Prepare and verify pinned private SQLite','Install locked/tested dependencies',
+          'Prepare pinned FFmpeg','Prepare hash-pinned native FFI test closure','Prepare and verify pinned private SQLite','Install locked/tested dependencies',
           'Install and verify pinned Electron runtime','Package only tags or explicit manual runs',
           'Actual portable EXE acceptance','Actual extracted folder ZIP acceptance','Checksums and source manifest'}
 

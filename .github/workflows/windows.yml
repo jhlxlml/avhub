@@ -49,6 +49,9 @@ jobs:
         run: python -c "import runpy,os,json;runpy.run_path('scripts/ci-prepare.py')['validate_release'](os.environ.get('RELEASE_TAG') or 'v'+json.load(open('package.json'))['version'])"
       - name: Prepare pinned FFmpeg
         run: python scripts/ci-prepare.py
+      - name: Prepare hash-pinned native FFI test closure
+        # Contract tests use the exact archive/file pins, not a developer's package.
+        run: python scripts/prepare-render-ffi.py
       - name: Prepare and verify pinned private SQLite
         run: |
           python scripts/prepare-sqlite.py

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -15,9 +16,20 @@ class MediaValidationNegativeTests(unittest.TestCase):
     @unittest.skipUnless(os.name == "nt", "Windows decoder verifier negative control")
     def test_empty_decoder_output_never_marks_windows_execution_passed(self):
         # Deliberate empty-output executable, never a real decoder acceptance.
-        # Only the reference side reads project-owned generated test samples.
+        # Reference fixtures are freshly generated tiny H264 videos, regardless
+        # of the legacy matrix filenames. No 4K/HEVC/AV1 proof is claimed here.
         with tempfile.TemporaryDirectory(prefix="ffmpeg-source-replay-", dir=ROOT / "build") as name:
-            folder = Path(name)
+            isolated=Path(name)
+            scripts=isolated/'scripts';scripts.mkdir()
+            for script in ['verify-ffmpeg-windows-harness.py','native_source_replay.py']:
+                shutil.copyfile(ROOT/'scripts'/script,scripts/script)
+            (isolated/'bin').mkdir()
+            for executable in ['ffmpeg.exe','ffprobe.exe']:shutil.copyfile(ROOT/'bin'/executable,isolated/'bin'/executable)
+            samples=isolated/'build/libmpv-render-spike/samples';samples.mkdir(parents=True)
+            reference=samples/'Framecode-v2-640x360.mp4'
+            subprocess.run([str(isolated/'bin/ffmpeg.exe'),'-v','error','-f','lavfi','-i','color=s=16x16:r=5','-t','2','-c:v','libx264','-pix_fmt','yuv420p',str(reference)],check=True,capture_output=True,timeout=30,creationflags=subprocess.CREATE_NO_WINDOW)
+            for sample in ['Framecode-v2-3840x2160-hevc.mkv','Precision-SDR10-3840x2160.mkv','Framecode-v3-3840x2160-av1.mkv']:shutil.copyfile(reference,samples/sample)
+            folder=isolated/'build/ffmpeg-source-replay-fixture'
             self.assertTrue(folder.resolve().is_relative_to((ROOT / "build").resolve()))
             binary = folder / "install/bin/ffmpeg.exe"
             binary.parent.mkdir(parents=True)
@@ -31,7 +43,7 @@ class MediaValidationNegativeTests(unittest.TestCase):
             (folder / "report.json").write_text(json.dumps({"kind": "synthetic-empty-decoder-negative-control",
                 "buildPassed": True, "distributionReady": False,
                 "binaries": [{"path": "install/bin/ffmpeg.exe", "sha256": hashlib.sha256(binary.read_bytes()).hexdigest()}]}))
-            result = subprocess.run([sys.executable, str(ROOT / "scripts/verify-ffmpeg-windows-harness.py"),
+            result = subprocess.run([sys.executable, str(scripts / "verify-ffmpeg-windows-harness.py"),
                                      "--build-dir", str(folder)], capture_output=True, text=True,
                                     timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
@@ -42,6 +54,7 @@ class MediaValidationNegativeTests(unittest.TestCase):
             self.assertFalse(json.loads((folder / "report.json").read_text())["windowsExecutionPassed"])
 
 
+@unittest.skipUnless((ROOT/'build/ffmpeg-source-replay-wesx64x9/report.json').is_file(),'BLOCKED: requires real media dependency replay; mandatory in verify-local-build-evidence.py before release')
 class ActualMediaReplayTests(unittest.TestCase):
     def test_media_chain_uses_one_frozen_input_and_keeps_current_markers(self):
         stages = [ROOT / "build" / name for name in ["dav1d-source-replay-4_j6b2d7",

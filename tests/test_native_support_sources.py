@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+FIXTURES=ROOT/'tests/fixtures/native-support'
 SPEC = importlib.util.spec_from_file_location("support_sources", ROOT / "scripts/prepare-native-support-sources.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -20,7 +21,7 @@ class SupportSourceTests(unittest.TestCase):
         sources = MODULE.validate_sources(self.lock)
         self.assertEqual(len(sources), 3)
         for source in sources:
-            file = ROOT / "build/native-support-source-inputs" / source["dsc"]["name"]
+            file = FIXTURES / source["dsc"]["name"]
             MODULE.verify(file, source["dsc"])
             MODULE.verify_dsc(file, source)
 
@@ -41,13 +42,13 @@ class SupportSourceTests(unittest.TestCase):
         source = copy.deepcopy(self.lock["sources"][0])
         source["archives"][0]["sha256"] = "0" * 64
         with self.assertRaisesRegex(ValueError, "differs from pinned DSC"):
-            MODULE.verify_dsc(ROOT / "build/native-support-source-inputs" / source["dsc"]["name"], source)
+            MODULE.verify_dsc(FIXTURES / source["dsc"]["name"], source)
 
     def test_wrong_package_identity_rejected(self):
         source = copy.deepcopy(self.lock["sources"][0])
         source["version"] = "newer"
         with self.assertRaisesRegex(ValueError, "package/version mismatch"):
-            MODULE.verify_dsc(ROOT / "build/native-support-source-inputs" / source["dsc"]["name"], source)
+            MODULE.verify_dsc(FIXTURES / source["dsc"]["name"], source)
 
     def test_modified_local_archive_rejected(self):
         with tempfile.TemporaryDirectory(prefix="support-source-test-", dir=ROOT / "build") as folder:

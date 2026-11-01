@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -20,6 +21,7 @@ def main():
     parser.add_argument('--coexistence-test',type=Path,required=True)
     parser.add_argument('--render-test',type=Path,required=True)
     args=parser.parse_args()
+    subprocess.run([sys.executable,str(ROOT/'scripts/verify-local-build-evidence.py')],check=True)
 
     def owned(file):
         file=file.resolve()

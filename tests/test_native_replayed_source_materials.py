@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless((ROOT/'build/native-replayed-source-materials-latest.json').is_file(),'BLOCKED: requires actual native replay dossier; mandatory in verify-local-build-evidence.py before release')
 class ReplayedMaterialsTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

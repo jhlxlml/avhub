@@ -616,3 +616,48 @@ was used. Normal project postinstall ran its exact-version/hash-checked temp
 adaptation; compiled frontend/Electron payload remains byte-identical. Native
 rendering and original media formats were not changed. User root plan remains
 SHA256 754825c38768ed197177696883545f47da70102ae03a7340c130fa0b8ed23ae3.
+
+Reviewed source was committed and pushed to origin/main as
+**d9c1efbaa34240aa32c5525375001d3579157a89** (ordinary source push; 73 files).
+Version remains 0.2.17. No stable tag/Release/local package was created. Only the
+reviewed architecture, security, build/test and required evidence files were
+staged; the user's root planning document remains local and unchanged, and
+archive/media/cache/build artifacts were excluded. Workflow run
+https://github.com/jhlxlml/avhub/actions/runs/41259696744 was confirmed in_progress
+for exactly that commit. Hosted CI is **PENDING**, not PASS; the user previously
+requested to confirm Actions results themselves. Current root long-soak and
+matching new distributable acceptance also remain pending; earlier 077cbfa5
+long-soak cannot certify this root checkpoint. Next stable-release preparation
+must bind current source, CI and tested local artifacts before tagging/upload.
+
+## Hosted CI cache-dependency failure and clean-source repair
+
+Run 41259696744 for d9c1efb is **FAIL**, superseding the earlier in-progress
+observation: backend 777 run / 20 errors / 9 skipped; exit 1. The 20 errors read
+untracked developer build inputs. Actual job log is retained as
+build/root-session-closeout/ci-d9c1efb-failure.log. npm installation/audit and
+frontend/Electron builds passed in that hosted run; do not call full CI restored.
+
+| Check | Result | Evidence under build/root-session-closeout |
+| --- | --- | --- |
+| exact pinned FFI roundtrip / corruption / private-file exclusion | PASS | exit 0; folder-fixture-fix.log, 12 tests; actual pinned bytes, no private candidate path |
+| pinned DSC metadata parser, package/version/payload hash refusal | PASS | exit 0; 5 tests; original SHA256-pinned public fixtures, not source-build approval |
+| dependency replay controls plus local actual rendering dossier | PASS | exit 0; dependency-fixture-fix.log, 8 tests; DLL-load mock only in negative child-failure control |
+| media negative empty output / retained local media dossier | PASS | exit 0; media-fixture-fix.log, 3 tests; generated tiny reference data, no synthetic native success |
+| source-review snapshot generated from actual current source | PASS | exit 0; source-review-fix.log, 2 tests; no operator pointer overwritten |
+| strict release evidence audit with actual local material | PASS | exit 0; strict-evidence.log; 15 real retained-artifact checks, zero skips |
+| same strict release gate on isolated source without native material | PASS negative gate / BLOCKED native evidence | expected exit 1; clean-strict-missing.log; all 15 missing checks skipped by source profile, report.passed=false; release refused |
+| source-delivery / inventory boundary controls | PASS | exit 0; source-delivery-fix.log, 5 tests |
+| workflow command/pin/gate contracts | PASS | exit 0; ci-contract-fix.log, 12 tests |
+| first isolated-source full backend probe | FAIL preserved | exit 1; clean-backend-missing-notes.log; 787 run, 24 explicit skips, 1 error: missing docs/RELEASE input from snapshot; fixed inventory and new probe started |
+| corrected fresh isolated-source full backend probe | PASS source profile with explicit SKIPs | exit 0; clean-backend-v2.log / clean-backend-v2-exit.json / clean-snapshot.json; 787 run in 162.978s, 763 pass / 24 skips; same installed Python environment, explicit CI tools only, no developer dossiers/packages |
+| current actual root Electron 20-minute library + 10-minute 4K soak | RUNNING | root-library-soak.log / root-render-soak.log; source build 7db3a3b77514122b; actual repeated root ID and strictly increasing generation asserted each library cycle |
+
+The new local-build evidence profile is mandatory in ordinary release-input
+preparation; missing artifacts never become a release PASS. Source-only CI does
+not build a WSL native dependency chain and marks those audits SKIP/BLOCKED.
+No audit, sandbox, hash, source-quality or native verifier check was disabled.
+Source closure fixes and test-only fixtures do not change the frozen application
+payload d50dc1f5e9c206b651734c8db9abafd869d260f8e181a6f825e24fc283011090.
+Stable release remains blocked pending matching hosted CI and current product
+acceptance; no version bump/tag/upload during this repair.

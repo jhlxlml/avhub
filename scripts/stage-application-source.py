@@ -14,10 +14,10 @@ import tempfile
 ROOT=Path(__file__).resolve().parents[1]
 
 
-def stage(root=ROOT):
+def stage(root=ROOT,*,publish_pointer=True):
     names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=root).decode('utf-8').split('\0')
-    root_files={'LICENSE','.gitignore','package.json','package-lock.json','run.py','README.md','README.en.md',
-                'requirements.txt','requirements-build.txt','vite.config.ts','vite.config.js','playwright.config.ts'}
+    root_files={'LICENSE','.gitignore','.gitattributes','package.json','package-lock.json','run.py','README.md','README.en.md',
+                'requirements.txt','requirements-build.txt','requirements-ci.txt','vite.config.ts','vite.config.js','playwright.config.ts'}
     source_roots={'app','frontend','electron','scripts','tests','ci','third_party','.github'}
     extensions={'.py','.ts','.tsx','.mts','.cts','.js','.jsx','.mjs','.cjs','.cs','.c','.cpp','.h','.hpp','.patch','.diff',
                 '.json','.css','.html','.ps1','.sh','.cmd','.bat','.toml','.ini','.md','.txt','.yml','.yaml','.xml','.def','.cmake'}
@@ -26,10 +26,11 @@ def stage(root=ROOT):
     for name in sorted(set(filter(None,names))):
         relative=Path(name)
         root_config=len(relative.parts)==1 and (relative.name in root_files or relative.match('tsconfig*.json'))
+        release_note=relative.parent==Path('docs') and relative.name.startswith('RELEASE-') and relative.suffix=='.md'
         notice=name in {'bin/FFmpeg-LICENSE.txt','bin/FFmpeg-BUILD-INFO.txt','bin/SQLite-LICENSE.txt','bin/SQLite-BUILD-INFO.txt'}
         source=len(relative.parts)>1 and relative.parts[0] in source_roots and not (set(relative.parts)&blocked)
-        source_asset=(name.startswith(('frontend/public/','electron/assets/')) and relative.suffix.lower() in {'.svg','.png','.ico','.woff','.woff2','.ttf','.otf'}) or name=='tests/fixtures/native-hdr-pq.png'
-        if not root_config and not notice and not (source and (relative.suffix in extensions or relative.name.startswith(('LICENSE','COPYING','Copyright')) or source_asset)):
+        source_asset=(name.startswith(('frontend/public/','electron/assets/')) and relative.suffix.lower() in {'.svg','.png','.ico','.woff','.woff2','.ttf','.otf'}) or name=='tests/fixtures/native-hdr-pq.png' or (name.startswith('tests/fixtures/native-support/') and relative.suffix=='.dsc')
+        if not root_config and not notice and not release_note and not (source and (relative.suffix in extensions or relative.name.startswith(('LICENSE','COPYING','Copyright')) or source_asset)):
             continue
         file=root/relative
         if not file.exists():continue  # A working-tree deletion is not copied from HEAD.
@@ -54,7 +55,7 @@ def stage(root=ROOT):
             'excluded':['archive','build','dist','node_modules','user media and data','generated app/static','root user planning documents'],
             'remaining':['Final authorized release-commit snapshot','Native dependency and other third-party corresponding-source/license review','Rebuild/package identity and broader external playback acceptance']}
     (destination/'source-review-inventory.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
-    (root/'build/application-source-review-latest.json').write_text(json.dumps({'folder':str(destination),'files':len(records),'totalBytes':total,'distributionReady':False},indent=2)+'\n',encoding='utf-8')
+    if publish_pointer:(root/'build/application-source-review-latest.json').write_text(json.dumps({'folder':str(destination),'files':len(records),'totalBytes':total,'distributionReady':False},indent=2)+'\n',encoding='utf-8')
     return destination
 
 
