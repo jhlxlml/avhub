@@ -54,8 +54,9 @@ try{
     assert.equal(item.windowed.canvas.width,3840);assert.equal(item.windowed.canvas.height,2160);
     assert.equal(item.windowed.state.properties['avhub-output-transfer'],fixture.includes('-HLG-')?'hlg':'pq');
     // VideoFrame uses "hlg"; FFprobe's name for the same transfer is arib-std-b67.
-    assert.equal(item.windowed.canvas.attributes.nativeTransfer,fixture.includes('-HLG-')?'hlg':'pq');
-    assert.equal(item.windowed.canvas.attributes.nativePrimaries,'bt2020');
+    assert.equal(item.windowed.canvas.attributes.sourceTransfer,fixture.includes('-HLG-')?'hlg':'pq');
+    assert.equal(item.windowed.canvas.attributes.nativeTransfer,'linear');
+    assert.equal(item.windowed.canvas.attributes.nativePrimaries,'bt709');
     item.pixelSeeks=[];
     for(const frame of [31,52,109,128,12,102,87,29,136,106,58,139,82,45,110,98,128,63,14,10]){
      const started=performance.now();await page.getByRole('slider',{name:'播放进度',exact:true}).evaluate((node,target)=>{node.value=String(target);node.dispatchEvent(new Event('input',{bubbles:true}));},frame/25);

@@ -62,13 +62,13 @@ export class RenderPlayer {
    if(input.action==='cancel-seek'){
     if(!object(input.value)||!Number.isSafeInteger(input.value.seekId)||input.value.seekId<1)throw new Error('原生跳播参数无效');
     const id=input.value.seekId;if(a.pendingSeek!==id)return {ok:true};
-    try{await a.client.control('cancel-seek',{seekId:id});if(a.pendingSeek===id&&!a.closing&&!a.error){const snapshot=await a.client.snapshot();if(snapshot.error)throw new Error(snapshot.error);a.props=snapshot.properties;if(a.pendingSeek===id&&a.intent&&snapshot.properties.pause===true){await a.client.control('play');}if(a.pendingSeek===id){a.pendingSeek=null;a.seekTarget=null;this.publish(a);}}}catch(error){this.failOutput(a,'跳播恢复失败，请重试或切换现有播放器');throw error;}return {ok:true};
+    try{await a.client.control('cancel-seek',{seekId:id});if(a.pendingSeek===id&&!a.closing&&!a.error){const snapshot=await a.client.snapshot();if(snapshot.error)throw new Error(snapshot.error);a.props=snapshot.properties;if(a.pendingSeek===id&&a.intent&&snapshot.properties.pause===true){await this.resume(a);}if(a.pendingSeek===id){a.pendingSeek=null;a.seekTarget=null;this.publish(a);}}}catch(error){this.failOutput(a,'跳播恢复失败，请重试或切换现有播放器');throw error;}return {ok:true};
    }
    if(input.action==='seek'){
     if(!object(input.value)||!Number.isSafeInteger(input.value.seekId)||input.value.seekId<1||!number(input.value.seconds,0,Number.MAX_VALUE))throw new Error('原生跳播参数无效');
     const id=input.value.seekId;a.pendingSeek=id;a.seekTarget=input.value.seconds;a.seekStarted=performance.now();this.publish(a);
-    try{await a.client.control(input.action,input.value);}catch(error){if(a.pendingSeek===id){a.pendingSeek=null;a.seekTarget=null;this.publish(a);if(a.intent&&!a.closing&&!a.error)await a.client.control('play').catch(()=>{});}throw error;}
-   }else {await a.client.control(input.action,input.value);if(input.action==='pause'||input.action==='play')this.publish(a);}
+    try{await a.client.control(input.action,input.value);}catch(error){if(a.pendingSeek===id){a.pendingSeek=null;a.seekTarget=null;this.publish(a);if(a.intent&&!a.closing&&!a.error)await this.resume(a).catch(()=>{});}throw error;}
+   }else {if(input.action==='play')await this.resume(a);else await a.client.control(input.action,input.value);if(input.action==='pause'){const snapshot=await a.client.snapshot();if(snapshot.error)throw new Error(snapshot.error);a.props=snapshot.properties;}if(input.action==='pause'||input.action==='play')this.publish(a);}
    if(input.action==='volume'){a.prefs.audio={...a.prefs.audio,volume:input.value};a.dirty++;}if(input.action==='mute'){a.prefs.audio={...a.prefs.audio,muted:input.value};a.dirty++;}if(input.action==='rate'){a.prefs.playbackSpeed=input.value;a.dirty++;}
    if(a.memory&&input.action==='track'){const kind=input.value.type==='audio'?'audio':'sub',choice=rememberedTrack(a.props['track-list']??[],kind,input.value.id===null?'no':Number(input.value.id));if(choice!==undefined){if(kind==='audio')a.memory.audio=choice as number;else a.memory.subtitle=choice as string;a.dirtyMemory=true;}}
    if(a.memory&&input.action==='subtitle-delay'){a.memory.delay=input.value;a.dirtyMemory=true;}return {ok:true};
@@ -108,11 +108,20 @@ export class RenderPlayer {
    a.firstFrameDeadline=performance.now()+30000;this.pump(a);a.heartbeat=setInterval(()=>{void this.save(a).catch(()=>{});},3000);return this.view(a);
   }catch(error){try{await this.close(a,true);}catch{throw new Error('原生打开失败且清理尚未完成，请重试关闭');}throw error;}
  }
- private pump(a:Active){if(a.closing||this.active!==a||a.error)return;const main=this.deps.main();a.bridge?.setClockActive(a.intent&&a.props.pause===false&&a.props['eof-reached']!==true&&!!main&&!main.isDestroyed()&&main.isVisible()&&!main.isMinimized());const task=(async()=>{
+ private async resume(a:Active){
+  // Start the owned playback clock before unpausing, not at a later poll of
+  // stale paused properties. Read back the real state before publishing it.
+  const main=this.deps.main();a.bridge?.setClockActive(a.intent&&!!main&&!main.isDestroyed()&&main.isVisible()&&!main.isMinimized());
+  await a.client.control('play');const snapshot=await a.client.snapshot();if(snapshot.error)throw new Error(snapshot.error);a.props=snapshot.properties;
+  // A concurrent pump may have released the clock using the old paused
+  // snapshot. Reconcile it with the real result and latest user/window intent.
+  a.bridge?.setClockActive(a.intent&&a.props.pause===false&&a.props['eof-reached']!==true&&!!main&&!main.isDestroyed()&&main.isVisible()&&!main.isMinimized());return snapshot;
+ }
+ private pump(a:Active){if(a.closing||this.active!==a||a.error)return;const began=performance.now(),main=this.deps.main(),clockActive=a.intent&&a.props.pause===false&&a.props['eof-reached']!==true&&!!main&&!main.isDestroyed()&&main.isVisible()&&!main.isMinimized();a.bridge?.setClockActive(clockActive);const task=(async()=>{
   try{let urgent=false;const frame=await a.client.frame();if(a.closing||this.active!==a)return;if(frame.error)throw new Error(frame.error);
-   if(frame.waiting&&frame.serial>a.lastFrame){a.lastFrame=frame.serial;const receipt=await a.bridge!.present(frame,a.surface);if(a.closing||this.active!==a)return;await a.client.acknowledge(frame.serial);if(a.videoSize?.width!==frame.width||a.videoSize?.height!==frame.height){a.videoSize={width:frame.width,height:frame.height};await this.fit(a);}a.presented=receipt;if(a.firstFrame===null){a.firstFrame=performance.now()-a.opened;urgent=true;if(a.intent&&!a.closing&&!a.error&&a.pendingSeek===null)await a.client.control('play');}if(a.pendingSeek===receipt.seekId){
+   if(frame.waiting&&frame.serial>a.lastFrame){a.lastFrame=frame.serial;const receipt=await a.bridge!.present(frame,a.surface);if(a.closing||this.active!==a)return;await a.client.acknowledge(frame.serial);if(a.videoSize?.width!==frame.width||a.videoSize?.height!==frame.height){a.videoSize={width:frame.width,height:frame.height};await this.fit(a);}a.presented=receipt;if(a.firstFrame===null){a.firstFrame=performance.now()-a.opened;urgent=true;if(a.intent&&!a.closing&&!a.error&&a.pendingSeek===null)await this.resume(a);}if(a.pendingSeek===receipt.seekId){
     const id=receipt.seekId;let snapshot=await a.client.snapshot();if(snapshot.error)throw new Error(snapshot.error);a.props=snapshot.properties;
-    if(snapshot.properties.pause===true&&a.intent&&a.pendingSeek===id&&!a.closing&&!a.error){await a.client.control('play');snapshot=await a.client.snapshot();if(snapshot.error)throw new Error(snapshot.error);a.props=snapshot.properties;}
+    if(snapshot.properties.pause===true&&a.intent&&a.pendingSeek===id&&!a.closing&&!a.error)snapshot=await this.resume(a);
     if(a.pendingSeek===id){a.pendingSeek=null;a.seekTarget=null;a.lastSeek=performance.now()-a.seekStarted;urgent=true;}
    }}
    if(!a.presented){
@@ -124,7 +133,13 @@ export class RenderPlayer {
    }
    if(!a.closing&&this.active===a&&(urgent||performance.now()-a.lastSnapshot>=200)){a.lastSnapshot=performance.now();const s=await a.client.snapshot();if(s.error)throw new Error(s.error);a.props=s.properties;this.publish(a);if(a.props['eof-reached']===true&&a.props['avhub-subtitle-refresh']!==true&&a.intent&&!a.ended&&a.pendingSeek===null){a.ended=true;a.web.send('avhub:render-event',{session:a.session,kind:'ended'});}if(a.props['eof-reached']!==true)a.ended=false;}
   }catch{this.failOutput(a,'原生画面输出异常，请重试或切换现有播放器');}
- })();a.poll=task;void task.finally(()=>{if(a.poll===task)a.poll=undefined;if(!a.closing&&!a.error)a.timer=setTimeout(()=>this.pump(a),10);});}
+ })();a.poll=task;void task.finally(()=>{if(a.poll===task)a.poll=undefined;if(!a.closing&&!a.error){
+  // Include frame/GPU work in the existing 10ms playing cadence instead of
+  // adding another 10ms after it. Keep one task, yield at least 1ms, and leave
+  // paused/hidden timing unchanged; no extra decoding or frame-copy queue.
+  const delay=clockActive&&a.intent&&a.props.pause===false?Math.max(1,Math.ceil(10-(performance.now()-began))):10;
+  a.timer=setTimeout(()=>this.pump(a),delay);
+ }});}
  private view(a:Active){
   const p=a.props,w=this.deps.windowState(),tracks=Array.isArray(p['track-list'])?p['track-list']:[],status=a.error?'error':!a.presented?'loading':p['eof-reached']===true?'ended':p['paused-for-cache']===true?'buffering':p.pause===false?'playing':'paused';
   const safe:Record<string,any>={};for(const key of ['time-pos','duration','pause','volume','mute','speed','eof-reached','seeking','paused-for-cache','aid','sid','sub-delay','video-params','hwdec-current','decoder-frame-drop-count','frame-drop-count','avhub-seek-corrections','avhub-subtitle-refresh','avhub-output-transfer'])safe[key]=p[key];safe['track-list']=tracks.map((t:any)=>({id:t.id,type:t.type,title:t.title,lang:t.lang,codec:t.codec,selected:t.selected,external:t.external}));safe['video-params']={...p['video-params'],rotate:a.rotation};Object.assign(safe,{'video-rotate':a.rotation,'video-zoom':a.transform.zoom,'video-pan-x':a.transform.x,'video-pan-y':a.transform.y});

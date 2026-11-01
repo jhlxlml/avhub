@@ -27,5 +27,5 @@ function mergeProbe(probe){
  }
  return {...merged,colorEvidence};
 }
-const generatedSampleNames=Object.freeze(['Framecode-v3-3840x2160-av1.mkv','Precision-SDR10-2160x3840.mkv','long-run/Precision-SDR10-Long-v1-3840x2160.mkv','HDR-PQ10-Color-v2-1024x256.mkv','HDR-PQ10-1024x256.mkv','Framecode-v2-640x360.mp4','Framecode-v2-1920x1080.mp4','Framecode-v2-3840x2160.mp4','Framecode-v2-3840x2160-hevc.mkv','Framecode-v3-1920x1080-av1.mkv','Precision-SDR10-1024x256.mkv','Precision-SDR10-3840x2160.mkv','Precision-SDR10-Continuous-3840x2160.mkv']);
+const generatedSampleNames=Object.freeze(['HDR-HLG10-1024x256.mkv','HDR-HLG10-Color-v1-1024x256.mkv','Framecode-v3-3840x2160-av1.mkv','Precision-SDR10-2160x3840.mkv','long-run/Precision-SDR10-Long-v1-3840x2160.mkv','HDR-PQ10-Color-v2-1024x256.mkv','HDR-PQ10-1024x256.mkv','Framecode-v2-640x360.mp4','Framecode-v2-1920x1080.mp4','Framecode-v2-3840x2160.mp4','Framecode-v2-3840x2160-hevc.mkv','Framecode-v3-1920x1080-av1.mkv','Precision-SDR10-1024x256.mkv','Precision-SDR10-3840x2160.mkv','Precision-SDR10-Continuous-3840x2160.mkv']);
 module.exports={sourceContract,mergeProbe,generatedSampleNames};

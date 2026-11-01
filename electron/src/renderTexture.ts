@@ -41,14 +41,18 @@ export class RenderTextureBridge {
   if(this.closed||this.web.isDestroyed()||frame.pixelFormat!=='rgbaf16'||frame.error)throw new Error('原生纹理不可呈现');
   const handle=this.acquire(frame.handle,frame.surfaceGeneration),token=randomBytes(16).toString('hex');let released!:()=>void;const resource=new Promise<void>(r=>released=r);this.resources.add(resource);
   let texture:ReturnType<typeof sharedTexture.importSharedTexture>;
-  const transfer=frame.outputTransfer??'srgb';
-  try{texture=sharedTexture.importSharedTexture({textureInfo:{pixelFormat:'rgbaf16',codedSize:{width:frame.width,height:frame.height},colorSpace:{primaries:transfer==='srgb'?'bt709':'bt2020',transfer,matrix:'rgb',range:'full'},handle:{ntHandle:handle},timestamp:Math.round(frame.positionSec*1e6)},allReferencesReleased:()=>{this.stats.released++;this.resources.delete(resource);released();}});this.stats.imports++;}
+  const transfer=frame.outputTransfer??'srgb',hdr=transfer==='pq'||transfer==='hlg';
+  // Chromium's floating-point external-texture path does not reliably decode
+  // PQ/HLG. Carry numeric RGB codes through a linear BT.709 carrier instead;
+  // preload explicitly decodes the actual BT.2020 HDR payload. This carrier is
+  // never presented directly, nor written back as source colour metadata.
+  try{texture=sharedTexture.importSharedTexture({textureInfo:{pixelFormat:'rgbaf16',codedSize:{width:frame.width,height:frame.height},colorSpace:{primaries:'bt709',transfer:hdr?'linear':transfer,matrix:'rgb',range:'full'},handle:{ntHandle:handle},timestamp:Math.round(frame.positionSec*1e6)},allReferencesReleased:()=>{this.stats.released++;this.resources.delete(resource);released();}});this.stats.imports++;}
   catch(error){this.resources.delete(resource);released();throw error;}
   const receipt=new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{this.receipts.delete(token);reject(new Error('未收到原生画面 GPU 完成确认'));},5000);this.receipts.set(token,{resolve,reject,timer,serial:frame.serial});});
   // Register a rejection observer before sending; late renderer failure must
   // never become an unhandled rejection while the transport is awaiting IPC.
   void receipt.catch(()=>{});
-  try{await sharedTexture.sendSharedTexture({frame:this.web.mainFrame,importedSharedTexture:texture},{session:this.session,surface,serial:frame.serial,token,width:frame.width,height:frame.height});}
+  try{await sharedTexture.sendSharedTexture({frame:this.web.mainFrame,importedSharedTexture:texture},{session:this.session,surface,serial:frame.serial,token,width:frame.width,height:frame.height,outputTransfer:transfer});}
   finally{texture.release();}
   await Promise.all([receipt,resource]);return {serial:frame.serial,positionSec:frame.positionSec,seekId:frame.seekId};
  }

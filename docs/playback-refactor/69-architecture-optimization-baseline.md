@@ -1,16 +1,24 @@
 # Architecture optimization baseline
 
-**Current checkpoint, 2026-11-01:** main
-559863dc1a4b167f4aeaf49bec5cc3a1db24c372 includes App-owned scoped session
-coordination and the clean-source CI repair. Root application build
-7db3a3b77514122b has bounded real Electron acceptance and an identical-source
-frontend/Electron build replay; bounded current-root endurance has passed while
-matching hosted source CI has passed.
-Earlier packaged build 3f5396166505433f and its physical SDR/HDR cross-screen
-checks remain historical evidence, not acceptance of this root implementation.
-Current local product packaging and migration/exit acceptance have passed;
-new stable publication and colorimetric HDR certification are not claimed.
-See 70's final local RC checkpoint and explicit limits.
+**Latest local checkpoint, 2026-11-01:** prepared 0.2.19 /
+2796aa86cc7377a5. HDR conversion, layout caching, frame-cadence and actual
+resume-clock/state corrections passed current-source and fresh ordinary
+package acceptance at the bounded scopes in 70/75. Failed intermediate builds
+remain recorded; physical HDR second-screen/external follow-up is deferred.
+Final local release files are sealed; remote publication is a separate step.
+CI outcome is not queried/asserted. Earlier checkpoints below are historical.
+
+**Current checkpoint, 2026-11-01:** release-preparation main
+64ee25bedcea056bd6d13a9e0efb30ec7a3166f0, version 0.2.18 / a929e1edb83ea511.
+New matching source/backend rebuild, actual packaged engine/physical/startup/
+migration/exit and 600-second 4K checks pass at their stated scope. Older 0.2.17
+evidence is comparison only. First sampler failure and false raw resource range
+remain retained. Current source CI awaits user confirmation: stop live polling
+as explicitly requested. External testing is deferred, physical HDR accuracy is
+uncertified; coordinator remains default-off. The later explicit user instruction
+authorized independent local release: v0.2.18 and Release are now published,
+without asserting any CI outcome.
+See 70's final 0.2.18 local artifact checkpoint and explicit limits.
 
 2026-10-30, Windows x64; repository jhlxlml/avhub, branch main.
 
@@ -469,3 +477,81 @@ probe (all native pins match); no binary provenance check was bypassed. New
 matching source CI and actual 0.2.18 artifacts still require acceptance. This
 supersedes the preceding version-stays-0.2.17 statement only for preparation;
 no new stable tag/publication is claimed. Details and logs are in 70.
+
+0.2.18 source preparation is pushed as 64ee25b; source CI 41277027952 is pending.
+Fresh source/backend replay and actual packaged independent/coexistence/render/
+physical checks pass for a929e1edb83ea511, not the older 0.2.17 RC. The first
+bounded 4K sampler attempt failed on a 12.6s sample gap; drop counters stayed 0
+and media advanced. One unchanged-policy diagnostic repeat passes 90 seconds,
+with zero drops and balanced cleanup. Root cause of the first sampling gap is
+unidentified and retained, not declared fixed. Package sealing/startup and source
+CI must finish before any stable tag/upload. All details and exact hashes in 70.
+
+New 0.2.18 final local assets and source materials are sealed in
+build/release-0218-acceptance-q_fl8e5e. Strict actual material audit: 15 pass,
+zero skips; all 1,216 source members verified. Actual EXE and extracted ZIP each
+pass synthetic legacy upgrade, data relocation, retained preferences and three
+launch/exit cycles. Extracted product matches accepted EXE/ASAR/runtime trees.
+An additional real packaged 600-second 4K run B8ytv0 passes with zero drops and
+balanced cleanup; rawRangePassed=false is retained, convergence passes under
+unchanged existing criteria. First failed sampler's gap still delivered 320
+imports/releases/GPU completions; exact test wait cause remains unidentified.
+
+Clean publication worktree m0f3b83e holds exact source 64ee25b and matching
+EXE/ZIP/source/checksums/release manifest, while preserving the main workspace's
+user plan and local ledgers. Current source CI was in progress at last read;
+the user will confirm Actions and explicitly requested no live monitoring.
+Stop polling; no stable tag or upload until that confirmation. No further
+version bump on retries. Details, artifact/report SHA256s and limits are in 70
+and the local candidate's LOCAL-ACCEPTANCE.json.
+
+Latest user instruction authorizes this manual 0.2.18 release independently of
+CI and supersedes its prior waiting requirement. Keep CI outcome unasserted and
+do not monitor Actions. Local integrity/audit/actual artifact evidence remains
+required and was reverified. Annotated v0.2.18 now points to exact 64ee25b and
+is pushed without force. Existing owned-draft uploader is running from the
+clean publication worktree; Release outcome remains pending until remote
+size/digest verification and public-state confirmation. See 70's final section.
+
+Publication now confirmed: existing manual publisher exited 0; public v0.2.18
+Release targets exact 64ee25b. Independent GitHub metadata confirms non-draft /
+non-prerelease and all five expected uploaded files, each size/SHA256 matching
+local accepted artifacts. Source, EXE and ZIP were not rebuilt or changed during
+upload. Public release manifest records the user's manual-local-acceptance policy
+and no asserted CI conclusion. URL, asset hashes, timestamps and verification
+records are in 70's final section. No Actions monitoring or blanket CI bypass
+configuration was introduced.
+
+Post-release finding: the embedded PQ F16 external-texture path had a real
+luminance-conversion error, reproduced with the user's read-only VP9 HDR file.
+An explicit PQ GPU conversion corrects that source path; native runtime and
+source tags remain unchanged, no tone map or loss authorized. Local production-
+shader numerical checks and actual app regressions pass, detailed in [71](71-hdr-pq-rendering-correction.md).
+This is unreleased development code (f673a418ede9eb59); published v0.2.18 remains
+unchanged. HLG/physical HDR accuracy is not claimed. User planning document and
+earlier post-release ledgers preserved; no Actions monitoring.
+
+## 2026-11-01 HLG follow-up baseline (unreleased)
+
+The retained PQ correction has been extended after actual GPU evidence showed
+the same implicit-transfer problem for HLG. Current production source build is
+`953412933d9eca1d` (HEAD remains 64ee25bedcea056bd6d13a9e0efb30ec7a3166f0).
+No version increment, packaging, remote write or CI polling in this follow-up.
+The explicit HDR numeric carrier / GPU conversion preserves F16, extended
+range and gamut negatives; native runtime hashes and SDR sampling are unchanged.
+See [72](72-hdr-hlg-and-regression-validation.md) for the failed HLG baseline,
+four passing production-shader probes, current actual-Electron display evidence
+and long-regression results. User confirmed no additional real HEVC HDR / AV1
+HDR / HLG samples; these remain SKIP, not inferred from generated charts.
+
+## 0.2.19 candidate checkpoint (not published)
+
+User authorized local release preparation after the HDR follow-up. Version is
+prepared as 0.2.19 / build 2d3d8934540d8439; source HEAD is still 64ee25bedcea.
+Fresh install/audit/build/contracts/backend/source replay and actual dual-MPV,
+EXE/ZIP upgrade/start/exit checks passed at their scoped limits. Release is held
+because uninstrumented real HDR playback in the current RDP session recorded
+1 then 11 output drops; subsequent instrumented old/new comparison passed but
+did not explain those failures. User deferred physical HDR second-screen retest.
+Local assets remain in build/release-0219-final-_c4nem5p, ReleaseReady=false.
+See [73](73-release-0219-local-candidate.md). No commit/push/tag/upload or CI polling.

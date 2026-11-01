@@ -10,26 +10,55 @@ async function attachRenderSurface(id:string){
  const s:any={id,node,canvas,work:Promise.resolve(),closed:false,rotation:0,zoom:0,x:0,y:0,resize:new ResizeObserver(()=>fitRenderSurface(s))};renderSurface=s;s.resize.observe(node);return {ok:true};
 }
 async function detachRenderSurface(id:string){const s=renderSurface;if(!s||s.id!==id)throw new Error('原生表面已过期');await s.work;await ipcRenderer.invoke('avhub:render-player','detach',id);s.closed=true;s.resize.disconnect();const gpu=await s.gpu?.catch(()=>null);gpu?.context.unconfigure();gpu?.device.destroy();s.canvas.remove();renderSurface=null;return {ok:true};}
-const renderShader=`struct V{@builtin(position)p:vec4f,@location(0)uv:vec2f};@vertex fn vertex(@builtin(vertex_index)n:u32)->V{var p=array(vec2f(-1,1),vec2f(-1,-3),vec2f(3,1));var v:V;v.p=vec4f(p[n],0,1);v.uv=p[n]*vec2f(.5,-.5)+vec2f(.5);return v;}@group(0)@binding(0)var video:texture_external;@group(0)@binding(1)var filtering:sampler;@fragment fn fragment(v:V)->@location(0)vec4f{return textureSampleBaseClampToEdge(video,filtering,v.uv);}`;
+const renderShader=`struct V{@builtin(position)p:vec4f,@location(0)uv:vec2f};@vertex fn vertex(@builtin(vertex_index)n:u32)->V{var p=array(vec2f(-1,1),vec2f(-1,-3),vec2f(3,1));var v:V;v.p=vec4f(p[n],0,1);v.uv=p[n]*vec2f(.5,-.5)+vec2f(.5);return v;}@group(0)@binding(0)var video:texture_external;@group(0)@binding(1)var filtering:sampler;
+@fragment fn fragment(v:V)->@location(0)vec4f{return textureSampleBaseClampToEdge(video,filtering,v.uv);}
+fn carrierCodes(v:V)->vec3f{
+ let carrier=textureSampleBaseClampToEdge(video,filtering,v.uv).rgb;
+ return select(carrier/12.92,pow(max((carrier+vec3f(.055))/1.055,vec3f(0)),vec3f(2.4)),carrier>vec3f(.04045));
+}
+fn canvasColor(nits:vec3f)->vec4f{
+ let linear=vec3f(dot(nits,vec3f(1.660491,-.587641,-.072850)),dot(nits,vec3f(-.124550,1.132900,-.008350)),dot(nits,vec3f(-.018151,-.100579,1.118730)))/203.0;
+ // Extended sRGB canvas values, not Windows scRGB /80 values. Preserve
+ // negative wide-gamut components and values above SDR white; no tone map.
+ let encoded=select(linear*12.92,1.055*pow(max(linear,vec3f(0)),vec3f(1.0/2.4))-.055,linear>vec3f(.0031308));
+ return vec4f(encoded,1);
+}
+@fragment fn fragmentPq(v:V)->@location(0)vec4f{
+ let pq=carrierCodes(v);let e=pow(abs(pq),vec3f(32.0/2523.0));
+ return canvasColor(sign(pq)*10000.0*pow(max(e-vec3f(3424.0/4096.0),vec3f(0))/(vec3f(2413.0/128.0)-vec3f(2392.0/128.0)*e),vec3f(16384.0/2610.0)));
+}
+@fragment fn fragmentHlg(v:V)->@location(0)vec4f{
+ let codes=carrierCodes(v);let magnitude=abs(codes);
+ let scene=sign(codes)*select(magnitude*magnitude/3.0,(exp((magnitude-vec3f(.559910729529562))/.17883277265695)+vec3f(.2846689093722))/12.0,magnitude>vec3f(.5));
+ // BT.2100 nominal 1000-nit reference: inverse OETF and luminance OOTF.
+ let luminance=max(dot(scene,vec3f(.2627,.6780,.0593)),0.0);
+ return canvasColor(1000.0*scene*pow(luminance,.2));
+}`;
 sharedTexture.setSharedTextureReceiver(async({importedSharedTexture},metadata:any)=>{
  let frame:VideoFrame|undefined;const s=renderSurface;let ok=false;
  try{
   if(!s||s.closed||metadata.surface!==s.id||typeof metadata.session!=='string'||!Number.isSafeInteger(metadata.serial)||typeof metadata.token!=='string')throw new Error('原生帧表面不匹配');
   frame=importedSharedTexture.getVideoFrame();if(frame.displayWidth!==metadata.width||frame.displayHeight!==metadata.height)throw new Error('原生帧尺寸变化');
-  // Actual imported VideoFrame metadata, useful for diagnosing HDR transport.
-  // The extended F16 canvas delegates final display conversion to Chromium.
+  // Keep actual carrier metadata distinct from source/output signal metadata.
   s.canvas.dataset.nativeTransfer=frame.colorSpace.transfer??'unknown';
   s.canvas.dataset.nativePrimaries=frame.colorSpace.primaries??'unknown';
+  s.canvas.dataset.sourceTransfer=metadata.outputTransfer??frame.colorSpace.transfer??'unknown';
+  // Electron supplies linear at runtime although the DOM TS enum omits it.
+  if((metadata.outputTransfer==='pq'||metadata.outputTransfer==='hlg')&&(String(frame.colorSpace.transfer)!=='linear'||frame.colorSpace.primaries!=='bt709'))throw new Error('HDR 数值载体色彩不匹配');
   const run=(async()=>{
    if(!s.gpu){s.canvas.width=metadata.width;s.canvas.height=metadata.height;fitRenderSurface(s);s.gpu=(async()=>{
     const adapter=await (navigator as any).gpu?.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw new Error('WebGPU 不可用，不降为 8-bit');const device=await adapter.requestDevice(),context=s.canvas.getContext('webgpu') as any;if(!context)throw new Error('F16 画布不可用');
     context.configure({device,format:'rgba16float',usage:(globalThis as any).GPUTextureUsage.RENDER_ATTACHMENT,colorSpace:'srgb',toneMapping:{mode:'extended'},alphaMode:'opaque'});
     const module=device.createShaderModule({code:renderShader});const info=await module.getCompilationInfo();if(info.messages.some((m:any)=>m.type==='error'))throw new Error('原生画面着色器初始化失败');const pipeline=device.createRenderPipeline({layout:'auto',vertex:{module,entryPoint:'vertex'},fragment:{module,entryPoint:'fragment',targets:[{format:'rgba16float'}]},primitive:{topology:'triangle-list'}});
-    device.lost.then(()=>{if(!s.closed)ipcRenderer.send('avhub:render-surface-error',{surface:s.id});});return {device,context,pipeline,layout:pipeline.getBindGroupLayout(0),sampler:device.createSampler({magFilter:'linear',minFilter:'linear'})};
+    const pqPipeline=device.createRenderPipeline({layout:'auto',vertex:{module,entryPoint:'vertex'},fragment:{module,entryPoint:'fragmentPq',targets:[{format:'rgba16float'}]},primitive:{topology:'triangle-list'}});
+    const hlgPipeline=device.createRenderPipeline({layout:'auto',vertex:{module,entryPoint:'vertex'},fragment:{module,entryPoint:'fragmentHlg',targets:[{format:'rgba16float'}]},primitive:{topology:'triangle-list'}});
+    // Layouts are immutable for each pipeline; getBindGroupLayout creates a
+    // new wrapper, so cache once instead of allocating one on every frame.
+    device.lost.then(()=>{if(!s.closed)ipcRenderer.send('avhub:render-surface-error',{surface:s.id});});return {device,context,pipeline,layout:pipeline.getBindGroupLayout(0),pqPipeline,pqLayout:pqPipeline.getBindGroupLayout(0),hlgPipeline,hlgLayout:hlgPipeline.getBindGroupLayout(0),sampler:device.createSampler({magFilter:'linear',minFilter:'linear'})};
    })();}
    if(s.canvas.width!==metadata.width||s.canvas.height!==metadata.height){s.canvas.width=metadata.width;s.canvas.height=metadata.height;fitRenderSurface(s);}
    const g=await s.gpu;g.device.pushErrorScope('validation');const encoder=g.device.createCommandEncoder(),pass=encoder.beginRenderPass({colorAttachments:[{view:g.context.getCurrentTexture().createView(),loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});
-   pass.setPipeline(g.pipeline);pass.setBindGroup(0,g.device.createBindGroup({layout:g.layout,entries:[{binding:0,resource:g.device.importExternalTexture({source:frame,colorSpace:'srgb'})},{binding:1,resource:g.sampler}]}));pass.draw(3);pass.end();g.device.queue.submit([encoder.finish()]);await g.device.queue.onSubmittedWorkDone();const error=await g.device.popErrorScope();if(error)throw new Error(error.message);s.canvas.dataset.nativeFrame=String(metadata.serial);s.canvas.dataset.renderPath='d3d11-webgpu-rgba16float';
+   const pipeline=metadata.outputTransfer==='pq'?g.pqPipeline:metadata.outputTransfer==='hlg'?g.hlgPipeline:g.pipeline,layout=metadata.outputTransfer==='pq'?g.pqLayout:metadata.outputTransfer==='hlg'?g.hlgLayout:g.layout;pass.setPipeline(pipeline);pass.setBindGroup(0,g.device.createBindGroup({layout,entries:[{binding:0,resource:g.device.importExternalTexture({source:frame,colorSpace:'srgb'})},{binding:1,resource:g.sampler}]}));pass.draw(3);pass.end();g.device.queue.submit([encoder.finish()]);await g.device.queue.onSubmittedWorkDone();const error=await g.device.popErrorScope();if(error)throw new Error(error.message);s.canvas.dataset.nativeFrame=String(metadata.serial);s.canvas.dataset.renderPath='d3d11-webgpu-rgba16float';
   })();s.work=run.catch(()=>{});await run;ok=true;
  }finally{frame?.close();importedSharedTexture.release();ipcRenderer.send('avhub:render-frame-done',{session:metadata?.session,serial:metadata?.serial,token:metadata?.token,ok});}
 });

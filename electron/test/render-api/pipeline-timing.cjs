@@ -1,6 +1,6 @@
 // Test-only observer installed in the real Electron main process. No playback
 // method is skipped or completed early; histogram storage has a fixed bound.
-module.exports=function installPipelineTiming({app},{highResolutionClock=false}={}){
+module.exports=function installPipelineTiming({app},{highResolutionClock=false,eventLoop=true}={}){
  const require=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
  const {RenderHostClient}=require(app.getAppPath()+'/electron/dist/renderHostClient.js');
  const {RenderTextureBridge}=require(app.getAppPath()+'/electron/dist/renderTexture.js');
@@ -46,13 +46,13 @@ module.exports=function installPipelineTiming({app},{highResolutionClock=false}=
    const mm=ffi.load('winmm.dll'),begin=mm.func('uint32_t __stdcall timeBeginPeriod(uint32_t)');clockEnd=mm.func('uint32_t __stdcall timeEndPeriod(uint32_t)');
    clock.beginResult=begin(1);if(clock.beginResult!==0)throw new Error('Test timer resolution request failed');
   }
-  histograms.clear();slow=[];dropChanges=[];lastDrops=undefined;began=performance.now();delay.reset();delay.enable();enabled=true;
+  histograms.clear();slow=[];dropChanges=[];lastDrops=undefined;began=performance.now();delay.reset();if(eventLoop)delay.enable();enabled=true;
  };
  globalThis.__stopPipelineTiming=()=>{
   enabled=false;delay.disable();if(clockEnd&&clock.beginResult===0&&clock.endResult===null)clock.endResult=clockEnd(1);
   const percentile=(h,fraction)=>{const rank=Math.ceil(h.count*fraction);let sum=0;return h.bins.findIndex(value=>(sum+=value)>=rank)/10;};
   return {scope:'Test-only real main-process method observers; 0.1ms histogram bins capped at 2000ms; max/overflow retained; measured interval includes resume and final observation',elapsedMs:performance.now()-began,
    methods:Object.fromEntries([...histograms].map(([name,h])=>[name,{count:h.count,meanMs:h.sum/h.count,p50Ms:percentile(h,.5),p95Ms:percentile(h,.95),maxMs:h.max,over40Ms:h.over40Ms,overflow:h.overflow}])),
-   eventLoop:{p50Ms:delay.percentile(50)/1e6,p95Ms:delay.percentile(95)/1e6,maxMs:delay.max/1e6},clock,slow,dropChanges};
+   eventLoop:eventLoop?{p50Ms:delay.percentile(50)/1e6,p95Ms:delay.percentile(95)/1e6,maxMs:delay.max/1e6}:null,clock,slow,dropChanges};
  };
 };

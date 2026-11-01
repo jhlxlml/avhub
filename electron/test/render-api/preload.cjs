@@ -14,12 +14,12 @@ const renderMetrics={frames:0,gpuCompletions:0,rowReadbacks:0,alwaysReadbacks:0,
 ipcRenderer.on('render-spike-probe',(_,id)=>{if(Number.isSafeInteger(id)&&id>0){pendingProbe=id;ipcRenderer.send('render-spike-probe-ready',id);}});
 let gpuRenderer;
 let hdrRenderer;
-async function renderHdrDiagnostic(frame,rawCarrier){
+async function renderHdrDiagnostic(frame,rawCarrier,productionShader,transfer){
  if(frame.displayWidth!==1024||frame.displayHeight!==256)throw new Error('Unverified HDR probe size');
  if(!hdrRenderer)hdrRenderer=(async()=>{
   const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw new Error('HDR diagnostic WebGPU unavailable');const device=await adapter.requestDevice();
   const rawShader=videoShader.replace('return textureSampleBaseClampToEdge(video,filtering,v.uv);', 'let s=textureSampleBaseClampToEdge(video,filtering,v.uv);let p=select(s.rgb/12.92,pow(max((s.rgb+vec3f(0.055))/1.055,vec3f(0)),vec3f(2.4)),s.rgb>vec3f(0.04045));let e=pow(abs(p),vec3f(32.0/2523.0));let n=sign(p)*10000.0*pow(max(e-vec3f(3424.0/4096.0),vec3f(0))/(vec3f(2413.0/128.0)-vec3f(2392.0/128.0)*e),vec3f(16384.0/2610.0));let rgb=vec3f(dot(n,vec3f(1.660491,-0.587641,-0.072850)),dot(n,vec3f(-0.124550,1.132900,-0.008350)),dot(n,vec3f(-0.018151,-0.100579,1.118730)))/80.0;return vec4f(rgb,1);');
-  const shader=device.createShaderModule({code:rawCarrier?rawShader:videoShader});const pipeline=device.createRenderPipeline({layout:'auto',vertex:{module:shader,entryPoint:'vertex'},fragment:{module:shader,entryPoint:'fragment',targets:[{format:'rgba32float'}]},primitive:{topology:'triangle-list'}});
+  const shader=device.createShaderModule({code:productionShader??(rawCarrier?rawShader:videoShader)});const pipeline=device.createRenderPipeline({layout:'auto',vertex:{module:shader,entryPoint:'vertex'},fragment:{module:shader,entryPoint:productionShader?(transfer==='hlg'?'fragmentHlg':'fragmentPq'):'fragment',targets:[{format:'rgba32float'}]},primitive:{topology:'triangle-list'}});
   const texture=device.createTexture({size:[1024,256],format:'rgba32float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.COPY_SRC});
   const buffer=device.createBuffer({size:1024*16,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
   return {device,pipeline,texture,buffer,sampler:device.createSampler({magFilter:'nearest',minFilter:'nearest'})};
@@ -31,7 +31,7 @@ async function renderHdrDiagnostic(frame,rawCarrier){
  g.device.queue.submit([encoder.finish()]);await g.buffer.mapAsync(GPUMapMode.READ);
  try{const values=new Float32Array(g.buffer.getMappedRange()),samples=Array.from({length:10},(_,i)=>Array.from(values.slice(Math.floor((i+.5)*1024/10)*4,Math.floor((i+.5)*1024/10)*4+3)));
   let node=document.getElementById('hdr-pixel-probe');if(!node){node=document.createElement('output');node.id='hdr-pixel-probe';node.textContent='HDR GPU 数值探测 · 不显示视频画面';document.body.append(node);}
-  node.dataset.result=JSON.stringify({samples,nonFiniteComponents:samples.flat().filter(v=>!Number.isFinite(v)).length,outputEncoding:rawCarrier?'linear-bt709-80-nits':'implicit-srgb',videoColorSpace:frame.colorSpace.toJSON(),offscreen:true,displayed:false});
+  node.dataset.result=JSON.stringify({samples,nonFiniteComponents:samples.flat().filter(v=>!Number.isFinite(v)).length,outputEncoding:productionShader?'extended-srgb-203-nits':rawCarrier?'linear-bt709-80-nits':'implicit-srgb',videoColorSpace:frame.colorSpace.toJSON(),offscreen:true,displayed:false});
  }finally{g.buffer.unmap();}
  const error=await g.device.popErrorScope();if(error)throw new Error(error.message);
 }
@@ -83,7 +83,7 @@ if(process.argv.includes('--render-shared-texture')){
  sharedTexture.setSharedTextureReceiver(async({importedSharedTexture},metadata)=>{
   let frame;
   try{
-   frame=importedSharedTexture.getVideoFrame();if(metadata.hdrDiagnostic){await renderHdrDiagnostic(frame,metadata.hdrRawCarrier);return;}if(frame.displayWidth!==metadata.width||frame.displayHeight!==metadata.height)throw new Error('Imported frame dimensions differ from source');let canvas=document.getElementById('native-shared-video');
+   frame=importedSharedTexture.getVideoFrame();if(metadata.hdrDiagnostic){await renderHdrDiagnostic(frame,metadata.hdrRawCarrier,metadata.hdrProductionShader,metadata.hdrProductionTransfer);return;}if(frame.displayWidth!==metadata.width||frame.displayHeight!==metadata.height)throw new Error('Imported frame dimensions differ from source');let canvas=document.getElementById('native-shared-video');
    if(!canvas){canvas=document.createElement('canvas');canvas.id='native-shared-video';Object.assign(canvas.style,{position:'fixed',inset:'0',width:'100%',height:'100%',objectFit:'contain',pointerEvents:'none'});document.body.prepend(canvas);}
    if(canvas.width!==frame.displayWidth)canvas.width=frame.displayWidth;if(canvas.height!==frame.displayHeight)canvas.height=frame.displayHeight;
    if(metadata.floatingPoint)await renderFloat16(frame,canvas,metadata);

@@ -12,6 +12,8 @@ export const samples={
  [longName]:{width:3840,height:2160,codec:'hevc',precision10:true},
  'HDR-PQ10-Color-v2-1024x256.mkv':{width:1024,height:256,codec:'hevc',precision10:true,hdr:true,hdrColor:true},
  'HDR-PQ10-1024x256.mkv':{width:1024,height:256,codec:'hevc',precision10:true,hdr:true},
+ 'HDR-HLG10-Color-v1-1024x256.mkv':{width:1024,height:256,codec:'hevc',precision10:true,hdr:true,hlg:true,hdrColor:true},
+ 'HDR-HLG10-1024x256.mkv':{width:1024,height:256,codec:'hevc',precision10:true,hdr:true,hlg:true},
  'Framecode-v2-640x360.mp4':{width:640,height:360},
  'Framecode-v2-1920x1080.mp4':{width:1920,height:1080},
  'Framecode-v2-3840x2160.mp4':{width:3840,height:2160},
@@ -32,9 +34,9 @@ export function fixture(root,name='Framecode-v2-640x360.mp4'){
   assert.ok(disk.bavail*disk.bsize>=512*1024*1024,'Insufficient space for fixture generation');assert.ok(cached+128*1024*1024<=512*1024*1024,'Fixture cache capacity reached');
   const lock=source+'.lock',temporary=source+'.'+process.pid+'.part'+path.extname(source);const fd=openSync(lock,'wx');
   try{
-  const {width,height}=sample;const prim=sample.hdr?'bt2020':'bt709',transfer=sample.hdr?'smpte2084':'bt709',matrix=sample.hdr?'bt2020nc':'bt709';
+  const {width,height}=sample;const prim=sample.hdr?'bt2020':'bt709',transfer=sample.hlg?'arib-std-b67':sample.hdr?'smpte2084':'bt709',matrix=sample.hdr?'bt2020nc':'bt709';
   const encoder=sample.codec==='hevc'?['-c:v','libx265','-preset','ultrafast','-threads','4','-x265-params',`pools=4:frame-threads=1:colorprim=${prim}:transfer=${transfer}:colormatrix=${matrix}:log-level=error`+(sample.precision10?':lossless=1':'')]:sample.codec==='av1'?['-c:v','libaom-av1','-cpu-used','8','-row-mt','1','-threads','4','-crf','32']:['-c:v','libx264','-preset','ultrafast','-threads','4'];
-  const headers=sample.codec==='hevc'?['-bsf:v',sample.hdr?'hevc_metadata=colour_primaries=9:transfer_characteristics=16:matrix_coefficients=9':'hevc_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1']:sample.codec==='av1'?['-bsf:v','av1_metadata=color_primaries=1:transfer_characteristics=1:matrix_coefficients=1:color_range=0']:['-bsf:v','h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1','-movflags','+write_colr'];
+  const headers=sample.codec==='hevc'?['-bsf:v',sample.hdr?`hevc_metadata=colour_primaries=9:transfer_characteristics=${sample.hlg?18:16}:matrix_coefficients=9`:'hevc_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1']:sample.codec==='av1'?['-bsf:v','av1_metadata=color_primaries=1:transfer_characteristics=1:matrix_coefficients=1:color_range=0']:['-bsf:v','h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1','-movflags','+write_colr'];
   const counter="geq=lum='if(mod(floor(N/pow(2,floor(X/(W/16)))),2),235,16)':cb=128:cr=128";
   const hdrExpression=hdrMath.levels.reduceRight((tail,n,i)=>`if(lt(X,${(i+1)*width/10}),${64+Math.round(876*hdrMath.pqEncode(n))},${tail})`,'940');
   const rawInput=sample.hdrColor?Buffer.concat(Array(50).fill(hdrColor.frame(width,height))):undefined;

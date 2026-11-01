@@ -1,7 +1,7 @@
 {
   "name": "avhub",
   "private": true,
-  "version": "0.2.18",
+  "version": "0.2.19",
   "main": "electron/dist/main.js",
   "scripts": {
     "postinstall": "node scripts/patch-build-toolchain.cjs",

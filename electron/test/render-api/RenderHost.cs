@@ -81,11 +81,11 @@ sealed class Mpv : IDisposable {
   handle=Bind<Create>("mpv_create")();initialize=Bind<Initialize>("mpv_initialize");option=Bind<SetOption>("mpv_set_option_string");command=Bind<Command>("mpv_command");get=Bind<GetString>("mpv_get_property_string");free=Bind<Free>("mpv_free");destroy=Bind<Free>("mpv_terminate_destroy");
   createRender=Bind<RenderCreate>("mpv_render_context_create");render=Bind<Render>("mpv_render_context_render");update=Bind<Update>("mpv_render_context_update");getInfo=Bind<GetInfo>("mpv_render_context_get_info");setUpdate=Bind<SetUpdate>("mpv_render_context_set_update_callback");renderFree=Bind<Free>("mpv_render_context_free");
   bool hdrLinear=Environment.GetEnvironmentVariable("AVHUB_RENDER_HDR_LINEAR_PROBE")=="1";bool hdrProbe=Environment.GetEnvironmentVariable("AVHUB_RENDER_HDR_PIXEL_PROBE")=="1";if(hdrProbe&&!floatingPoint)throw new Exception("HDR numerical probe requires F16");
-  foreach(var pair in new[]{new[]{"config","no"},new[]{"terminal","no"},new[]{"vo","libmpv"},new[]{"hwdec",Environment.GetEnvironmentVariable("AVHUB_RENDER_SOFTWARE_DECODE")=="1"?"no":"auto-safe"},new[]{"audio","no"},new[]{"keep-open","yes"},new[]{"idle","yes"},new[]{"target-prim",hdrProbe&&!hdrLinear?"bt.2020":"bt.709"},new[]{"target-trc",hdrProbe?(hdrLinear?"scrgb":"pq"):"srgb"}})Option(pair[0],pair[1]);
+  foreach(var pair in new[]{new[]{"config","no"},new[]{"terminal","no"},new[]{"vo","libmpv"},new[]{"hwdec",Environment.GetEnvironmentVariable("AVHUB_RENDER_SOFTWARE_DECODE")=="1"?"no":"auto-safe"},new[]{"audio","no"},new[]{"keep-open","yes"},new[]{"idle","yes"},new[]{"target-prim",hdrProbe&&!hdrLinear?"bt.2020":"bt.709"},new[]{"target-trc",hdrProbe?(hdrLinear?"scrgb":Environment.GetEnvironmentVariable("AVHUB_RENDER_HDR_HLG_PROBE")=="1"?"hlg":"pq"):"srgb"}})Option(pair[0],pair[1]);
   // Explicit F16 comparison is test-only. Preserve intermediate precision by
   // default for the isolated high-bit-depth candidate; no production changes.
   if(floatingPoint){Option("fbo-format",Environment.GetEnvironmentVariable("AVHUB_RENDER_INTERNAL_F16")=="1"?"rgba16f":"rgba32f");Option("dither-depth","no");}
-  if(hdrProbe){Option("target-peak","10000");Option("tone-mapping","clip");Option("hdr-compute-peak","no");}
+  if(hdrProbe){Option("target-peak",Environment.GetEnvironmentVariable("AVHUB_RENDER_HDR_HLG_PROBE")=="1"?"1000":"10000");Option("tone-mapping","clip");Option("hdr-compute-peak","no");}
   // Shared FBO is exactly the verified source size. Avoid an unnecessary
   // convolution pass at 1:1; this does not change display-window scaling.
   if(originalPixelTarget)Option("scale",Environment.GetEnvironmentVariable("AVHUB_RENDER_TEST_NATIVE_SCALE")=="lanczos"?"lanczos":"bilinear");

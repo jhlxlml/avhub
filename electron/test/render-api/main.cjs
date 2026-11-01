@@ -7,6 +7,8 @@ const {createInterface}=require('node:readline');
 const path=require('node:path');
 const {createCommandBridge}=require(require('electron').app.isPackaged?path.join(process.resourcesPath,'spike/command-bridge.cjs'):'./command-bridge.cjs');
 const root=app.isPackaged?path.join(process.resourcesPath,'spike'):path.resolve(__dirname,'../../..'),folder=app.isPackaged?root:path.join(root,'build/libmpv-render-spike');
+const hdrProductionShader=process.env.AVHUB_RENDER_HDR_PRODUCTION_SHADER==='1'?readFileSync(path.join(root,'electron/src/preload.ts'),'utf8').match(/const renderShader=`([\s\S]*?)`;/)?.[1]:undefined;
+if(process.env.AVHUB_RENDER_HDR_PRODUCTION_SHADER==='1'&&!hdrProductionShader)throw new Error('Production colour shader not found');
 const logFolder=mkdtempSync(path.join(folder,'run-logs-'));
 if(process.env.AVHUB_RENDER_DWM_DIAGNOSTIC==='1')app.commandLine.appendSwitch('disable-direct-composition');
 const backend=app.isPackaged?(JSON.parse(readFileSync(path.join(folder,'source-options.json'))).backend||'opengl'):(process.env.AVHUB_RENDER_BACKEND||'opengl');
@@ -27,7 +29,8 @@ const sourceOptions=app.isPackaged?JSON.parse(readFileSync(path.join(folder,'sou
 const hdrDiagnostic=process.env.AVHUB_RENDER_HDR_PIXEL_PROBE==='1';
 if(hdrDiagnostic&&process.env.AVHUB_RENDER_HDR_RAW_CARRIER==='1'&&process.env.AVHUB_RENDER_HDR_LINEAR_PROBE==='1')throw new Error('Conflicting HDR diagnostic modes');
 if(hdrDiagnostic&&(app.isPackaged||!sourceOptions.floatingPoint))throw new Error('HDR probe is development-only and requires F16');
-const contract=hdrDiagnostic?require('./hdr-math.cjs').hdrProbeContract(stream,sampleName,process.env.AVHUB_RENDER_HDR_RAW_CARRIER==='1'?'raw-pq':process.env.AVHUB_RENDER_HDR_LINEAR_PROBE==='1'?'scrgb':'pq'):sourceContract(stream,sourceOptions);
+const hlgProbe=process.env.AVHUB_RENDER_HDR_HLG_PROBE==='1';
+const contract=hdrDiagnostic?require('./hdr-math.cjs').hdrProbeContract(stream,sampleName,process.env.AVHUB_RENDER_HDR_RAW_CARRIER==='1'?(hlgProbe?'raw-hlg':'raw-pq'):hlgProbe?'hlg':process.env.AVHUB_RENDER_HDR_LINEAR_PROBE==='1'?'scrgb':'pq'):sourceContract(stream,sourceOptions);
 const overlayTest=process.env.AVHUB_RENDER_OVERLAY_TEST==='1';
 if(overlayTest&&hdrDiagnostic)throw new Error('SDR overlay probe cannot authorize HDR presentation');
 const overlayFile=overlayTest?path.join(logFolder,'Overlay.ass'):'';
@@ -78,7 +81,7 @@ app.whenReady().then(async()=>{
   if(closing||admissionClosed)return;
   try{const state=await command('snapshot'),s=state.shared;if((process.env.AVHUB_RENDER_TEST_CLOSE_BOUNDARY==='1'||process.env.AVHUB_RENDER_TEST_FAILURE_BOUNDARY==='1')&&globalThis.__holdNextSharedFrame&&s?.waiting&&s.frame>lastFrame){globalThis.__holdNextSharedFrame=false;globalThis.__heldSharedFrame=s.frame;globalThis.__heldLastImportedFrame=lastFrame;await new Promise(resolve=>{globalThis.__releaseHeldSnapshot=resolve;});globalThis.__releasedHeldSnapshot=true;}if(closing||admissionClosed)return;if(state.renderError)throw new Error('Native render failure: '+state.renderError);if(state.width&&state.height&&(Number(state.width)!==contract.width||Number(state.height)!==contract.height))throw new Error('Decoded dimensions changed; stop instead of resizing original content');if(s?.waiting&&s.frame>lastFrame){if(s.width!==contract.width||s.height!==contract.height)throw new Error('Texture dimensions differ from source');if(s.pixelFormat!==contract.output.pixelFormat||s.redBits!==(s.pixelFormat==='rgbaf16'?16:8))throw new Error('Native framebuffer precision differs from source contract');if(s.handleOwner!=='native-source')throw new Error('Unverified shared handle owner');lastFrame=s.frame;const handle=handleOwner.acquire(s.handle);let release;const done=new Promise(r=>release=r);transfers.add(done);
    let texture;try{if(globalThis.__injectImportFailure){globalThis.__injectImportFailure=false;throw new Error('Injected shared texture import failure');}texture=sharedTexture.importSharedTexture({textureInfo:{...contract.output,codedSize:{width:s.width,height:s.height},handle:{ntHandle:handle},timestamp:Math.round(Number(state.time||0)*1e6)},allReferencesReleased:()=>{transferStats.released++;transfers.delete(done);command('ack',{value:s.frame}).catch(()=>{});release();}});transferStats.imports++;transferStats.maxInFlight=Math.max(transferStats.maxInFlight,transfers.size);}catch(error){transferStats.importFailures++;transfers.delete(done);release();throw error;}
-   try{await sharedTexture.sendSharedTexture({frame:controls.webContents.mainFrame,importedSharedTexture:texture},{nativeFrame:s.frame,width:s.width,height:s.height,floatingPoint:s.pixelFormat==='rgbaf16',readbackMode,hdrDiagnostic,hdrRawCarrier:process.env.AVHUB_RENDER_HDR_RAW_CARRIER==='1'});}finally{texture.release();}
+   try{await sharedTexture.sendSharedTexture({frame:controls.webContents.mainFrame,importedSharedTexture:texture},{nativeFrame:s.frame,width:s.width,height:s.height,floatingPoint:s.pixelFormat==='rgbaf16',readbackMode,hdrDiagnostic,hdrRawCarrier:process.env.AVHUB_RENDER_HDR_RAW_CARRIER==='1',hdrProductionShader,hdrProductionTransfer:hlgProbe?'hlg':'pq'});}finally{texture.release();}
   }}catch(error){if(!closing&&!admissionClosed)fail(error);return;}pollTimer=setTimeout(pump,5);
  }
  if(sharedMode)void pump();
