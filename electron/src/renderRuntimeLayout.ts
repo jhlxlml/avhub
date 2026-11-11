@@ -2,6 +2,7 @@ import path from 'node:path';
 import {readFileSync,lstatSync,existsSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {replayedRenderPin} from './replayedRenderPin';
+import {mkvIndexRenderPin} from './mkvIndexRenderPin';
 
 /** Explicit development candidate selection; packaged admission remains gated
  * by RenderPlayer until actual distribution/clean-machine acceptance passes. */
@@ -28,9 +29,10 @@ export function resolveRenderRuntime(root:string,packaged:boolean,resources:stri
   const parsed:unknown=JSON.parse(readFileSync(installedFile,'utf8'));
   if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('桌面原生运行库描述无效');
   const marker=parsed as Record<string,unknown>;
-  if(marker.schema!==1||marker.purpose!=='desktop-native-render'||marker.cohort!==replayedRenderPin.id||typeof marker.candidate!=='string'||!/^render-replayed-candidate-[A-Za-z0-9]{6}$/.test(marker.candidate)||typeof marker.manifestSha256!=='string'||!/^[a-f0-9]{64}$/.test(marker.manifestSha256))throw new Error('桌面原生运行库描述不匹配');
+  if(marker.schema!==1||marker.purpose!=='desktop-native-render'||(marker.cohort!==replayedRenderPin.id&&marker.cohort!==mkvIndexRenderPin.id)||typeof marker.candidate!=='string'||!/^render-replayed-candidate-[A-Za-z0-9]{6}$/.test(marker.candidate)||typeof marker.manifestSha256!=='string'||!/^[a-f0-9]{64}$/.test(marker.manifestSha256))throw new Error('桌面原生运行库描述不匹配');
   const runtime=renderRuntimeLayout(root,true,resources,marker.candidate,false,true);
   const manifest=lstatSync(runtime.manifest);if(!manifest.isFile()||manifest.isSymbolicLink()||manifest.size>65536||createHash('sha256').update(readFileSync(runtime.manifest)).digest('hex')!==marker.manifestSha256)throw new Error('桌面原生运行库清单不匹配');
+  if(JSON.parse(readFileSync(runtime.manifest,'utf8')).cohort!==marker.cohort)throw new Error('Native runtime cohort mismatch');
   return runtime;
  }
  if(acceptance!=='1')return renderRuntimeLayout(root,true,resources);
@@ -40,8 +42,9 @@ export function resolveRenderRuntime(root:string,packaged:boolean,resources:stri
  const parsed:unknown=JSON.parse(readFileSync(file,'utf8'));
  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('本地原生验收标记无效');
  const marker=parsed as Record<string,unknown>;
- if(marker.schema!==1||marker.purpose!=='local-render-acceptance'||marker.cohort!==replayedRenderPin.id||marker.distributionReady!==false||typeof marker.candidate!=='string'||!/^render-replayed-candidate-[A-Za-z0-9]{6}$/.test(marker.candidate)||typeof marker.manifestSha256!=='string'||!/^[a-f0-9]{64}$/.test(marker.manifestSha256))throw new Error('本地原生验收标记不匹配');
+ if(marker.schema!==1||marker.purpose!=='local-render-acceptance'||(marker.cohort!==replayedRenderPin.id&&marker.cohort!==mkvIndexRenderPin.id)||marker.distributionReady!==false||typeof marker.candidate!=='string'||!/^render-replayed-candidate-[A-Za-z0-9]{6}$/.test(marker.candidate)||typeof marker.manifestSha256!=='string'||!/^[a-f0-9]{64}$/.test(marker.manifestSha256))throw new Error('本地原生验收标记不匹配');
  const runtime=renderRuntimeLayout(root,true,resources,marker.candidate,true);
  const manifest=lstatSync(runtime.manifest);if(!manifest.isFile()||manifest.isSymbolicLink()||manifest.size>65536||createHash('sha256').update(readFileSync(runtime.manifest)).digest('hex')!==marker.manifestSha256)throw new Error('本地原生验收清单不匹配');
+ if(JSON.parse(readFileSync(runtime.manifest,'utf8')).cohort!==marker.cohort)throw new Error('Native acceptance cohort mismatch');
  return runtime;
 }

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from native_source_delivery import verify_native_bundle
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -48,19 +49,15 @@ def main():
         or coexistence.get('runtimeExeSha256')!=manifest['exeSha256'] or not render.get('passed') or not render.get('packaged')):
         raise ValueError('Matching actual packaged dual-MPV acceptance required')
     source=json.loads((ROOT/'build/m5-source-delivery.json').read_text(encoding='utf-8'))
-    if not source['allMembersVerified'] or source['nativeSourceArchives']!=22 or not Path(source['zip']).resolve().is_relative_to(args.directory.resolve()):
+    if not source['allMembersVerified'] or not Path(source['zip']).resolve().is_relative_to(args.directory.resolve()):
         raise ValueError('Current complete source delivery required')
     archive=owned(Path(source['zip']))
     if item(archive)['sha256']!=source['sha256']:raise ValueError('Source archive bytes changed')
     with zipfile.ZipFile(archive) as bundle:
         index=json.loads(bundle.read('DELIVERY-INDEX.json'))
+        verify_native_bundle(bundle,index,owned(native/'runtime.json').read_bytes(),owned(mpv/'runtime.json').read_bytes())
         identity=json.loads(bundle.read('APPLICATION/app/build-info.json'))
         if identity['version']!=expected['version'] or identity['build_id']!=expected['buildId']:raise ValueError('Source ZIP application version/build differs')
-        names=bundle.namelist()
-        if len(names)!=len(set(names)):raise ValueError('Duplicate source archive members')
-        for member in index['files']:
-            with bundle.open(member['path']) as stream:
-                if hashlib.file_digest(stream,'sha256').hexdigest()!=member['sha256']:raise ValueError('Source archive member changed: '+member['path'])
         members={member['path']:member['sha256'] for member in index['files']}
         for name,digest in expected['sourceFiles']:
             if members.get('APPLICATION/'+name)!=digest:raise ValueError('Current source differs from delivered ZIP: '+name)

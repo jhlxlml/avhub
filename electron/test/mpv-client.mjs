@@ -196,3 +196,64 @@ const idSelected=startingAudio();idSelected.message({event:'property-change',nam
 idSelected.message({event:'property-change',name:'track-list',data:[...videoTracks,{type:'audio',id:2}]});assert.equal(idSelected.snapshot.phase,'starting');
 idSelected.message({event:'property-change',name:'current-ao',data:'wasapi'});assert.equal(idSelected.snapshot.phase,'ready');await idSelected.stop();
 console.log('Native A/V readiness passed: selected output, late track/AO events, no-audio sources, real frame vs A/V metrics, no silent null fallback.');
+
+const {MpvSeekEvidence}=require('../dist/mpvClient.js');
+const evidence=new MpvSeekEvidence();
+for(let i=0;i<3;i++){
+ evidence.record({strategy:'exact',confirmationMs:120,errorSec:0},true,30);
+ evidence.record({strategy:'keyframe',confirmationMs:24,errorSec:1},false,30);
+}
+assert.equal(evidence.prefersKeyframes,false,'paused observations cannot enable playing keyframe seeking');
+for(let i=0;i<3;i++)evidence.record({strategy:'keyframe',confirmationMs:24,errorSec:1},true,30);
+assert.equal(evidence.prefersKeyframes,true);
+evidence.record({strategy:'keyframe',confirmationMs:24,errorSec:7},true,30);
+assert.equal(evidence.prefersKeyframes,false,'a large observed deviation revokes the preference');
+const fast=new MpvClient(()=>{},()=>{});
+fast.snapshot.phase='ready';fast.snapshot.seekPolicy='fast';
+const fastCommands=[];
+fast.command=async args=>{fastCommands.push(args);return args[1]==='seeking'?false:24;};
+fast.seek(30);fast.message({event:'playback-restart'});await tick();assert.equal(fast.snapshot.pendingSeek,30);
+fast.message({event:'seek'});fast.message({event:'playback-restart'});await tick();
+assert.deepEqual(fastCommands[0],['get_property','time-pos']);
+assert.deepEqual(fastCommands.find(args=>args[0]==='seek'),['seek',6,'relative+keyframes']);
+assert.equal(fast.snapshot.pendingSeek,null);
+assert.equal(fast.snapshot.seekDiagnostics.strategy,'keyframe');
+assert.equal(fast.snapshot.seekDiagnostics.errorSec,-6);
+assert.equal(fast.snapshot.seekDiagnostics.frameMs,null);
+await fast.stop();
+
+const coldSmart=new MpvSeekEvidence();
+for(let i=0;i<3;i++)coldSmart.record({strategy:'exact',confirmationMs:210,errorSec:0},true,20);
+assert.equal(coldSmart.prefersKeyframes,true,'slow observed exact seeks allow the next real user seek to try keyframes');
+coldSmart.record({strategy:'keyframe',confirmationMs:250,errorSec:.5},true,20);
+assert.equal(coldSmart.prefersKeyframes,false,'a slower measured keyframe trial returns to exact');
+
+
+const stepping=new MpvClient(()=>{},()=>{});let landing=0;
+stepping.snapshot.phase='ready';stepping.snapshot.seekPolicy='fast';stepping.snapshot.properties['time-pos']=0;
+stepping.command=async args=>args[0]==='get_property'?(args[1]==='seeking'?false:landing):null;
+stepping.seekBy(5);await tick();stepping.message({event:'seek'});stepping.message({event:'playback-restart'});await tick();
+assert.equal(stepping.snapshot.pendingSeek,null);assert.equal(stepping.snapshot.lastSeekPosition,0);
+stepping.seekBy(5);assert.equal(stepping.snapshot.pendingSeek,10,'a completed approximate landing must not discard the forward input goal');
+landing=5.072;await tick();stepping.message({event:'seek'});stepping.message({event:'playback-restart'});await tick();
+stepping.seekBy(-5);assert.ok(Math.abs(stepping.snapshot.pendingSeek-.072)<.001,'reversing direction starts from the actual landed position');
+await stepping.stop();
+
+
+const edge=new MpvClient(()=>{},()=>{});let edgePosition=0;const edgeCommands=[];
+edge.snapshot.phase='ready';edge.snapshot.seekPolicy='fast';edge.snapshot.properties.duration=6;
+edge.command=async args=>{edgeCommands.push(args);return args[0]==='get_property'?(args[1]==='seeking'?false:edgePosition):null;};
+edge.seek(5);await tick();edge.message({event:'seek'});edgePosition=6;edge.message({event:'playback-restart'});await tick();
+assert.equal(edge.snapshot.pendingSeek,5,'empty EOF must not complete the forward keyframe request');
+assert.deepEqual(edgeCommands.filter(args=>args[0]==='seek').at(-1),['seek',5,'absolute+exact']);
+edge.message({event:'seek'});edgePosition=5;edge.message({event:'playback-restart'});await tick();
+assert.equal(edge.snapshot.pendingSeek,null);assert.equal(edge.snapshot.seekDiagnostics.position,5);assert.equal(edge.snapshot.seekDiagnostics.corrections,1);
+await edge.stop();
+
+
+const rapidFast=new MpvClient(()=>{},()=>{}),rapidFastCommands=[];
+rapidFast.snapshot.phase='ready';rapidFast.snapshot.seekPolicy='fast';
+rapidFast.command=async args=>{rapidFastCommands.push(args);return args[0]==='get_property'?(args[1]==='seeking'?false:0):null;};
+rapidFast.seek(10);await tick();rapidFast.seek(20);await tick();
+assert.deepEqual(rapidFastCommands.filter(args=>args[0]==='seek'),[['seek',10,'relative+keyframes'],['seek',20,'absolute+keyframes']],'an unfinished seek cannot provide the relative base for the next request');
+assert.equal(rapidFast.snapshot.pendingSeek,20);await rapidFast.stop();

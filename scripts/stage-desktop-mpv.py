@@ -47,10 +47,21 @@ def stage():
     shutil.copyfile(build / 'import-audit.json', folder / 'materials/desktop-import-audit.json')
     shutil.copyfile(ROOT / 'scripts/build-desktop-mpv.py', folder / 'materials/build-desktop-mpv.py')
     shutil.copyfile(ROOT / 'scripts/stage-desktop-mpv.py', folder / 'materials/stage-desktop-mpv.py')
+    sources = folder / 'materials/desktop-sources'; sources.mkdir(parents=True, exist_ok=True)
+    for item in report.get('patches', []):
+        file = ROOT / item['path']
+        if item['path'] != 'ci/patches/mkv-reversed-cues.patch' or hashlib.file_digest(file.open('rb'), 'sha256').hexdigest() != item['sha256']:
+            raise ValueError('Compatibility patch changed')
+        shutil.copyfile(file, sources / file.name)
+    lua_archive = ROOT / report['luaSource']['archive']
+    if hashlib.file_digest(lua_archive.open('rb'), 'sha256').hexdigest() != report['luaSource']['archiveSha256']:
+        raise ValueError('Lua corresponding source changed')
+    shutil.copyfile(lua_archive, sources / lua_archive.name)
+    shutil.copyfile(lua_archive.with_suffix('.json'), sources / lua_archive.with_suffix('.json').name)
     manifest = {'schema': 1, 'status': 'source-built-candidate', 'sourceCommit': report['mpvSource']['revision'],
                 'sourceArchiveSha256': report['mpvSource']['archiveSha256'],
                 'recipeSha256': report['recipeSha256'],
-                'luaSource': report['luaSource'], 'distributionReady': False,
+                'luaSource': report['luaSource'], 'patches': report.get('patches', []), 'distributionReady': False,
                 'exeSha256': hashlib.file_digest((folder / 'mpv.exe').open('rb'), 'sha256').hexdigest(),
                 'licenseSha256': hashlib.file_digest((folder / 'LICENSE.GPL').open('rb'), 'sha256').hexdigest(),
                 'dependencies': [{'name': p.name, 'size': p.stat().st_size, 'sha256': hashlib.file_digest(p.open('rb'), 'sha256').hexdigest()} for p in sorted(folder.glob('*.dll'))],

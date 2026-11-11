@@ -20,6 +20,7 @@ import { realpath,stat } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash, randomBytes } from 'node:crypto';
 import {NativePlayer} from './nativePlayer';
+import {independentRuntimeLayout} from './independentRuntimeLayout';
 import {RenderPlayer} from './renderPlayer';
 import {FilePreviewRequest,cancellableFilePreview} from './filePreview';
 
@@ -48,9 +49,10 @@ const startupTrace=new StartupTrace(line=>appendDesktopLog(line));
 const dataHome=isPackaged?(process.env.PORTABLE_EXECUTABLE_DIR||path.dirname(app.getPath('exe'))):(process.env.AVHUB_APP_HOME||projectRoot);
 const dataConfigFile=path.join(dataHome,configName);
 const defaultDataDir=path.join(dataHome,'AVHub-data');
+const independentRuntime=independentRuntimeLayout(projectRoot,isPackaged,process.resourcesPath);
 const nativePlayer=new NativePlayer({origin:()=>`http://127.0.0.1:${backendPort}`,token:()=>sessionToken,
-  runtime:()=>path.join(isPackaged?process.resourcesPath:projectRoot,isPackaged?'mpv':'bin/mpv','mpv.exe'),
-  runtimeManifest:()=>isPackaged&&existsSync(path.join(process.resourcesPath,'mpv/runtime.json'))?path.join(process.resourcesPath,'mpv/runtime.json'):undefined,
+  runtime:()=>independentRuntime.executable,
+  runtimeManifest:()=>independentRuntime.manifest,
   data:()=>dataDir,main:()=>mainWindow,icon:()=>loadDesktopIcon(projectRoot,process.resourcesPath,isPackaged),log:line=>appendDesktopLog(line),mode:value=>applyWindowMode(mainWindow!,value),windowAction:value=>applyWindowAction(mainWindow!,value),settled:()=>waitForWindowPlacement(mainWindow!),windowState:()=>windowState(mainWindow!)});
 const renderPlayer=new RenderPlayer({root:projectRoot,origin:()=>`http://127.0.0.1:${backendPort}`,token:()=>sessionToken,data:()=>dataDir,main:()=>mainWindow,log:line=>appendDesktopLog(line),mode:value=>applyWindowMode(mainWindow!,value),windowAction:value=>applyWindowAction(mainWindow!,value),settled:()=>waitForWindowPlacement(mainWindow!),windowState:()=>windowState(mainWindow!)});
 ipcMain.handle('avhub:render-player',(event,action:unknown,input:unknown)=>{if(shuttingDown&&action==='open')throw new Error('应用正在退出');return renderPlayer.invoke(event,action,input);});
@@ -152,7 +154,7 @@ function publishWindowState(window: BrowserWindow) {
   if (!window.isDestroyed()) window.webContents.send('avhub:window-state-changed', windowState(window));
 }
 ipcMain.handle('avhub:window-state', event => windowState(trustedWindow(event)));
-ipcMain.handle('avhub:startup-ready',event=>{trustedWindow(event);startupTrace.mark('library-ready');return {ok:true};});
+ipcMain.handle('avhub:startup-ready',event=>{trustedWindow(event);startupTrace.mark('library-ready');if(!shuttingDown)void renderPlayer.prepareRuntime().catch(()=>appendDesktopLog('render-runtime-prepare-unavailable'));return {ok:true};});
 ipcMain.handle('avhub:startup-progress',(event,stage:unknown)=>{
   const window=trustedWindow(event);
   if(window!==mainWindow||!rendererStartupStages.some(value=>value===stage))throw new Error('无效的启动阶段');

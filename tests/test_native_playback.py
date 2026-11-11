@@ -46,6 +46,10 @@ class NativeLeasesTest(unittest.TestCase):
             self.assertEqual(validate('mpvWindowMode',value),value)
         for value in ['auto','external',{},True,None,1]:
             with self.assertRaises(HTTPException):validate('mpvWindowMode',value)
+        for value in ('exact','fast','smart'):
+            self.assertEqual(validate('mpvSeekPolicy',value),value)
+        for value in ('auto','keyframe',None,True,{},1):
+            with self.assertRaises(HTTPException):validate('mpvSeekPolicy',value)
         for key in ('nativeRenderEnabled','playbackSessionCoordinatorEnabled'):
             for value in (True, False):
                 self.assertEqual(validate(key,value),value)

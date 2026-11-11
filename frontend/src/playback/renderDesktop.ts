@@ -9,7 +9,8 @@ type Desktop=NonNullable<Window['avhubDesktop']>;
 /** Reuse the existing desktop playback UI, while standard transport controls go
  * through PlaybackEngine. No media paths or native commands are accepted here. */
 export function createRenderDesktop(base:Desktop,options:{sessionCoordinatorEnabled?:boolean;sessionRoot?:PlaybackSessionCoordinator}={}){
- let element:HTMLElement|null=null,surface='',engine:MpvEngine|null=null,controller:PlaybackController|null=null,generation=0,latest:any=null,pendingTarget:number|null=null,seekSequence=0;
+ let element:HTMLElement|null=null,surface='',engine:MpvEngine|null=null,controller:PlaybackController|null=null,generation=0,latest:any=null,pendingTarget:number|null=null,seekSequence=0,seekInputAt:number|undefined;
+ let relativeGoal:{target:number;direction:number}|null=null;
  const states=new Set<(s:any)=>void>(),events=new Set<(s:any)=>void>(),closed=new Set<(s:any)=>void>();
  const view=(s:any)=>({...s,presentation:'render',error:s.error?.message||'',pendingSeek:s.pendingSeek??null});
  const dispatch=(s:any)=>{if(!surface||s.surface!==surface)return;latest=s;if(s.properties)base.transformRenderSurface(surface,{rotation:Number(s.properties['video-rotate']||0),zoom:Number(s.properties['video-zoom']||0),x:Number(s.properties['video-pan-x']||0),y:Number(s.properties['video-pan-y']||0)});for(const listener of states)listener(view(s));};
@@ -17,12 +18,12 @@ export function createRenderDesktop(base:Desktop,options:{sessionCoordinatorEnab
  const port:NativeEnginePort={
   attach:async target=>{const id='avhub-render-'+crypto.randomUUID(),previous=target.id;target.id=id;await base.attachRenderSurface(id);surface=id;return async()=>{await base.detachRenderSurface(id);if(target.id===id)target.id=previous;if(surface===id)surface='';};},
   open:async source=>{const value=await base.renderPlayer('open',source);dispatch(value);return value;},
-  command:async(session,generation,action,value)=>{await base.renderPlayer('command',{session,generation,action,value});},
+  command:async(session,generation,action,value)=>{await base.renderPlayer('command',{session,generation,action,value,...(action==='seek'?{inputAt:seekInputAt}:{})});},
   subscribe:listener=>base.onRenderState(value=>{if(surface&&value.surface===surface)listener(value);}),
   close:async(session,generation)=>{await base.renderPlayer('close',{session,generation});},
  };
  const request=(action:string,value?:unknown)=>{const s=engine?.getSession();if(!s)throw new Error('原生播放尚未就绪');return base.renderPlayer(action,{session:s.id,generation:s.generation,value});};
- async function retire(owned=engine,control=controller){try{await (control??owned)?.dispose();}catch(error){if(!surface)throw error;await base.renderPlayer('recover',{surface});await (control??owned)?.dispose();}if(engine===owned){engine=null;controller=null;}}
+ async function retire(owned=engine,control=controller){try{await (control??owned)?.dispose();}catch(error){if(!surface)throw error;await base.renderPlayer('recover',{surface});await (control??owned)?.dispose();}if(engine===owned){engine=null;controller=null;relativeGoal=null;pendingTarget=null;}}
  // The application root coordinates this scoped adapter. Native handles,
  // decoder options and colour decisions remain with the existing native owner.
  const createNativeSession:()=>SessionAdapter=()=>{
@@ -72,11 +73,12 @@ export function createRenderDesktop(base:Desktop,options:{sessionCoordinatorEnab
   };
  };
  const coordinator=options.sessionCoordinatorEnabled===true?(options.sessionRoot??new PlaybackSessionCoordinator({})).scope('libmpv-d3d11',createNativeSession):null;
- async function seek(seconds:number){if(!controller)throw new Error('原生播放尚未就绪');const current=++seekSequence,length=controller.getState().durationSec;pendingTarget=Math.max(0,Math.min(length?Math.max(0,length-.01):Number.MAX_VALUE,seconds));try{await (coordinator?coordinator.seekTo(pendingTarget):controller.seekTo(pendingTarget));}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))throw e;}finally{if(current===seekSequence)pendingTarget=null;}return {ok:true};}
+ async function seek(seconds:number,inputAt?:number,direction=0){if(!controller)throw new Error('原生播放尚未就绪');seekInputAt=inputAt;const current=++seekSequence,length=controller.getState().durationSec;pendingTarget=Math.max(0,Math.min(length?Math.max(0,length-.01):Number.MAX_VALUE,seconds));relativeGoal=direction?{target:pendingTarget,direction}:null;try{await (coordinator?coordinator.seekTo(pendingTarget):controller.seekTo(pendingTarget));}catch(e){if(!(e instanceof DOMException&&e.name==='AbortError'))throw e;}finally{if(current===seekSequence){pendingTarget=null;seekInputAt=undefined;}}return {ok:true};}
  const nativePlayer:Desktop['nativePlayer']=async(action,input)=>{
   if(action==='status')return base.renderPlayer('status');
   if(action==='open'){
    if(!element||!coordinator&&engine||selectEngine({preference:'mpv',nativeEnabled:true,registered:['html5','mpv'],nativeScope:'local-native-experiment',sourceKind:'local'}).kind!=='mpv')throw new Error('原生播放区域不可用');const r=input as {mediaId:number;start:number;paused?:boolean};
+   relativeGoal=null;pendingTarget=null;
    if(coordinator){await coordinator.load({mediaId:r.mediaId,uri:`avhub-media:${r.mediaId}`,transport:'direct',offsetSec:0,resumePositionSec:r.start,autoplay:r.paused!==true},'libmpv-d3d11');const s=engine?.getSession();if(!s)throw new PlaybackSessionFailure('initialization','原生会话未就绪','open');return {session:s.id,presentation:'render'};}
    engine=new MpvEngine(port);controller=new PlaybackController(engine,generation++);
    try{await engine.init({nativeSurface:element});await controller.load({mediaId:r.mediaId,uri:`avhub-media:${r.mediaId}`,transport:'direct',offsetSec:0,resumePositionSec:r.start,autoplay:r.paused!==true});const s=engine.getSession();return {session:s!.id,presentation:'render'};}
@@ -92,13 +94,23 @@ export function createRenderDesktop(base:Desktop,options:{sessionCoordinatorEnab
   if(!engine.getSession()||supplied!==engine.getSession()!.id)throw new Error('原生播放会话已过期');
   const value=(input as {value?:any})?.value;
   if(action==='pause'){await (value?controller.pause():controller.play());return {ok:true};}
-  if(action==='seek')return seek(Number(value));if(action==='seek-relative')return seek((pendingTarget??engine.getState().positionSec)+Number(value));
+  const inputAt=(input as {inputAt?:number})?.inputAt;
+  if(action==='seek')return seek(Number(value),inputAt);
+  if(action==='seek-relative'){
+   const delta=Number(value),position=engine.getState().positionSec;
+   if(!Number.isFinite(delta)||Math.abs(delta)>120)throw new RangeError('跳播步长无效');
+   // An approximate landing can precede the intended target by a whole GOP.
+   // Keep successive same-direction steps advancing until playback catches up.
+   const goal=latest?.seekPolicy==='fast'&&relativeGoal?.direction===Math.sign(delta)&&(delta>0?position<relativeGoal.target:position>relativeGoal.target)?relativeGoal.target:position;
+   return seek((pendingTarget??goal)+delta,inputAt,Math.sign(delta));
+  }
+  if(action==='seek-policy')relativeGoal=null;
   if(action==='volume'){await controller.setVolume(Number(value)/100);return {ok:true};}if(action==='mute'){await controller.setMuted(value);return {ok:true};}if(action==='speed'){await controller.setRate(value);return {ok:true};}
   if(action==='track'){await controller.selectTrack(value.kind==='sub'?'subtitle':'audio',value.id==='no'?null:String(value.id));return {ok:true};}if(action==='sub-delay'){await controller.setSubtitleDelay(value);return {ok:true};}
   if(action==='navigate'){if(!['next','previous','queue','retry'].includes(value))throw new Error('队列操作无效');for(const fn of events)fn({session:engine.getSession()!.id,kind:value});return {ok:true};}
   if(action==='replay'){await seek(0);await controller.play();return {ok:true};}
-  if(action==='diagnostics')return {engine:'libmpv-render-d3d11',phase:latest?.phase,firstFrameMs:latest?.firstFrameMs,lastSeekMs:latest?.lastSeekMs,sourceLoads:1,transport:latest?.transport,dimensions:engine.getState().videoSize,sessionCoordinator:coordinator?.getState()??null};
-  if(['screenshot','subtitle-import','subtitle-style','transform','rotate','window'].includes(action))return request(action,value);
+  if(action==='diagnostics')return {engine:'libmpv-render-d3d11',phase:latest?.phase,firstFrameMs:latest?.firstFrameMs,lastSeekMs:latest?.lastSeekMs,sourceLoads:latest?.sourceLoads,seek:latest?.seekDiagnostics??null,hardwareDecoder:latest?.properties?.['hwdec-current']??null,transport:latest?.transport,dimensions:engine.getState().videoSize,sessionCoordinator:coordinator?.getState()??null};
+  if(['seek-policy','screenshot','subtitle-import','subtitle-style','transform','rotate','window'].includes(action))return request(action,value);
   throw new Error('此原生操作尚未接通');
  };
  return {...base,nativePlayer,onNativeState:(fn:(s:any)=>void)=>{states.add(fn);return()=>states.delete(fn);},onNativeEvent:(fn:(s:any)=>void)=>{events.add(fn);return()=>events.delete(fn);},onNativeClosed:(fn:(s:any)=>void)=>{closed.add(fn);return()=>closed.delete(fn);},

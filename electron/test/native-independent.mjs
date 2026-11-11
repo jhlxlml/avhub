@@ -1,10 +1,10 @@
+import {generateTestMedia} from './media-pool.mjs';
 // Real Electron library + owned MPV window; native input.conf is exercised by
 // MPV keypress injection. This is not physical OS keyboard/mouse acceptance.
 import {desktopTestSubject} from './desktop-test-subject.mjs';
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
 import {mkdirSync,mkdtempSync,readFileSync,statSync,writeFileSync,readdirSync,existsSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {createRequire} from 'node:module';
@@ -20,7 +20,7 @@ const runtimeIdentity={exeSha256:createHash('sha256').update(readFileSync(runtim
 mkdirSync(path.join(root,'build'),{recursive:true});
 const data=mkdtempSync(path.join(root,'build','native-independent-')),media=path.join(data,'media'),captures=path.join(data,'screenshots');mkdirSync(media);mkdirSync(captures);
 const sources=['A.mp4','B.mp4'].map(name=>path.join(media,name));
-for(const source of sources)assert.equal(spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','lavfi','-i','testsrc2=s=640x360:r=25','-t','24','-c:v','libx264','-g','50','-pix_fmt','yuv420p',source],{windowsHide:true,timeout:30000}).status,0);
+for(const source of sources)assert.equal(generateTestMedia(['-v','error','-f','lavfi','-i','testsrc2=s=640x360:r=25','-t','24','-c:v','libx264','-g','50','-pix_fmt','yuv420p',source]).status,0);
 const identity=()=>sources.map(file=>({hash:createHash('sha256').update(readFileSync(file)).digest('hex'),mtime:statSync(file).mtimeMs})),before=identity();let desktop,subject;
 console.log('Independent fixture:',data);
 writeFileSync(path.join(data,'runtime-subject.json'),JSON.stringify(candidate?{tag:candidate.tag,sourceCommit:candidate.sourceCommit,testOnlyOverride:true}:{source:packagedExe?'bundled packaged runtime':'installed development runtime'},null,2));

@@ -5,20 +5,42 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {startupFailure} from './nativeFailure';
 import {audioOutputStatus,audioOutputFailure,type AudioOutputStatus} from './nativeAudio';
 
-export const mpvProperties=['time-pos','duration','pause','paused-for-cache','seeking','eof-reached','volume','mute','speed','video-params','video-codec','audio-codec-name','current-ao','hwdec-current','frame-drop-count','decoder-frame-drop-count','track-list','aid','sid','sub-delay','video-rotate','video-zoom','video-pan-x','video-pan-y','mpv-version'] as const;
+export const mpvProperties=['time-pos','duration','pause','paused-for-cache','seeking','eof-reached','volume','mute','speed','video-params','video-codec','audio-codec-name','current-ao','avsync','hwdec-current','frame-drop-count','decoder-frame-drop-count','track-list','aid','sid','sub-delay','video-rotate','video-zoom','video-pan-x','video-pan-y','mpv-version'] as const;
+export type SeekPolicy='exact'|'fast'|'smart';
+export type SeekDiagnostics={strategy:'exact'|'keyframe';target:number;position:number;errorSec:number;inputToDispatchMs?:number|null;queueMs:number|null;nativeQueueMs?:number|null;seekEventMs:number|null;restartMs:number|null;restartToFrameMs:number|null;frameMs:number|null;confirmationMs:number;corrections:number;correctionMs?:number|null;avSyncSec?:unknown;cacheWaitMs:number|null;sourceLoads:number;hwdec:unknown};
+// Evidence is scoped to one open source and far seeks during playback.
+export class MpvSeekEvidence {
+  private exact:number[]=[];
+  private keyframe:{ms:number;error:number}[]=[];
+  get prefersKeyframes(){
+    if(this.exact.length<3||this.keyframe.some(sample=>sample.error>2))return false;
+    const exact=this.exact.reduce((sum,ms)=>sum+ms,0)/this.exact.length;
+    if(!this.keyframe.length)return exact>=150;
+    const fast=this.keyframe.reduce((sum,sample)=>sum+sample.ms,0)/this.keyframe.length;
+    return exact-fast>=30&&fast<=exact*2/3;
+  }
+  record(timing:SeekDiagnostics,playing:boolean,distance:number){
+    if(!playing||distance<10)return;
+    if(timing.strategy==='exact')this.exact=[...this.exact.slice(-3),timing.confirmationMs];
+    else this.keyframe=[...this.keyframe.slice(-3),{ms:timing.confirmationMs,error:Math.abs(timing.errorSec)}];
+  }
+}
 export type NativeFailureCode='audio-output'|'video-output'|'decode'|'source'|'unknown';
-export type MpvSnapshot={session:string;phase:'starting'|'ready'|'ended'|'error'|'closed';error?:string;failureCode?:NativeFailureCode|null;audioOutput?:AudioOutputStatus;properties:Record<string,unknown>;restarts:number;seeks:number;seekCorrections:number;pendingSeek:number|null;seekMode:'native'|'coordinated'|null;lastSeekTarget:number|null;lastSeekPosition:number|null;firstFrameMs:number|null;readyMs:number|null;lastSeekMs:number|null;lastSeekTotalMs:number|null;sourceLoads:number;bufferingEvents:number;bufferingMs:number};
+export type MpvTransport={writeCount:number;maxWriteQueueMs:number;pipeErrorCode:string|null;pipeClosed:boolean;exited:boolean;exitCode:number|null;exitSignal:string|null};
+export type MpvSnapshot={transport?:MpvTransport;session:string;seekPolicy?:SeekPolicy;seekDiagnostics?:SeekDiagnostics;phase:'starting'|'ready'|'ended'|'error'|'closed';error?:string;failureCode?:NativeFailureCode|null;audioOutput?:AudioOutputStatus;properties:Record<string,unknown>;restarts:number;seeks:number;seekCorrections:number;pendingSeek:number|null;seekMode:'native'|'coordinated'|null;lastSeekTarget:number|null;lastSeekPosition:number|null;firstFrameMs:number|null;readyMs:number|null;lastSeekMs:number|null;lastSeekTotalMs:number|null;sourceLoads:number;bufferingEvents:number;bufferingMs:number};
 
 /** Owned process, bounded JSON transport, acknowledgements, latest-intent seek queue.
  * Renderer never receives a raw mpv command interface or filesystem path.
  */
 export class MpvClient {
   readonly session=randomBytes(16).toString('hex');
-  readonly snapshot:MpvSnapshot={session:this.session,phase:'starting',properties:{},restarts:0,seeks:0,seekCorrections:0,pendingSeek:null,seekMode:null,lastSeekTarget:null,lastSeekPosition:null,firstFrameMs:null,readyMs:null,lastSeekMs:null,lastSeekTotalMs:null,sourceLoads:0,bufferingEvents:0,bufferingMs:0};
+  readonly transport:MpvTransport={writeCount:0,maxWriteQueueMs:0,pipeErrorCode:null,pipeClosed:false,exited:false,exitCode:null,exitSignal:null};
+  readonly snapshot:MpvSnapshot={transport:this.transport,session:this.session,phase:'starting',properties:{},restarts:0,seeks:0,seekCorrections:0,pendingSeek:null,seekMode:null,lastSeekTarget:null,lastSeekPosition:null,firstFrameMs:null,readyMs:null,lastSeekMs:null,lastSeekTotalMs:null,sourceLoads:0,bufferingEvents:0,bufferingMs:0};
   private child:ChildProcess|null=null;
   private socket:Socket|null=null;
   private sequence=0;
-  private requests=new Map<number,{resolve:(value:unknown)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+  private requests=new Map<number,{resolve:(value:unknown)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>;line:string;queuedAt:number;sent:boolean;dispatched?:()=>void}>();
+  private writing=false;
   private buffer='';
   private started=performance.now();
   private seekActive=false;
@@ -26,6 +48,20 @@ export class MpvClient {
   private restartWhileDispatching=false;
   private latestSeek:number|null=null;
   private seekStarted=0;
+  private inputAt:number|null=null;
+  private inputToDispatchMs:number|null=null;
+  private latestInputAt:number|null=null;
+  private seekEventAt:number|null=null;
+  private restartAt:number|null=null;
+  private cacheAtSeek=0;
+  private fastSeek=false;
+  private readonly seekEvidence=new MpvSeekEvidence();
+  private fastForward=false;
+  private exactEndFallback=false;
+  private relativeGoal:{target:number;direction:number}|null=null;
+  private seekDistance=0;
+  private seekPlaying=false;
+  private cacheWait(){return this.snapshot.bufferingMs+(this.bufferingStarted===null?0:performance.now()-this.bufferingStarted);}
   private latestSeekRequestedAt=0;
   private seekRequestedAt=0;
   private bufferingStarted:number|null=null;
@@ -41,6 +77,7 @@ export class MpvClient {
   private correcting=false;
   private restartWhileChecking=false;
   private correctionCount=0;
+  private correctionStarted:number|null=null;
   private demuxerOffset=0;
   private seekTimer:ReturnType<typeof setTimeout>|undefined;
   private readyTimer:ReturnType<typeof setTimeout>|undefined;
@@ -72,7 +109,7 @@ export class MpvClient {
     this.child=spawn(executable,['--no-config','--load-scripts=no','--ytdl=no','--access-references=no',...windowOptions,'--input-default-bindings=no','--input-terminal=no','--terminal=no',
       '--keep-open=yes','--idle=yes','--pause=yes','--stop-playback-on-init-failure=yes','--hwdec=auto-safe','--vo=gpu-next','--gpu-api=d3d11','--hr-seek=yes','--cache=yes','--demuxer-max-bytes=96MiB','--demuxer-max-back-bytes=32MiB',
       // PNG level/filter affect encoding CPU and file size, never image quality.
-      '--screenshot-format=png','--screenshot-png-compression=1','--screenshot-png-filter=1','--screenshot-high-bit-depth=no',`--input-ipc-server=${pipe}`,`--start=${start}`,...extra],
+      '--screenshot-format=png','--screenshot-png-compression=1','--screenshot-png-filter=1','--screenshot-high-bit-depth=yes',`--input-ipc-server=${pipe}`,`--start=${start}`,...extra],
       {windowsHide:true,stdio:['ignore','ignore','pipe']});
     this.child.stderr?.resume(); // Never retain raw source paths in logs.
     this.exited=new Promise(resolve=>{
@@ -80,7 +117,7 @@ export class MpvClient {
         // A failed kill can also emit error. It is NOT evidence of process exit.
         if(!this.child?.pid){this.closed=true;this.fail('MPV 启动失败，请检查运行库');resolve();}
       });
-      this.child!.once('exit',(code,signal)=>{this.preservePlayback();this.closed=true;this.clearRequests();this.socket?.destroy();clearTimeout(this.seekTimer);if(!this.stopping&&(code!==0||signal))this.fail('原生播放进程异常退出');else if(this.snapshot.phase!=='error')this.snapshot.phase='closed';this.emit();this.onExit();resolve();});
+      this.child!.once('exit',(code,signal)=>{this.transport.exited=true;this.transport.exitCode=code;this.transport.exitSignal=signal;this.preservePlayback();this.closed=true;this.clearRequests();this.socket?.destroy();clearTimeout(this.seekTimer);if(!this.stopping&&(code!==0||signal))this.fail('原生播放进程异常退出');else if(this.snapshot.phase!=='error')this.snapshot.phase='closed';this.emit();this.onExit();resolve();});
     });
     this.startupStage='ipc';const deadline=Date.now()+10000;
     while(!this.closed&&Date.now()<deadline){
@@ -90,9 +127,9 @@ export class MpvClient {
     if(!this.socket){const failure=new Error(this.snapshot.error||'连接 MPV 超时，未切换或转码原视频');try{await this.stop();}catch(cleanup){throw startupFailure(failure,cleanup);}throw failure;}
     this.socket.setEncoding('utf8');
     this.socket.on('data',(data:string)=>this.receive(data));
-    this.socket.on('error',()=>{if(!this.nativeShutdown&&!this.expectedNativeExit&&!this.stopping)this.fail('原生播放连接中断');});
+    this.socket.on('error',(error:NodeJS.ErrnoException)=>{this.transport.pipeErrorCode=error.code??'UNKNOWN';if(!this.nativeShutdown&&!this.expectedNativeExit&&!this.stopping)this.fail('原生播放连接中断');});
     this.socket.on('close',()=>{
-      this.clearRequests();
+      this.transport.pipeClosed=true;this.clearRequests();
       if(!this.closed&&!this.stopping)void (async()=>{
         // Windows can close the pipe just before reporting normal process exit;
         // some MPV shutdown paths do not deliver a final shutdown IPC event.
@@ -119,15 +156,38 @@ export class MpvClient {
     if(this.fileLoaded&&this.latestSeek!==null&&!this.seekActive)this.sendSeek();
     this.emit();
   }
-  command(command:unknown[],timeoutMs=5000):Promise<unknown>{
+  command(command:unknown[],timeoutMs=5000,dispatched?:()=>void):Promise<unknown>{
     if(!this.socket||this.socket.destroyed||this.closed)return Promise.reject(new Error('播放器已关闭'));
     if(this.requests.size>=64)return Promise.reject(new Error('播放操作过多，请稍后重试'));
     const request_id=++this.sequence;
     return new Promise((resolve,reject)=>{
+      const line=JSON.stringify({command,request_id})+'\n';
       const timer=setTimeout(()=>{this.requests.delete(request_id);reject(new Error('原生播放指令超时'));},timeoutMs);
-      this.requests.set(request_id,{resolve,reject,timer});
-      this.socket!.write(JSON.stringify({command,request_id})+'\n',error=>{if(error){clearTimeout(timer);this.requests.delete(request_id);reject(new Error('原生播放指令未发送'));}});
+      this.requests.set(request_id,{resolve,reject,timer,line,queuedAt:performance.now(),sent:false,dispatched});this.flushWrites();
     });
+  }
+  private flushWrites(){
+    if(this.writing||!this.socket||this.socket.destroyed||this.closed)return;
+    const next=Array.from(this.requests).find(([,request])=>!request.sent);if(!next)return;
+    const [id,request]=next;request.sent=true;this.writing=true;
+    // One owner for payload, lifetime and dispatch: a pending request can be
+    // selected only once, even if another drain runs before its MPV reply.
+    this.transport.writeCount++;this.transport.maxWriteQueueMs=Math.max(this.transport.maxWriteQueueMs,performance.now()-request.queuedAt);request.dispatched?.();
+    // Gate only OS writes, not MPV responses or decoded frames. Leave Node's
+    // write-completion stack before dispatching the next queued command.
+    this.socket.write(request.line,error=>{
+      if(error){const pending=this.requests.get(id);if(pending){clearTimeout(pending.timer);this.requests.delete(id);pending.reject(new Error('原生播放指令未发送'));}}
+      queueMicrotask(()=>{this.writing=false;this.flushWrites();});
+    });
+  }
+  async prepareScreenshot(){
+    const params=await this.command(['get_property','video-params']);
+    const values=params&&typeof params==='object'?params as Record<string,unknown>:null;
+    const format=values?.['hw-pixelformat']??values?.pixelformat;
+    // Only explicit, known 8-bit decoded formats use 8-bit PNG. Unknown and
+    // high-depth formats retain 16-bit output rather than guessing precision.
+    const eightBit=typeof format==='string'&&['nv12','nv21','yuv420p','yuv422p','yuv444p','yuvj420p','yuvj422p','yuvj444p','rgb24','bgr24','rgba','bgra','argb','abgr','gbrp','gray','gray8'].includes(format);
+    await this.command(['set_property','screenshot-high-bit-depth',!eightBit]);
   }
   private receive(data:string){
     this.buffer+=data;if(this.buffer.length>1024*1024){this.fail('原生播放响应超过限制');void this.stop().catch(()=>this.fail('原生进程未确认退出，请重试关闭窗口'));return;}
@@ -149,12 +209,15 @@ export class MpvClient {
     if(value.event==='client-message'&&Array.isArray(value.args)){
       // The owned Lua controller announces an intent, then immediately seeks
       // inside MPV. Observation never round-trips native input through React.
-      const [owner,kind,target]=value.args;
-      if(this.nativeWindow&&owner==='avhub'&&kind==='seek-intent'&&value.args.length===3&&typeof target==='string'&&target.trim()!==''&&Number.isFinite(Number(target))&&Number(target)>=0)this.observeNativeSeek(Number(target));
+      const [owner,kind,target,strategy,inputMs]=value.args;
+      if(this.nativeWindow&&owner==='avhub'&&kind==='seek-intent'&&(value.args.length>=3&&value.args.length<=5)&&typeof target==='string'&&target.trim()!==''&&Number.isFinite(Number(target))&&Number(target)>=0)this.observeNativeSeek(Number(target),strategy==='keyframe',typeof inputMs==='string'&&Number(inputMs)>=0&&Number(inputMs)<=30000?Number(inputMs):null);
+      else if(this.nativeWindow&&owner==='avhub'&&kind==='seek-exact-fallback'&&this.seekActive&&this.nativeTargetKnown&&typeof target==='string'&&target.trim()!==''&&Number(target)===this.seekTarget){this.fastSeek=false;this.exactEndFallback=true;this.seekEventAt=null;this.restartAt=null;this.correctionCount++;this.correctionStarted??=performance.now();}
+      else if(this.nativeWindow&&owner==='avhub'&&kind==='seek-policy'&&(target==='exact'||target==='fast'||target==='smart')){this.snapshot.seekPolicy=target;this.emit();}
       else if(this.nativeWindow&&owner==='avhub'&&kind==='closing'&&value.args.length===2)this.expectedNativeExit=true;
       else this.onMessage?.(value.args);
     }
     if(this.nativeWindow&&value.event==='seek'&&!this.seekActive&&this.snapshot.phase!=='starting')this.observeNativeSeek(null);
+    if(value.event==='seek'&&this.seekActive){this.seekEventAt=performance.now();this.restartAt=null;}
     if(value.event==='file-loaded'){
       this.fileLoaded=true;
       if(this.startupStage==='started'&&this.latestSeek!==null&&!this.seekActive)this.sendSeek();
@@ -181,6 +244,8 @@ export class MpvClient {
     }
     if(value.event==='playback-restart'){
       this.snapshot.restarts++;if(this.fileLoaded)this.fileRestarted=true;this.ready();
+      if(this.seekActive&&this.fastSeek&&this.seekEventAt===null)return;
+      if(this.seekActive)this.restartAt=performance.now();
       if(this.seekDispatching)this.restartWhileDispatching=true;
       else if(this.seekActive)void this.completeSeek();
       else if(this.latestSeek!==null)this.sendSeek();
@@ -228,12 +293,15 @@ export class MpvClient {
       clearTimeout(this.readyTimer);this.startupExpired=false;this.snapshot.phase='ready';this.snapshot.error=undefined;this.snapshot.failureCode=null;this.snapshot.readyMs=performance.now()-this.started;
     }
   }
-  private observeNativeSeek(target:number|null){
+  private observeNativeSeek(target:number|null,fast=false,inputToDispatchMs:number|null=null){
     if(this.closed||this.stopping||this.nativeShutdown||this.expectedNativeExit)return;
     if(!this.fileLoaded&&this.snapshot.phase==='error'&&this.snapshot.failureCode)return;
     this.finalProperties=null;
     const duration=this.snapshot.properties.duration;
     if(target!==null&&typeof duration==='number')target=Math.min(target,Math.max(0,duration-.01));
+    this.inputToDispatchMs=inputToDispatchMs;
+    this.seekDistance=Math.abs((target??0)-Number(this.snapshot.properties['time-pos']||0));this.seekPlaying=this.snapshot.properties.pause===false;
+    this.fastSeek=fast;this.exactEndFallback=false;this.seekEventAt=null;this.restartAt=null;this.cacheAtSeek=this.cacheWait();this.correctionCount=0;this.correctionStarted=null;
     this.seekRevision++;this.seekActive=true;this.latestSeek=null;this.manualEnd=false;this.endReason=null;
     this.seekWasPaused=this.snapshot.properties.pause===true;
     this.nativeTargetKnown=target!==null;this.seekTarget=target??0;this.seekStarted=this.seekRequestedAt=performance.now();
@@ -247,38 +315,46 @@ export class MpvClient {
     },15000);
     this.emit();
   }
-  seek(target:number){
+  seek(target:number,inputAt:number|null=null,direction=0){
     if(this.closed)throw new Error('播放器已关闭');
     if(!Number.isFinite(target)||target<0)throw new Error('跳播位置无效');
     if(!this.fileLoaded&&this.snapshot.phase==='error'&&this.snapshot.failureCode)throw new Error('原生播放已失败，请重新打开视频');
     this.finalProperties=null;
     const duration=this.snapshot.properties.duration;
     target=typeof duration==='number'?Math.min(target,Math.max(0,duration-.01)):target;
+    this.relativeGoal=direction?{target,direction}:null;
     // Keep startup honest, but retain the last user intent instead of rejecting
     // clicks made before the initial frame/track load has finished.
     const starting=this.snapshot.phase==='starting';
     this.endReason=null;
     this.manualEnd=false;
     if(!starting){this.snapshot.phase='ready';this.snapshot.error=undefined;}
-    this.latestSeek=target;this.latestSeekRequestedAt=performance.now();this.snapshot.pendingSeek=target;this.emit();
+    this.latestInputAt=inputAt;this.latestSeek=target;this.latestSeekRequestedAt=performance.now();this.snapshot.pendingSeek=target;this.emit();
     // MPV already coalesces successive seeks. Wait only for the preceding
     // command ACK, not for an obsolete target to finish decoding. No fixed
     // debounce and no keyframe/quality downgrade is involved.
     if(!this.seekDispatching&&!this.correcting&&(!starting||this.fileLoaded&&this.startupStage==='started'))this.sendSeek();
   }
-  seekBy(delta:number){
+  seekBy(delta:number,inputAt:number|null=null){
     if(!Number.isFinite(delta)||Math.abs(delta)>120)throw new Error('跳播步长无效');
-    const base=this.latestSeek??this.snapshot.pendingSeek??Number(this.snapshot.properties['time-pos']||0);
-    this.seek(Math.max(0,base+delta));
+    const position=Number(this.snapshot.properties['time-pos']||0);
+    const goal=this.snapshot.seekPolicy==='fast'&&this.relativeGoal?.direction===Math.sign(delta)&&(delta>0?position<this.relativeGoal.target:position>this.relativeGoal.target)?this.relativeGoal.target:position;
+    const base=this.latestSeek??this.snapshot.pendingSeek??goal;
+    this.seek(Math.max(0,base+delta),inputAt,Math.sign(delta));
   }
   private sendSeek(){
     if(this.latestSeek===null||this.closed||this.stopping||this.seekDispatching||this.correcting)return;
     // A queued startup intent may precede duration discovery.
+    const stableKeyframe=!this.seekActive;
     const duration=this.snapshot.properties.duration;
     const target=typeof duration==='number'?Math.min(this.latestSeek,Math.max(0,duration-.01)):this.latestSeek;
     this.snapshot.pendingSeek=target;
-    this.seekTarget=target;this.seekRequestedAt=this.latestSeekRequestedAt;this.seekRevision++;this.correctionCount=0;this.latestSeek=null;this.seekActive=true;this.seekStarted=performance.now();this.snapshot.seeks++;this.snapshot.seekMode='coordinated';
+    this.inputAt=this.latestInputAt;this.seekTarget=target;this.seekRequestedAt=this.latestSeekRequestedAt;this.seekRevision++;this.correctionCount=0;this.correctionStarted=null;this.latestSeek=null;this.seekActive=true;this.seekStarted=performance.now();this.snapshot.seeks++;this.snapshot.seekMode='coordinated';
     this.seekWasPaused=this.snapshot.properties.pause===true;
+    this.seekDistance=Math.abs(target-Number(this.snapshot.properties['time-pos']||0));this.seekPlaying=this.snapshot.properties.pause===false;
+    this.exactEndFallback=false;
+    this.fastSeek=this.snapshot.seekPolicy==='fast'||this.snapshot.seekPolicy==='smart'&&this.seekPlaying&&this.seekDistance>=10&&this.seekEvidence.prefersKeyframes;
+    this.seekEventAt=null;this.restartAt=null;this.cacheAtSeek=this.cacheWait();
     const revision=this.seekRevision;
     this.seekDispatching=true;this.restartWhileDispatching=false;
     const failed=(message:string)=>{
@@ -297,7 +373,19 @@ export class MpvClient {
       if(this.demuxerOffset){await this.command(['set_property','options/hr-seek-demuxer-offset',0]);this.demuxerOffset=0;}
       // time-pos uses MPV's absolute seek queue without the input-command
       // repeat delay. --hr-seek=yes keeps frame-accurate decoding mandatory.
-      if(revision===this.seekRevision&&this.seekActive)await this.command(['set_property','time-pos',target]);
+      if(revision===this.seekRevision&&this.seekActive){
+        this.seekStarted=performance.now();this.inputToDispatchMs=this.inputAt===null?null:Math.max(0,Date.now()-this.inputAt);
+        const dispatched=()=>{if(revision===this.seekRevision&&this.seekActive){this.seekStarted=performance.now();this.inputToDispatchMs=this.inputAt===null?null:Math.max(0,Date.now()-this.inputAt);this.seekEventAt=null;this.restartAt=null;}};
+        if(this.fastSeek){
+          const position=stableKeyframe?await this.command(['get_property','time-pos']):null;
+          const stable=stableKeyframe&&await this.command(['get_property','seeking'])===false;
+          if(this.latestSeek!==null)return;
+          if(this.closed||this.stopping||revision!==this.seekRevision||!this.seekActive)return;
+          this.seekStarted=performance.now();this.inputToDispatchMs=this.inputAt===null?null:Math.max(0,Date.now()-this.inputAt);this.seekEventAt=null;this.restartAt=null;
+          this.fastForward=stable&&typeof position==='number'&&Number.isFinite(position)&&target>position;
+          await this.command(stable&&typeof position==='number'&&Number.isFinite(position)?['seek',target-position,'relative+keyframes']:['seek',target,'absolute+keyframes'],5000,dispatched);
+        }else await this.command(['set_property','time-pos',target],5000,dispatched);
+      }
     })().catch(error=>failed(String(error.message))).finally(()=>{
       this.seekDispatching=false;
       if(this.closed||this.stopping)return;
@@ -316,11 +404,14 @@ export class MpvClient {
     const observedAt=performance.now(),observedPosition=Number(this.snapshot.properties['time-pos']);
     try{const position=await this.command(['get_property','time-pos']);if(this.closed||!this.seekActive||revision!==this.seekRevision)return;
       if(typeof position!=='number')return;
+      if(this.exactEndFallback&&(this.seekEventAt===null||this.restartAt===null))return;
+      if(this.latestSeek!==null)return;
+      if(this.fastSeek&&(this.restartAt===null||await this.command(['get_property','seeking'])!==false||revision!==this.seekRevision||!this.seekActive||this.latestSeek!==null))return;
       // Account for a slow query only after a near-target clock was witnessed.
       // Elapsed time alone is never evidence of an accurate seek.
       const allowance=this.snapshot.properties.pause===false&&Math.abs(observedPosition-target)<=.5?
         (performance.now()-observedAt)/1000*Number(this.snapshot.properties.speed||1):0;
-      if(known&&(position<target-.5||position>target+.5+allowance)){
+      if(known&&!this.fastSeek&&(position<target-.5||position>target+.5+allowance)){
         if(this.latestSeek!==null){clearTimeout(this.seekTimer);this.seekActive=false;this.sendSeek();return;}
         // Some TS demuxers land AFTER the requested frame even for an exact
         // seek. Retry only observed overshoot, with bounded earlier demuxing;
@@ -328,13 +419,20 @@ export class MpvClient {
         // Do not inject decoder options into an MPV-owned native input queue.
         // Native seeks are verified, not silently retimed by a second owner.
         if(!native&&position>target+.5&&this.correctionCount<2){
-          this.correctionCount++;this.snapshot.seekCorrections++;
+          this.correctionStarted??=performance.now();this.correctionCount++;this.snapshot.seekCorrections++;
           const offset=Math.min(8,(position-target+2)*this.correctionCount);
           await this.command(['set_property','options/hr-seek-demuxer-offset',offset]);this.demuxerOffset=offset;
           if(!this.seekActive||revision!==this.seekRevision)return;
           await this.command(['set_property','time-pos',target]);
         }
         return;
+      }
+      // The native Lua owner performs its own real EOF fallback; do not report
+      // the empty EOF redraw as a completed keyframe before it does so.
+      if(native&&this.fastSeek&&Number.isFinite(Number(this.snapshot.properties.duration))&&position>=Number(this.snapshot.properties.duration)-.001)return;
+      if(!native&&this.fastSeek&&this.fastForward&&Number.isFinite(Number(this.snapshot.properties.duration))&&position>=Number(this.snapshot.properties.duration)-.001){
+        this.fastForward=false;this.fastSeek=false;this.exactEndFallback=true;this.seekEventAt=null;this.restartAt=null;this.correctionCount++;this.correctionStarted??=performance.now();
+        await this.command(['seek',target,'absolute+exact']);return;
       }
       this.snapshot.properties['time-pos']=position;
       this.lastPosition=position;
@@ -345,6 +443,12 @@ export class MpvClient {
       if(this.demuxerOffset){await this.command(['set_property','options/hr-seek-demuxer-offset',0]);this.demuxerOffset=0;}
       if(!this.seekActive||revision!==this.seekRevision)return;
       clearTimeout(this.seekTimer);this.seekActive=false;
+      if(known)this.snapshot.seekDiagnostics={strategy:this.fastSeek?'keyframe':'exact',target,position,errorSec:position-target,inputToDispatchMs:this.inputToDispatchMs,queueMs:native?null:this.seekStarted-this.seekRequestedAt,seekEventMs:this.seekEventAt===null?null:this.seekEventAt-this.seekStarted,restartMs:this.restartAt===null?null:this.restartAt-this.seekStarted,restartToFrameMs:null,frameMs:null,confirmationMs:performance.now()-this.seekStarted,corrections:this.correctionCount,correctionMs:this.correctionStarted===null?null:performance.now()-this.correctionStarted,avSyncSec:this.snapshot.properties.avsync??null,cacheWaitMs:this.cacheWait()-this.cacheAtSeek,sourceLoads:this.snapshot.sourceLoads,hwdec:this.snapshot.properties['hwdec-current']??null};
+      if(known&&this.snapshot.seekDiagnostics){
+        const previous=this.seekEvidence.prefersKeyframes;
+        this.seekEvidence.record(this.snapshot.seekDiagnostics,this.seekPlaying,this.seekDistance);
+        if(this.nativeWindow&&previous!==this.seekEvidence.prefersKeyframes)void this.command(['script-message-to','avhub_ui','seek-smart-evidence',this.seekEvidence.prefersKeyframes?'yes':'no']).catch(()=>{});
+      }
       this.settledPosition=position;
       const duration=Number(this.snapshot.properties.duration);
       this.manualEnd=Number.isFinite(duration)&&(known?target>=duration-.05:this.snapshot.properties.pause===true);
@@ -370,6 +474,7 @@ export class MpvClient {
       clearTimeout(this.seekTimer);clearTimeout(this.readyTimer);this.latestSeek=null;this.seekActive=false;this.snapshot.pendingSeek=null;this.snapshot.seekMode=null;
       const exited=()=>this.closed||Boolean(this.child&&(this.child.exitCode!==null||this.child.signalCode!==null));
       if(this.child&&!exited()){void this.command(['quit']).catch(()=>{});await Promise.race([this.exited,delay(2000)]);if(!exited()){this.child.kill();await Promise.race([this.exited,delay(4000)]);}if(!exited())throw new Error('原生播放器仍未退出，保留文件占用保护');}
+      if(this.child&&(this.child.exitCode!==null||this.child.signalCode!==null)){this.transport.exited=true;this.transport.exitCode=this.child.exitCode;this.transport.exitSignal=this.child.signalCode;}
       this.closed=true;this.socket?.destroy();this.clearRequests();
     })().finally(()=>{this.stopping=null;});return this.stopping;
   }

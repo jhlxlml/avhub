@@ -9,16 +9,17 @@ import {playerShortcutTarget,playbackKeyIntent} from './playerShortcuts';
 import './native-player.css';
 
 type Track={id:number;type:'audio'|'sub'|'video';title?:string;lang?:string;codec?:string};
-type State={session:string;title:string;phase:string;presentation?:string;positionSec?:number;playIntent?:boolean;error?:string;saveError?:string;pure:boolean;pinned:boolean;fullscreen:boolean;maximized:boolean;firstFrameMs:number|null;readyMs?:number|null;lastSeekMs:number|null;lastSeekTotalMs?:number|null;sourceLoads?:number;bufferingEvents?:number;bufferingMs?:number;pendingSeek:number|null;restarts:number;seeks:number;subtitleAppearance?:{size:number;color:string;background:number};properties:Record<string,any>};
+type State={session:string;seekPolicy?:'exact'|'fast'|'smart';seekDiagnostics?:{strategy:'exact'|'keyframe';errorSec:number};title:string;phase:string;presentation?:string;positionSec?:number;playIntent?:boolean;error?:string;saveError?:string;pure:boolean;pinned:boolean;fullscreen:boolean;maximized:boolean;firstFrameMs:number|null;readyMs?:number|null;lastSeekMs:number|null;lastSeekTotalMs?:number|null;sourceLoads?:number;bufferingEvents?:number;bufferingMs?:number;pendingSeek:number|null;restarts:number;seeks:number;subtitleAppearance?:{size:number;color:string;background:number};properties:Record<string,any>};
 const empty:State={session:'',title:'AVHub · 原生播放',phase:'starting',pure:false,pinned:false,fullscreen:false,maximized:false,properties:{},firstFrameMs:null,lastSeekMs:null,pendingSeek:null,restarts:0,seeks:0};
 function controlPaused(s:State){const byIntent=s.phase==='starting'||s.pendingSeek!==null||s.presentation==='render'&&s.phase!=='error'&&s.properties['eof-reached']!==true;return byIntent&&typeof s.playIntent==='boolean'?!s.playIntent:s.properties.pause!==false;}
 
-export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSession,inline=false}:{desktop?:NonNullable<Window['avhubDesktop']>;session?:string;inline?:boolean}={}){
+export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSession,inline=false,settingsRequest=0}:{settingsRequest?:number;desktop?:NonNullable<Window['avhubDesktop']>;session?:string;inline?:boolean}={}){
   const desktop=providedDesktop??window.avhubDesktop!;
   const stage=useRef<HTMLDivElement>(null);
   const extent=()=>({width:inline?(stage.current?.clientWidth||1):innerWidth,height:inline?(stage.current?.clientHeight||1):innerHeight});
   const [state,setState]=useState<State&{embedded?:boolean}>(empty),[notice,setNotice]=useState(''),[panel,setPanel]=useState(false);
   const draggingWindow=useRef(false);
+  useEffect(()=>{if(settingsRequest>0)setPanel(true);},[settingsRequest]);
   useEffect(()=>{if(inline)return;document.documentElement.classList.toggle('native-embedded-overlay',Boolean(state.embedded));return()=>document.documentElement.classList.remove('native-embedded-overlay');},[state.embedded,inline]);
   const [visible,setVisible]=useState(true),[cursor,setCursor]=useState(true),[dragPosition,setDragPosition]=useState<number|null>(null);
   const [captureBusy,setCaptureBusy]=useState(false),capturePending=useRef(false);
@@ -33,12 +34,38 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
   const timelinePointer=useRef<number|null>(null);
   const timelineTarget=useRef<number|null>(null);
   const acceptMouseSeek=useRef(mouseSeekDeduper());
+  const pauseRequest=useRef<{id:number;paused:boolean}|null>(null),pauseRevision=useRef(0);
+  const volumeRequest=useRef<{id:number;value:number}|null>(null),muteRequest=useRef<{id:number;value:boolean}|null>(null),audioRevision=useRef(0);
   current.current=state;
+  const [showSeekStatus,setShowSeekStatus]=useState(false);
+  const waitingForSeek=state.pendingSeek!==null||state.properties.seeking===true;
+  useEffect(()=>{
+    if(!waitingForSeek){setShowSeekStatus(false);return;}
+    const id=window.setTimeout(()=>setShowSeekStatus(true),150);
+    return()=>clearTimeout(id);
+  },[waitingForSeek]);
   const props=state.properties,position=state.pendingSeek??(state.presentation==='render'&&typeof state.positionSec==='number'?state.positionSec:Number(props['time-pos']||0)),length=Number(props.duration||0),paused=controlPaused(state);
   function message(value:string){setNotice(value);clearTimeout(toast.current);toast.current=window.setTimeout(()=>setNotice(''),4000);}
+  function togglePause(){void command('pause',!(pauseRequest.current?.paused??controlPaused(current.current)));}
+  function toggleMute(){void command('mute',!(muteRequest.current?.value??current.current.properties.mute));}
   async function command(action:string,value?:unknown){
-    try{const result=await desktop.nativePlayer(action,{session:current.current.session,value});if(result?.memory==='session')message('字幕已加载；媒体库以外的临时字幕仅用于本次播放，不会自动重新打开。');return result;}
-    catch(e){message(errorText(e));}
+    // Keep rapid toggles relative to the latest input while the engine ACK is
+    // pending. This is input intent only; never overwrite actual pause/clock.
+    const pauseId=action==='pause'&&typeof value==='boolean'?++pauseRevision.current:null;
+    if(pauseId!==null)pauseRequest.current={id:pauseId,paused:value as boolean};
+    const volumeChange=action==='volume'&&typeof value==='number'?{id:++audioRevision.current,value}:null;
+    const muteChange=action==='mute'&&typeof value==='boolean'?{id:++audioRevision.current,value}:null;
+    if(volumeChange)volumeRequest.current=volumeChange;
+    if(muteChange)muteRequest.current=muteChange;
+    try{const result=await desktop.nativePlayer(action,{session:current.current.session,value,...(action==='seek'||action==='seek-relative'?{inputAt:Date.now()}:{})});if(result?.memory==='session')message('字幕已加载；媒体库以外的临时字幕仅用于本次播放，不会自动重新打开。');return result;}
+    catch(e){
+      if(volumeChange&&volumeRequest.current?.id===volumeChange.id)volumeRequest.current=null;
+      if(muteChange&&muteRequest.current?.id===muteChange.id)muteRequest.current=null;
+      message(errorText(e));
+    }
+    finally{
+      if(pauseId!==null&&pauseRequest.current?.id===pauseId)pauseRequest.current=null;
+    }
   }
   async function close(){try{await desktop.nativePlayer('close',current.current.session);}catch(e){message(errorText(e));}}
   async function copyDiagnostics(){try{const value=await desktop.nativePlayer('diagnostics',{session:current.current.session});await navigator.clipboard.writeText(JSON.stringify(value,null,2));message('播放诊断已复制，不包含视频路径或标题。');}catch(error){message(`复制诊断失败：${errorText(error)}`);}}
@@ -60,15 +87,16 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
   function seek(point:number){void command('seek',Math.max(0,Math.min(Math.max(0,length-.01),point)));}
   function finishTimeline(event:React.PointerEvent<HTMLInputElement>,commit:boolean){
     if(timelinePointer.current!==event.pointerId)return;
-    const target=timelineTarget.current??Number(event.currentTarget.value);
+    const target=timelineTarget.current;
     timelinePointer.current=null;held.current=false;
     timelineTarget.current=null;
-    if(commit)seek(target);
+    if(commit&&target!==null)seek(target);
     setDragPosition(null);schedule();
   }
   // React onChange also receives the native change fired after pointerup. The
   // controlled value may already be the old playback clock by then. Only input
   // represents a new selection; pointerup commits its saved target exactly once.
+  // A stationary thumb produces no input, so releasing it must not seek.
   function seekBy(delta:number){void command('seek-relative',delta);}
   async function capture(){
     if(capturePending.current)return;
@@ -129,6 +157,10 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       if(value.session!==expected)return;
       if(typeof value.revision==='number'){if(value.revision<=lastRevision.current)return;lastRevision.current=value.revision;}
       if(subtitleDraft.current){if(JSON.stringify(subtitleDraft.current)===JSON.stringify(value.subtitleAppearance))subtitleDraft.current=undefined;else value.subtitleAppearance=subtitleDraft.current;}
+      // A command ACK can precede the next real property snapshot. Keep the
+      // input base until the engine confirms it, including held-key repeats.
+      if(volumeRequest.current&&Math.abs(Number(value.properties.volume)-volumeRequest.current.value)<.001)volumeRequest.current=null;
+      if(muteRequest.current&&value.properties.mute===muteRequest.current.value)muteRequest.current=null;
       current.current=value;setState(value);if(!pendingTransform.current)transform.current={zoom:Number(value.properties['video-zoom']||0),x:Number(value.properties['video-pan-x']||0),y:Number(value.properties['video-pan-y']||0)};
     };
     const unsubscribe=desktop.onNativeState(update);
@@ -145,11 +177,11 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       if(intent){
         event.preventDefault();event.stopPropagation();
         if(event.repeat&&['pause','screenshot','next','fullscreen','pure','rotate','pip'].includes(intent))return;
-        if(intent==='pause')void command('pause',!controlPaused(s));
+        if(intent==='pause')togglePause();
         else if(intent==='back5'||intent==='back10')seekBy(intent==='back10'?-10:-5);
         else if(intent==='forward5'||intent==='forward10')seekBy(intent==='forward10'?10:5);
-        else if(intent==='volumeUp'||intent==='volumeDown'){void command('volume',Math.max(0,Math.min(100,Number(p.volume||0)+(intent==='volumeUp'?5:-5))));if(intent==='volumeUp')void command('mute',false);}
-        else if(intent==='mute')void command('mute',!p.mute);
+        else if(intent==='volumeUp'||intent==='volumeDown'){void command('volume',Math.max(0,Math.min(100,Number(volumeRequest.current?.value??p.volume??0)+(intent==='volumeUp'?5:-5))));if(intent==='volumeUp')void command('mute',false);}
+        else if(intent==='mute')toggleMute();
         else if(intent==='next')void command('navigate','next');
         else if(intent==='screenshot')void capture();
         else if(intent==='rotate')void command('rotate',(Number(p['video-rotate']||0)+90)%360);
@@ -197,7 +229,7 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
     }} onPointerUp={event=>{
       if(!drag.current)return;const moved=drag.current.moved;drag.current=null;held.current=false;
       if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
-      if(!moved)void command('pause',!paused);schedule();
+      if(!moved)togglePause();schedule();
     }} onPointerCancel={()=>{drag.current=null;held.current=false;schedule();}}
     onAuxClick={event=>{if(event.button===3||event.button===4){event.preventDefault();const delta=event.button===3?-1:1;if(!panelOpen.current&&acceptMouseSeek.current('dom',delta))seekBy(delta*readMouseSeekSeconds());}}}
     onDoubleClick={event=>{if(event.target===event.currentTarget)void command('window','fullscreen');}}>
@@ -209,16 +241,16 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       <span className="native-title"><img src="/avhub.svg" alt="" width="16" height="16"/>AVHub · {state.pure?'纯净播放':state.title}</span>
       <div>{button('pin',state.pinned?'取消置顶':'窗口置顶',()=>void command('window','pin'),state.pinned)}{button('minimize','最小化',()=>void command('window','minimize'))}{button(state.maximized?'windowRestore':'windowMaximize',state.maximized?'还原窗口':'最大化',()=>void command('window','maximize'))}{button('close',state.embedded?'关闭窗口':'关闭原生播放',()=>void (state.embedded?command('window','close'):close()))}</div>
     </div>}
-    {(state.phase==='starting'||state.pendingSeek!==null||props['paused-for-cache']===true||props.seeking===true)&&<div className="native-status" role="status">{state.phase==='starting'?'正在准备原生播放…':props.seeking||state.pendingSeek!==null?'正在定位画面…':'正在等待视频数据…'}</div>}
+    {(state.phase==='starting'||showSeekStatus&&waitingForSeek||props['paused-for-cache']===true)&&<div className="native-status" role="status">{state.phase==='starting'?'正在准备原生播放…':props['paused-for-cache']===true?'正在等待视频数据…':'正在定位画面…'}</div>}
     {(state.error||state.saveError||notice||captureBusy)&&<div className={`native-notice${state.phase==='error'?' has-retry':''}`} role={state.error||state.saveError?'alert':'status'} onMouseEnter={showControls} onMouseLeave={leaveControls}>
       <span>{state.error||state.saveError||notice||(captureBusy?'正在保存原分辨率截图…':'')}</span>{state.phase==='error'&&button('refresh','重试原生播放',()=>void command('navigate','retry'))}
     </div>}
     <div className="native-controls" onMouseEnter={showControls} onMouseLeave={leaveControls} onFocusCapture={()=>{if(!pointerFocus.current){held.current=true;setVisible(true);}}} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null)){held.current=false;schedule();}}}>
-      <div className="native-timeline"><time>{duration(dragPosition??position)}</time><input aria-label="播放进度" type="range" min="0" max={length||1} step="0.01" value={dragPosition??position} onChange={()=>{}} onInput={e=>{const target=Number(e.currentTarget.value);if(timelinePointer.current!==null){timelineTarget.current=target;setDragPosition(target);}else{setDragPosition(null);seek(target);}}} onPointerDown={event=>{if(event.button!==0||timelinePointer.current!==null)return;timelinePointer.current=event.pointerId;timelineTarget.current=Number(event.currentTarget.value);held.current=true;event.currentTarget.setPointerCapture(event.pointerId);}} onPointerUp={event=>finishTimeline(event,true)} onPointerCancel={event=>finishTimeline(event,false)} onLostPointerCapture={event=>finishTimeline(event,false)} onKeyUp={()=>setDragPosition(null)}/><time>{duration(length)}</time></div>
+      <div className="native-timeline"><time>{duration(dragPosition??position)}</time><input aria-label="播放进度" type="range" min="0" max={length||1} step="0.01" value={dragPosition??position} onChange={()=>{}} onInput={e=>{const target=Number(e.currentTarget.value);if(timelinePointer.current!==null){timelineTarget.current=target;setDragPosition(target);}else{setDragPosition(null);seek(target);}}} onPointerDown={event=>{if(event.button!==0||timelinePointer.current!==null)return;timelinePointer.current=event.pointerId;timelineTarget.current=null;held.current=true;event.currentTarget.setPointerCapture(event.pointerId);}} onPointerUp={event=>finishTimeline(event,true)} onPointerCancel={event=>finishTimeline(event,false)} onLostPointerCapture={event=>finishTimeline(event,false)} onKeyUp={()=>setDragPosition(null)}/><time>{duration(length)}</time></div>
       <div className="native-buttons">
-        {button(paused?'play':'pause',paused?'播放':'暂停',()=>void command('pause',!paused))}
+        {button(paused?'play':'pause',paused?'播放':'暂停',togglePause)}
         {button('back','后退 5 秒',()=>seekBy(-5))}{button('forward','前进 5 秒',()=>seekBy(5))}
-        {button(props.mute?'muted':'volume',props.mute?'取消静音':'静音',()=>void command('mute',!props.mute))}
+        {button(props.mute?'muted':'volume',props.mute?'取消静音':'静音',toggleMute)}
         <input className="native-volume" aria-label="音量" type="range" min="0" max="100" value={Number(props.volume||0)} onChange={e=>void command('volume',Number(e.target.value))}/>
         {button('rotate','旋转画面',()=>void command('rotate',(Number(props['video-rotate']||0)+90)%360))}{button('zoomReset','还原缩放',reset)}<button type="button" aria-label="截图（C）" title={captureBusy?'正在保存原分辨率截图…':'截图（C）'} disabled={captureBusy} aria-busy={captureBusy} onClick={()=>void capture()}><Icon name={captureBusy?'refresh':'camera'} className={captureBusy?'native-capture-spinner':''}/></button>
         <span className="native-spacer"/>
@@ -232,6 +264,8 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
     {panel&&<aside className="native-panel" onMouseEnter={showControls} onMouseLeave={leaveControls}>
       <div className="native-panel-heading"><strong>原文件 · MPV 原生解码</strong>{button('close','关闭播放设置',()=>setPanel(false))}</div>
       <h3 className="native-panel-section"><Icon name="audio" size={14}/>播放与轨道</h3>
+      <label>跳播模式<select aria-label="跳播模式" value={state.seekPolicy??'exact'} onChange={e=>void command('seek-policy',e.target.value)}><option value="exact">精确</option><option value="fast">快速（关键帧）</option><option value="smart">智能</option></select></label>
+      <small>智能模式先使用精确定位；播放中多次远跳较慢时尝试关键帧定位，再依据实际耗时与偏差调整。暂停与短跳保持精确。 快速模式在文件末段没有后续关键帧时会精确定位，避免停住。</small>
       <label>倍速<select aria-label="播放倍速" value={Number(props.speed||1)} onChange={e=>void command('speed',Number(e.target.value))}>{[.5,.75,1,1.25,1.5,2].map(value=><option key={value} value={value}>{value}×</option>)}</select></label>
       <label>音轨<select aria-label="音轨" value={props.aid??'no'} onChange={e=>void command('track',{kind:'audio',id:e.target.value==='no'?'no':Number(e.target.value)})}><option value="no">关闭音轨</option>{tracks.filter(t=>t.type==='audio').map(t=><option key={t.id} value={t.id}>{t.title||t.lang||`音轨 ${t.id}`} · {t.codec}</option>)}</select></label>
       <label>字幕<select aria-label="字幕" value={props.sid??'no'} onChange={e=>void command('track',{kind:'sub',id:e.target.value==='no'?'no':Number(e.target.value)})}><option value="no">关闭字幕</option>{tracks.filter(t=>t.type==='sub').map(t=><option key={t.id} value={t.id}>{t.title||t.lang||`字幕 ${t.id}`}</option>)}</select></label>
@@ -245,6 +279,7 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       <h3 className="native-panel-section"><Icon name="quality" size={14}/>播放诊断</h3>
       <dl>{props['avhub-hdr-status']&&<><dt>HDR 验证</dt><dd>{props['avhub-hdr-status']}</dd></>}{props['avhub-output-transfer']&&<><dt>纹理传递函数</dt><dd>{props['avhub-output-transfer']}</dd></>}{props['avhub-source-color']&&<><dt>源色彩</dt><dd>{props['avhub-source-color']}</dd></>}<dt>视频编码</dt><dd>{props['video-codec']||'待解码'}</dd><dt>解码分辨率</dt><dd>{props['video-params']?.w||'—'} × {props['video-params']?.h||'—'}</dd><dt>像素格式</dt><dd>{props['video-params']?.pixelformat||'—'}</dd><dt>硬件解码</dt><dd>{props['hwdec-current']||'软件解码'}</dd><dt>视频首帧信号</dt><dd>{state.firstFrameMs===null?'—':`${Math.round(state.firstFrameMs)} ms`}</dd><dt>音视频输出就绪</dt><dd>{state.readyMs==null?'—':`${Math.round(state.readyMs)} ms`}</dd><dt>最近目标定位</dt><dd>{state.lastSeekMs===null?'—':`${Math.round(state.lastSeekMs)} ms`}</dd><dt>显示丢帧</dt><dd>{props['frame-drop-count']??'—'}</dd><dt>解码丢帧</dt><dd>{props['decoder-frame-drop-count']??'—'}</dd></dl>
       <dl><dt>最近跳播总等待（含排队）</dt><dd>{state.lastSeekTotalMs==null?'—':`${Math.round(state.lastSeekTotalMs)} ms`}</dd><dt>源文件加载次数</dt><dd>{state.sourceLoads??'—'}</dd><dt>缓存等待事件</dt><dd>{state.bufferingEvents??'—'}</dd><dt>已结束缓存等待累计</dt><dd>{state.bufferingMs==null?'—':`${Math.round(state.bufferingMs)} ms`}</dd></dl>
+      {state.seekDiagnostics&&<small>最近跳播：{state.seekDiagnostics.strategy==='keyframe'?'关键帧落点':'精确定位'} · 与目标相差 {Math.abs(state.seekDiagnostics.errorSec).toFixed(2)} 秒</small>}
       <small>不转码、不降低源视频分辨率。时间来自 MPV 播放事件，并非屏幕逐像素验收。HDR 允许播放，实体显示与动态元数据效果仍待验证。</small>
       <small>音轨、已识别字幕与延迟按视频保存；源文件或轨道变化后重新选择。媒体库以外的临时字幕、关闭音轨仅作用于本次播放。</small>
       <button className="native-subtitle-import" onClick={()=>void copyDiagnostics()}><Icon name="copy"/>复制播放诊断</button>

@@ -1,0 +1,42 @@
+--- a/demux/demux_mkv.c
++++ b/demux/demux_mkv.c
+@@ -1451,7 +1451,21 @@
+         uint64_t pos = seek->seek_position + mkv_d->segment_start;
+         MP_TRACE(demuxer, "Element 0x%"PRIx32" at %"PRIu64".\n",
+                  seek->seek_id, pos);
+-        get_header_element(demuxer, seek->seek_id, pos);
++        // Some muxers write the four-byte Cues SeekID in native byte order.
++        // Accept only this known reversal, and only after verifying the actual
++        // element at the advertised offset. Never rewrite the file or packets.
++        uint32_t id = seek->seek_id;
++        if (id == 0x6bbb531c && pos >= mkv_d->segment_start && pos <= INT64_MAX) {
++            int64_t saved = stream_tell(s);
++            bool cues = stream_seek(s, pos) && ebml_read_id(s) == MATROSKA_ID_CUES;
++            if (!stream_seek(s, saved)) {
++                res = -1;
++                goto out;
++            }
++            if (cues)
++                id = MATROSKA_ID_CUES;
++        }
++        get_header_element(demuxer, id, pos);
+     }
+  out:
+     talloc_free(parse_ctx.talloc_ctx);
+--- a/demux/ebml.c
++++ b/demux/ebml.c
+@@ -587,6 +587,14 @@
+             uint32_t *idptr;
+             GETPTR(idptr, uint32_t);
+             *idptr = ebml_parse_id(data, end - data, &len);
++            // Preserve one known broken SeekID for the Matroska reader to
++            // validate against the real element at its advertised position.
++            if (id == MATROSKA_ID_SEEKID && length == 4 &&
++                data[0] == 0x6b && data[1] == 0xbb &&
++                data[2] == 0x53 && data[3] == 0x1c) {
++                *idptr = 0x6bbb531c;
++                len = 4;
++            }
+             if (len != length) {
+                 MP_ERR(ctx, "ebml_id broken value\n");
+                 goto error;

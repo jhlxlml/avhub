@@ -15,9 +15,9 @@ function verifiedFfi(root:string){
 /** Main-process NT lease. Never send a handle or FFI object to the renderer. */
 export class RenderTextureBridge {
  private clock:ReturnType<typeof playbackClock>;
- private api:any;private lease:{source:string;handle:bigint;buffer:Buffer}|null=null;private resources=new Set<Promise<void>>();private receipts=new Map<string,{resolve:()=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>;serial:number}>();private closed=false;
+ private api:any;private lease:{source:string;handle:bigint;buffer:Buffer}|null=null;private resources=new Set<Promise<void>>();private receipts=new Map<string,{resolve:(at:number)=>void;reject:(e:Error)=>void;timer:ReturnType<typeof setTimeout>;serial:number}>();private closed=false;
  readonly stats={imports:0,released:0,leases:0,closedLeases:0,gpuCompletions:0};
- private receive=(event:Electron.IpcMainEvent,value:any)=>{if(event.sender!==this.web||event.senderFrame!==this.web.mainFrame||!value||value.session!==this.session)return;const pending=this.receipts.get(value.token);if(!pending||pending.serial!==value.serial)return;clearTimeout(pending.timer);this.receipts.delete(value.token);if(value.ok===true){this.stats.gpuCompletions++;pending.resolve();}else pending.reject(new Error('原生画面 GPU 提交失败'));};
+ private receive=(event:Electron.IpcMainEvent,value:any)=>{if(event.sender!==this.web||event.senderFrame!==this.web.mainFrame||!value||value.session!==this.session)return;const pending=this.receipts.get(value.token);if(!pending||pending.serial!==value.serial)return;clearTimeout(pending.timer);this.receipts.delete(value.token);if(value.ok===true){this.stats.gpuCompletions++;pending.resolve(performance.now());}else pending.reject(new Error('原生画面 GPU 提交失败'));};
  constructor(private web:WebContents,private pid:number,private session:string,root:string){
   const ffi=verifiedFfi(root),lib=ffi.load('kernel32.dll');this.api={self:lib.func('void * __stdcall GetCurrentProcess()'),open:lib.func('void * __stdcall OpenProcess(uint32_t access, int inherit, uint32_t pid)'),duplicate:lib.func('int __stdcall DuplicateHandle(void *source, void *handle, void *target, _Out_ void **copy, uint32_t access, int inherit, uint32_t flags)'),close:lib.func('int __stdcall CloseHandle(void *handle)')};ipcMain.on('avhub:render-frame-done',this.receive);
   const mm=ffi.load('winmm.dll');this.clock=playbackClock(mm.func('uint32_t __stdcall timeBeginPeriod(uint32_t)') as (period:number)=>number,mm.func('uint32_t __stdcall timeEndPeriod(uint32_t)') as (period:number)=>number);
@@ -48,13 +48,13 @@ export class RenderTextureBridge {
   // never presented directly, nor written back as source colour metadata.
   try{texture=sharedTexture.importSharedTexture({textureInfo:{pixelFormat:'rgbaf16',codedSize:{width:frame.width,height:frame.height},colorSpace:{primaries:'bt709',transfer:hdr?'linear':transfer,matrix:'rgb',range:'full'},handle:{ntHandle:handle},timestamp:Math.round(frame.positionSec*1e6)},allReferencesReleased:()=>{this.stats.released++;this.resources.delete(resource);released();}});this.stats.imports++;}
   catch(error){this.resources.delete(resource);released();throw error;}
-  const receipt=new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{this.receipts.delete(token);reject(new Error('未收到原生画面 GPU 完成确认'));},5000);this.receipts.set(token,{resolve,reject,timer,serial:frame.serial});});
+  const receipt=new Promise<number>((resolve,reject)=>{const timer=setTimeout(()=>{this.receipts.delete(token);reject(new Error('未收到原生画面 GPU 完成确认'));},5000);this.receipts.set(token,{resolve,reject,timer,serial:frame.serial});});
   // Register a rejection observer before sending; late renderer failure must
   // never become an unhandled rejection while the transport is awaiting IPC.
   void receipt.catch(()=>{});
   try{await sharedTexture.sendSharedTexture({frame:this.web.mainFrame,importedSharedTexture:texture},{session:this.session,surface,serial:frame.serial,token,width:frame.width,height:frame.height,outputTransfer:transfer});}
   finally{texture.release();}
-  await Promise.all([receipt,resource]);return {serial:frame.serial,positionSec:frame.positionSec,seekId:frame.seekId};
+  const [gpuAt]=await Promise.all([receipt,resource]);return {serial:frame.serial,positionSec:frame.positionSec,seekId:frame.seekId,gpuAt};
  }
  async drain(){
   this.closed=true;this.clock.setActive(false);let timer:ReturnType<typeof setTimeout>|undefined;

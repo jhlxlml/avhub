@@ -10,7 +10,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import time
 
@@ -25,12 +24,32 @@ if __name__ == "__main__":
         raise SystemExit("Use Windows Python")
     selected = args.build_dir if args.build_dir else Path(json.loads((ROOT / "build/libmpv-windows-cross-latest.json").read_text())["folder"]).name
     name = Path(selected).name
-    if not re.fullmatch(r"libmpv-(?:windows-cross|source-replay|chain-replay)-[a-z0-9_]+", name):
+    if not re.fullmatch(r"(?:libmpv-(?:windows-cross|source-replay|chain-replay)|mkv-index-candidate)-[a-z0-9_]+", name):
         raise ValueError("Expected an owned build")
     folder = ROOT / "build" / name
     if args.build_dir and args.build_dir.absolute() != folder:
         raise ValueError("Explicit build must be a project-owned directory")
     build = json.loads((folder / "report.json").read_text()); assert build["buildPassed"]
+    if name.startswith('mkv-index-candidate-'):
+        pin = json.loads((ROOT / 'ci/mkv-index-render-runtime.json').read_text())
+        assert build['dllSha256'] == pin['dllSha256'] and build['source']['revision'] == pin['sourceRevision']
+        assert build['patchSha256'] == pin['patches'][0]['sha256']
+        assert hashlib.file_digest((ROOT / pin['patches'][0]['path']).open('rb'), 'sha256').hexdigest() == build['patchSha256']
+        expected = {item['name']: item['sha256'] for item in pin['dependencies']}
+        expected['libmpv-2.dll'] = pin['dllSha256']
+        binaries = []
+        for file in sorted((folder / 'install/bin').glob('*.dll')):
+            actual = hashlib.file_digest(file.open('rb'), 'sha256').hexdigest()
+            assert file.name in expected and actual == expected[file.name], 'Unexpected compatibility dependency'
+            binaries.append({'path': file.relative_to(folder).as_posix(), 'sha256': actual})
+        assert len(binaries) == len(expected)
+        for item in build['sourceFiles']:
+            assert item['name'] in ('demux/ebml.c', 'demux/demux_mkv.c')
+            assert hashlib.sha256((folder / 'source' / item['name']).read_bytes()).hexdigest() == item['after']
+        base = ROOT / 'build' / build['base']
+        assert base.parent == ROOT / 'build' and base.name.startswith('libmpv-chain-replay-') and not base.is_symlink()
+        build['binaries'] = binaries
+        build['dependencyStages'] = json.loads((base / 'report.json').read_text())['dependencyStages']
     for binary in build["binaries"]:
         assert hashlib.sha256((folder / binary["path"]).read_bytes()).hexdigest() == binary["sha256"]
     prefix = folder / "install/bin"
@@ -69,16 +88,16 @@ if __name__ == "__main__":
         result["clientApi"] = api.mpv_client_api_version()
         for index, sample in enumerate(("Framecode-v2-640x360.mp4", "Framecode-v2-3840x2160-hevc.mkv",
                                          "Precision-SDR10-3840x2160.mkv", "Framecode-v3-3840x2160-av1.mkv")):
-            source = ROOT / "build/libmpv-render-spike/samples" / sample
-            if index == 0:
-                source = folder / "中文 한글 🎬.mp4"
-                if not source.exists():
-                    shutil.copyfile(ROOT / "build/libmpv-render-spike/samples" / sample, source)
-            source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+            original = ROOT / "build/libmpv-render-spike/samples" / sample
+            alias = folder / "中文 한글 🎬.mp4" if index == 0 else None
+            script = "import fs from 'node:fs';import assert from 'node:assert/strict';import {sharedMedia,mediaHash} from './electron/test/media-pool.mjs';const pool=sharedMedia(),source=pool.imported(process.argv[1],{ownedGenerated:true}),target=process.argv[2];if(target){if(fs.existsSync(target))assert.equal(mediaHash(target),mediaHash(source));else pool.place(source,target);}console.log(target||source);"
+            prepared = subprocess.run(['node', '--input-type=module', '-e', script, str(original), str(alias) if alias else ''], cwd=ROOT, check=True, capture_output=True, text=True, encoding='utf-8', timeout=60)
+            source = Path(prepared.stdout.strip())
+            source_hash = hashlib.file_digest(source.open('rb'), 'sha256').hexdigest()
             handle = api.mpv_create(); assert handle
             try:
                 for key, value in (("config", "no"), ("terminal", "no"), ("vo", "null"), ("ao", "null"),
-                                   ("hwdec", "d3d11va-copy" if index == 0 else "no"), ("pause", "yes")):
+                                   ("hwdec", "d3d11va-copy"), ("pause", "yes")):
                     assert api.mpv_set_option_string(handle, key.encode(), value.encode()) == 0
                 assert api.mpv_initialize(handle) == 0
                 command = (c.c_char_p * 4)(b'loadfile', str(source).encode("utf8"), b'replace', None)
@@ -105,12 +124,11 @@ if __name__ == "__main__":
                 hardware_name = c.string_at(hardware).decode("utf8") if hardware else ""
                 if hardware:
                     api.mpv_free(hardware)
-                if index == 0:
-                    assert hardware_name == "d3d11va-copy", "Requested hardware decode did not activate"
+                assert hardware_name == "d3d11va-copy", "Requested hardware decode did not activate"
                 result["samples"].append({"sample": sample, "width": width.value, "height": height.value,
                                            "pixelFormat": pixel_name, "hardwareDecode": hardware_name,
                                            "seekStatePosition": position.value, "unicodePath": index == 0})
-                assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
+                assert hashlib.file_digest(source.open('rb'), 'sha256').hexdigest() == source_hash
                 result_file.write_text(json.dumps(result, indent=2) + "\n")
             finally:
                 api.mpv_terminate_destroy(handle)

@@ -6,10 +6,11 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {selfBuiltRenderPin} from './selfBuiltRenderPin';
 import {replayedRenderPin} from './replayedRenderPin';
+import {mkvIndexRenderPin} from './mkvIndexRenderPin';
 import {renderHostTermination} from './renderHostTermination';
 
 export type RenderSourceContract={width:number;height:number;sourceWidth?:number;sourceHeight?:number;depth:number;primaries:string;transfer:string;matrix:string;range:string;hdr:boolean};
-export type NativeRenderFrame={serial:number;epoch:number;seekId:number;positionSec:number;handle:string;surfaceGeneration?:number;width:number;height:number;pixelFormat:'rgba'|'rgbaf16';outputTransfer?:'srgb'|'pq'|'hlg';waiting:true;error:string|null};
+export type NativeRenderFrame={serial:number;epoch:number;seekId:number;positionSec:number;seekTiming?:{seekEventMs:number|null;restartMs:number|null;nativeFrameMs:number;nativeQueueMs?:number;exactFallback?:boolean;cacheWaitMs:number;corrections:number;correctionMs:number|null};handle:string;surfaceGeneration?:number;width:number;height:number;pixelFormat:'rgba'|'rgbaf16';outputTransfer?:'srgb'|'pq'|'hlg';waiting:true;error:string|null};
 export type NativeRenderProperties=Record<string,unknown>;
 export type NativeRenderSnapshot={loaded:boolean;error:string|null;properties:NativeRenderProperties;frame:NativeRenderFrame|{waiting:false;error:string|null};adapter:string|null};
 type Runtime={host:string;dll:string;manifest:string;root:string;bundled?:boolean;selfBuiltCandidate?:boolean;replayedCandidate?:boolean};
@@ -29,12 +30,21 @@ function fileIdentities(value:unknown):value is {name:string;sha256:string}[]{
  });
 }
 /** Runtime consistency checks, not a signature or a redistribution approval. */
-export async function verifyRenderRuntime(runtime:Runtime){
+const verifyingRuntimes=new Map<string,ReturnType<typeof checkRenderRuntime>>();
+export function verifyRenderRuntime(runtime:Runtime){
+ const key=JSON.stringify([runtime.host,runtime.dll,runtime.manifest,runtime.root,runtime.bundled===true,runtime.selfBuiltCandidate===true,runtime.replayedCandidate===true]);
+ const pending=verifyingRuntimes.get(key);if(pending)return pending;
+ const task=checkRenderRuntime(runtime);verifyingRuntimes.set(key,task);
+ // Coalesce only work still running. Never cache a successful verification;
+ // the next open must perform all hashes again after this task settles.
+ void task.finally(()=>{if(verifyingRuntimes.get(key)===task)verifyingRuntimes.delete(key);}).catch(()=>{});return task;
+}
+async function checkRenderRuntime(runtime:Runtime){
  if(process.platform!=='win32'||process.arch!=='x64')throw new Error('当前系统尚未验证原生嵌入播放');
  const parsed:unknown=JSON.parse((await checkedFile(runtime.manifest)).toString('utf8'));
  if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw new Error('原生渲染构建清单无效');
  const info=parsed as Record<string,unknown>;
- const candidatePin=runtime.replayedCandidate?replayedRenderPin:selfBuiltRenderPin;
+ const candidatePin=runtime.replayedCandidate?(info.cohort===mkvIndexRenderPin.id?mkvIndexRenderPin:replayedRenderPin):selfBuiltRenderPin;
  if(runtime.replayedCandidate&&!runtime.selfBuiltCandidate)throw new Error('重建候选选择不一致');
  const expectedDll=runtime.selfBuiltCandidate?candidatePin.dllSha256:dllSha256;
  if(info.protocol!==1||info.platform!=='win32-x64'||info.dllSha256!==expectedDll||await checkedHash(runtime.host)!==info.hostSha256||await checkedHash(runtime.dll)!==expectedDll)throw new Error('原生嵌入运行库未通过完整性校验');
@@ -44,9 +54,14 @@ export async function verifyRenderRuntime(runtime:Runtime){
  if(!fileIdentities(dependencies))throw new Error('原生依赖构建信息无效');
  if(runtime.selfBuiltCandidate){
   if(!runtime.bundled||info.cohort!==candidatePin.id||info.productionDistributionReady!==false||dependencies.length!==candidatePin.dependencies.length)throw new Error('自建原生候选清单不匹配');
-  for(const [i,file] of dependencies.entries()){
-   const expected=candidatePin.dependencies[i];
-   if(file.name!==expected.name||file.sha256!==expected.sha256||await checkedHash(path.join(path.dirname(runtime.dll),file.name))!==expected.sha256)throw new Error('自建原生依赖未通过完整性校验');
+  if(dependencies.some((file,i)=>file.name!==candidatePin.dependencies[i].name||file.sha256!==candidatePin.dependencies[i].sha256))throw new Error('自建原生依赖未通过完整性校验');
+  // Keep every hash check, with at most four active file readers. Settle each
+  // batch before propagating failure; no reader survives verification return.
+  for(let offset=0;offset<dependencies.length;offset+=4){
+   const checked=await Promise.allSettled(dependencies.slice(offset,offset+4).map(async file=>{
+    if(await checkedHash(path.join(path.dirname(runtime.dll),file.name))!==file.sha256)throw new Error('自建原生依赖未通过完整性校验');
+   }));
+   const failed=checked.find(result=>result.status==='rejected');if(failed?.status==='rejected')throw failed.reason;
   }
  }else if(runtime.bundled){
   const loader=dependencies.find(file=>file.name==='vulkan-1.dll');
@@ -62,15 +77,17 @@ export class RenderHostClient extends EventEmitter {
  private child:ChildProcessWithoutNullStreams|null=null;private pending=new Map<number,Pending>();private sequence=0;private bytes=Buffer.alloc(0);
  private failure:Error|null=null;private stopping:Promise<void>|null=null;private opening:Promise<void>|null=null;private retired=false;private exited:Promise<void>=Promise.resolve();private exitCode:number|null|undefined;
  private stderrBytes=0;private stderrTail='';private spawnError:string|null=null;
+ readonly startupTimings:{verificationMs:number|null;hostOpenMs:number|null;native:Record<string,number>|null}={verificationMs:null,hostOpenMs:null,native:null};
  get pid(){return this.child?.pid??0;}get alive(){return Boolean(this.child)&&this.exitCode===undefined;}
  constructor(private runtime:Runtime,private readers:{drain:()=>Promise<void>},private timeoutMs?:number){super();}
- open(source:{path:string;contract?:RenderSourceContract;startSec:number;autoplay:boolean;windowHandle?:string}):Promise<void>{
+ open(source:{path:string;contract?:RenderSourceContract;startSec:number;autoplay:boolean;windowHandle?:string;shaderCache?:string}):Promise<void>{
   if(this.child||this.opening||this.retired)return Promise.reject(new Error('原生宿主不能重复打开'));
   const task=this.start(source);this.opening=task;void task.finally(()=>{if(this.opening===task)this.opening=null;}).catch(()=>{});return task;
  }
- private async start(source:{path:string;contract?:RenderSourceContract;startSec:number;autoplay:boolean;windowHandle?:string}){
-  await verifyRenderRuntime(this.runtime);if(this.retired)throw new DOMException('原生打开已取消','AbortError');
+ private async start(source:{path:string;contract?:RenderSourceContract;startSec:number;autoplay:boolean;windowHandle?:string;shaderCache?:string}){
+  const verificationStarted=performance.now();await verifyRenderRuntime(this.runtime);this.startupTimings.verificationMs=performance.now()-verificationStarted;if(this.retired)throw new DOMException('原生打开已取消','AbortError');
   const c=source.contract;if(!path.isAbsolute(source.path)||!Number.isFinite(source.startSec)||source.startSec<0||source.startSec>Number.MAX_VALUE||typeof source.autoplay!=='boolean')throw new Error('无效原生源');
+  const hostStarted=performance.now();
   const child=spawn(this.runtime.host,[this.runtime.dll],{stdio:['pipe','pipe','pipe'],windowsHide:true,shell:false});this.child=child;
   this.exited=new Promise(resolve=>{
    child.once('error',(error:NodeJS.ErrnoException)=>{this.spawnError=error.code??'UNKNOWN';this.fail(new Error('原生渲染宿主未能启动'));if(!child.pid){this.exitCode=null;resolve();}});
@@ -79,7 +96,14 @@ export class RenderHostClient extends EventEmitter {
   child.once('close',(code,signal)=>this.emit('diagnostic',renderHostTermination(code,signal,this.stderrTail,this.stderrBytes,this.spawnError)));
   child.stdout.on('data',(chunk:Buffer)=>this.accept(chunk));child.stdout.on('error',()=>this.fail(new Error('原生状态管道异常')));
   child.stdin.on('error',()=>this.fail(new Error('原生控制管道异常')));child.stderr.on('data',(chunk:Buffer)=>{this.stderrBytes+=chunk.length;this.stderrTail=(this.stderrTail+chunk.toString('utf8')).slice(-4096);if(this.stderrBytes>64*1024)this.fail(new Error('原生宿主错误输出超过限制'));});child.stderr.on('error',()=>{});
-  await this.send('open',{path:source.path,...c,startSec:source.startSec,autoplay:source.autoplay,windowHandle:source.windowHandle??'0'});
+  const response:unknown=await this.send('open',{path:source.path,...c,startSec:source.startSec,autoplay:source.autoplay,windowHandle:source.windowHandle??'0',...(source.shaderCache?{shaderCache:source.shaderCache}:{})});this.startupTimings.hostOpenMs=performance.now()-hostStarted;
+  if(response&&typeof response==='object'&&'startupMs'in response){
+   const timings=response.startupMs;
+   if(!timings||typeof timings!=='object'||Array.isArray(timings))throw new Error('原生启动计时无效');
+   const entries=Object.entries(timings);
+   if(entries.length>12||entries.some(([key,value])=>!['dllHashMs','loadLibraryMs','apiOptionsMs','initializeMs','observeMs','coreMs','rendererReadyMs','deviceReadyMs','renderContextMs','loadCommandMs'].includes(key)||typeof value!=='number'||!Number.isFinite(value)||value<0||value>90000))throw new Error('原生启动计时无效');
+   this.startupTimings.native=Object.fromEntries(entries) as Record<string,number>;
+  }
  }
  private accept(chunk:Buffer){
   if(this.failure)return;

@@ -215,11 +215,12 @@ export class NativePlayer {
     }
     this.trusted(event,true);
     if(!input||typeof input!=='object'||(input as {session?:unknown}).session!==active.client.session)throw new Error('原生播放会话已过期');
-    const {value}=input as {value?:unknown};
+    const {value,inputAt}=input as {value?:unknown;inputAt?:unknown};
+    const seekInputAt=finite(inputAt,Date.now()-30000,Date.now()+100)?Number(inputAt):null;
     if(this.capturingFrames.has(active)&&['seek','seek-relative','pause','track','rotate','transform','sub-delay','subtitle-style','subtitle-import','speed'].includes(String(action)))throw new Error('正在截取画面，请稍后调整播放画面');
     if(action==='diagnostics'){
       const main=this.deps.main(),p=active.client.snapshot.properties,video=p['video-params'] as any;
-      return {engine:'mpv',session:active.client.session,phase:active.client.snapshot.phase,failureCode:active.client.snapshot.failureCode??null,audioOutput:active.client.snapshot.audioOutput,firstFrameMs:active.client.snapshot.firstFrameMs,readyMs:active.client.snapshot.readyMs,sourceLoads:active.client.snapshot.sourceLoads,
+      return {engine:'mpv',transport:active.client.transport,session:active.client.session,phase:active.client.snapshot.phase,failureCode:active.client.snapshot.failureCode??null,audioOutput:active.client.snapshot.audioOutput,firstFrameMs:active.client.snapshot.firstFrameMs,readyMs:active.client.snapshot.readyMs,sourceLoads:active.client.snapshot.sourceLoads,
         processMemory:processMemorySnapshot(app.getAppMetrics(),{main:process.pid,libraryRenderer:main&&!main.isDestroyed()?main.webContents.getOSProcessId():undefined,controlsRenderer:!active.overlay.isDestroyed()?active.overlay.webContents.getOSProcessId():undefined}),
         video:video?{width:video.dw,height:video.dh,rotation:video.rotate,pixelFormat:video.pixelformat}:null,
         transform:{zoom:p['video-zoom'],x:p['video-pan-x'],y:p['video-pan-y']},
@@ -228,7 +229,7 @@ export class NativePlayer {
         recentLayouts:this.layoutHistory.get(active)??[],
         window:main&&!main.isDestroyed()?{content:main.getContentBounds(),scale:screen.getDisplayMatching(main.getBounds()).scaleFactor,...this.deps.windowState()}:null,
         host:active.host.isDestroyed()?null:active.host.getContentBounds(),controls:active.overlay.isDestroyed()?null:active.overlay.getBounds(),
-        dropped:p['frame-drop-count']??null,decoderDropped:p['decoder-frame-drop-count']??null,bufferingEvents:active.client.snapshot.bufferingEvents};
+        seek:active.client.snapshot.seekDiagnostics??null,hardwareDecoder:p['hwdec-current']??null,dropped:p['frame-drop-count']??null,decoderDropped:p['decoder-frame-drop-count']??null,bufferingEvents:active.client.snapshot.bufferingEvents};
     }
     if(action==='window-drag'){
       const point=value as {phase?:string;x?:number;y?:number},main=this.deps.main();
@@ -237,8 +238,12 @@ export class NativePlayer {
       else if(point.phase==='end')this.windowDrags.delete(active);
       else{const drag=this.windowDrags.get(active);if(drag)main.setPosition(Math.round(drag.left+point.x!-drag.x),Math.round(drag.top+point.y!-drag.y));}
     }
-    else if(action==='seek'){if(!finite(value,0,1e8))throw new Error('跳播参数无效');active.client.seek(Number(value));}
-    else if(action==='seek-relative'){if(!finite(value,-120,120))throw new Error('跳播步长无效');active.client.seekBy(Number(value));}
+    else if(action==='seek-policy'){
+      if(value!=='exact'&&value!=='fast'&&value!=='smart')throw new Error('跳播模式无效');
+      active.client.snapshot.seekPolicy=value;active.client.emit();
+    }
+    else if(action==='seek'){if(!finite(value,0,1e8))throw new Error('跳播参数无效');active.client.seek(Number(value),seekInputAt);}
+    else if(action==='seek-relative'){if(!finite(value,-120,120))throw new Error('跳播步长无效');active.client.seekBy(Number(value),seekInputAt);}
     else if(action==='pause'){if(typeof value!=='boolean')throw new Error('暂停参数无效');await active.client.command(['set_property','pause',value]);}
     else if(action==='volume'){if(!finite(value,0,100))throw new Error('音量参数无效');await active.client.command(['set_property','volume',value]);active.client.snapshot.properties.volume=value;active.audioRevision++;}
     else if(action==='mute'){if(typeof value!=='boolean')throw new Error('静音参数无效');await active.client.command(['set_property','mute',value]);active.client.snapshot.properties.mute=value;active.audioRevision++;}
@@ -504,6 +509,7 @@ export class NativePlayer {
       void controlsReady.catch(()=>{});
       const handle=host.getNativeWindowHandle();
       const hwnd=handle.length===8?handle.readBigUInt64LE().toString():String(handle.readUInt32LE());
+      client.snapshot.seekPolicy=prefs.values?.mpvSeekPolicy??'exact';
       const audio=prefs.values?.audio||{volume:1,muted:false};
       active.subtitleAppearance=subtitleStyle(prefs.values?.subtitleAppearance??defaultSubtitleAppearance);
       this.trackMemory.set(active,{state:memory,changes:{},revision:0,saved:0});

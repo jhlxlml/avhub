@@ -76,3 +76,38 @@ test('subscription setup failure releases the attachment and permits a clean ret
  const p=port(),subscribe=p.subscribe;let failures=1;p.subscribe=fn=>{if(failures-->0)throw new Error('subscribe failed');return subscribe(fn);};const engine=new MpvEngine(p),target={nativeSurface:{}};
  await assert.rejects(engine.init(target),/subscribe failed/);assert.equal(p.detachments,1);await engine.init(target);await engine.load(source());assert.equal(engine.getState().status,'playing');await engine.dispose();assert.equal(p.attachments,2);assert.equal(p.detachments,2);
 });
+
+test('keyframe completion requires a fresh matching seek receipt and explicit approximate strategy',async()=>{
+ const {p,engine}=await setup();await engine.load(source());
+ let completed=false;const seek=engine.seekTo(30).then(()=>completed=true);
+ const s=state({mediaId:1,generation:1,startSec:24});
+ p.emit({...s,revision:2,presented:{serial:1,positionSec:24,seekId:1},seekDiagnostics:{seekId:1,strategy:'exact',target:30}});
+ p.emit({...s,revision:3,presented:{serial:2,positionSec:24,seekId:1},seekDiagnostics:{seekId:1,strategy:'keyframe',target:31}});
+ await tick();assert.equal(completed,false);
+ p.emit({...s,revision:4,presented:{serial:3,positionSec:24,seekId:1},seekDiagnostics:{seekId:1,strategy:'keyframe',target:30}});
+ await seek;assert.equal(engine.getState().positionSec,24);await engine.dispose();
+});
+
+
+test('EOF play waits for a real zero frame; a newer pause cancels the deferred resume',async()=>{
+ for(const pause of [false,true]){
+  const {p,engine}=await setup();await engine.load(source());
+  const ended=state({mediaId:1,generation:1,startSec:120},{revision:2,status:'ended',presented:{serial:1,positionSec:120,seekId:0}});p.emit(ended);
+  const play=engine.play();await tick();
+  assert.equal(p.calls.filter(c=>c[0]==='command'&&c[3]==='play').length,0);
+  const seek=p.calls.find(c=>c[0]==='command'&&c[3]==='seek');assert.equal(seek[4].seconds,0);
+  if(pause)await engine.pause();
+  p.emit({...ended,revision:3,status:'paused',positionSec:0,presented:{serial:2,positionSec:0,seekId:seek[4].seekId}});
+  await play;
+  assert.equal(p.calls.filter(c=>c[0]==='command'&&c[3]==='play').length,pause?0:1);
+  await engine.dispose();
+ }
+});
+test('EOF play preserves an already selected seek target',async()=>{
+ const {p,engine}=await setup();await engine.load(source());
+ const ended=state({mediaId:1,generation:1,startSec:120},{revision:2,status:'ended',presented:{serial:1,positionSec:120,seekId:0}});p.emit(ended);
+ const selected=engine.seekTo(35);await engine.play();
+ const seeks=p.calls.filter(c=>c[0]==='command'&&c[3]==='seek');assert.equal(seeks.length,1);assert.equal(seeks[0][4].seconds,35);
+ p.emit({...ended,revision:3,status:'playing',positionSec:35,presented:{serial:2,positionSec:35,seekId:seeks[0][4].seekId}});
+ await selected;await engine.dispose();
+});

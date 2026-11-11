@@ -51,3 +51,12 @@ test('failed native close is retained and can be retried without forgetting owne
 test('authoritative native close does not flush an already retired session',async()=>{
  const f=fixture();await f.coordinator.load(source(1),'mpv-independent');f.port.retire();await f.coordinator.close();assert.equal(f.port.calls.filter(c=>c.action==='flush'||c.action==='close').length,0);assert.equal(f.coordinator.getState().phase,'closed');
 });
+
+test('independent keyframe result uses the measured landing without claiming exactness',async()=>{
+ const f=fixture();await f.coordinator.load(source(1),'mpv-independent');f.port.deferSeek=true;
+ let done=false;const seek=f.coordinator.seekTo(17).then(()=>done=true);await tick();
+ f.port.emit({pendingSeek:null,lastSeekTarget:17,lastSeekPosition:12,restarts:2,seekDiagnostics:{strategy:'keyframe',target:18,position:12},properties:{...f.raw.properties,'time-pos':12}});
+ await tick();assert.equal(done,false);
+ f.port.emit({seekDiagnostics:{strategy:'keyframe',target:17,position:12}});
+ await seek;assert.equal(f.coordinator.getState().snapshot.positionSec,12);await f.coordinator.close();
+});

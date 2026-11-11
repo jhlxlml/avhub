@@ -1,15 +1,16 @@
+import {placeTestMedia,mediaHash} from './media-pool.mjs';
 // Actual AVHub Electron/React + application native service + shared GPU texture.
 // All media/data are owned fixtures. Pixel proof is compositor capture, not
 // physical scanout. Precise seek intents use the real UI's DOM input handler.
 import {createRequire} from 'node:module';
 import {desktopTestSubject} from './desktop-test-subject.mjs';
 import assert from 'node:assert/strict';import {_electron,expect} from '@playwright/test';
-import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,copyFileSync,statSync,readdirSync} from 'node:fs';import {createHash} from 'node:crypto';import path from 'node:path';
+import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,statSync,readdirSync} from 'node:fs';import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'../..'),data=mkdtempSync(path.join(root,'build/render-app-flow-')),media=path.join(data,'media');mkdirSync(media);
 const sample=process.argv[2]??'Framecode-v2-640x360.mp4',sizes={'Framecode-v2-640x360.mp4':[640,360,8],'Framecode-v2-3840x2160-hevc.mkv':[3840,2160,8],'Framecode-v3-3840x2160-av1.mkv':[3840,2160,8],'Precision-SDR10-3840x2160.mkv':[3840,2160,10],'Precision-SDR10-2160x3840.mkv':[2160,3840,10]};assert.ok(sizes[sample],'Only owned generated fixtures');const [width,height,depth]=sizes[sample];
 const unicode=process.env.AVHUB_TEST_UNICODE_SOURCE==='1',title=unicode?'Framecode 中文 한글 🎬':'Framecode',directory=unicode?path.join(media,'中文目录 한글 🎬'):media;mkdirSync(directory,{recursive:true});
-const generated=path.join(root,'build/libmpv-render-spike/samples',sample),source=path.join(directory,title+path.extname(sample));copyFileSync(generated,source);
-const identity=()=>({sha256:createHash('sha256').update(readFileSync(source)).digest('hex'),mtime:statSync(source).mtimeMs}),before=identity();
+const generated=path.join(root,'build/libmpv-render-spike/samples',sample),source=path.join(directory,title+path.extname(sample));placeTestMedia(generated,source,{ownedGenerated:true});
+const identity=()=>({sha256:mediaHash(source),mtime:statSync(source).mtimeMs}),before=identity();
 const packagedExe=process.env.AVHUB_TEST_PACKAGED_EXE;
 const require=createRequire(import.meta.url),runtimePaths=require('../dist/renderRuntimeLayout.js');
 const layout=packagedExe?runtimePaths.resolveRenderRuntime(root,true,path.join(path.dirname(packagedExe),'resources'),undefined,'1'):runtimePaths.renderRuntimeLayout(root,false,'',process.env.AVHUB_RENDER_RUNTIME_CANDIDATE);
@@ -61,7 +62,18 @@ try{
   const html5=await video.evaluate(v=>({position:v.currentTime,paused:v.paused,source:new URL(v.currentSrc).pathname,width:v.videoWidth,height:v.videoHeight}));assert.equal(html5.paused,true);assert.ok(Math.abs(html5.position-nativePosition)<.2);assert.ok(/^\/media\/\d+\/file$/.test(html5.source));assert.equal((await api('/api/preferences')).values.playerEngine,'mpv');assert.equal((await page.evaluate(()=>window.avhubDesktop.renderPlayer('status'))).active,false);
   report.controlledHandoff={from:'libmpv-d3d11',to:'chromium-original',nativeFrame,chromiumFrame:await frame(),nativePosition,html5,preferenceUnchanged:true};
  }
- await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect(page.locator('.card')).toHaveCount(1);assert.equal((await page.evaluate(()=>window.avhubDesktop.renderPlayer('status'))).active,false);assert.deepEqual(identity(),before);assert.deepEqual(errors,[]);report.passed=true;report.sourceAfter=identity();await page.screenshot({path:path.join(data,'library-after.png')});
+ await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect(page.locator('.card')).toHaveCount(1);assert.equal((await page.evaluate(()=>window.avhubDesktop.renderPlayer('status'))).active,false);
+ if(process.env.AVHUB_TEST_SHADER_REOPEN==='1'){
+  const cache=path.join(data,'native-shaders-v1'),files=readdirSync(cache).filter(name=>/^[a-f0-9]{64}$/i.test(name));assert.ok(files.length>0,'real shader cache must have compiled programs before reopen');
+  if(process.env.AVHUB_TEST_SHADER_CORRUPT==='1'){let count=0;for(const name of files){const file=path.join(cache,name),bytes=readFileSync(file),at=bytes.indexOf(Buffer.from('DXBC'));if(at>=0){bytes[at+4]^=1;writeFileSync(file,bytes);count++;}}assert.ok(count>0);report.corruptedOwnedShaderPrograms=count;}
+  await page.evaluate(()=>window.__renderFlowState=null);await page.getByRole('button',{name:'播放 '+title,exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__renderFlowState?.phase),{timeout:30000}).toBe('ready');
+  await reveal();await page.getByRole('button',{name:'暂停',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__renderFlowState.properties.pause)).toBe(true);
+  await timeline.evaluate(node=>{node.value=String(31/25);node.dispatchEvent(new Event('input',{bubbles:true}));});
+  await expect.poll(async()=>(await pixels()).code,{timeout:15000}).toBe(31);report.shaderCacheReopen={files:files.length,proof:await pixels()};
+  await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect(page.locator('.card')).toHaveCount(1);
+ }
+ assert.deepEqual(identity(),before);assert.deepEqual(errors,[]);report.passed=true;report.sourceAfter=identity();await page.screenshot({path:path.join(data,'library-after.png')});
 }catch(error){report.passed=false;report.error=String(error.stack||error);if(page){report.body=await page.locator('body').innerText().catch(()=>'<closed>');report.notices=await page.evaluate(()=>window.__captureNotices).catch(()=>[]);await page.screenshot({path:path.join(data,'failure.png')}).catch(()=>{});}throw error;}
 finally{
  writeFileSync(path.join(data,'report.json'),JSON.stringify(report,null,2));

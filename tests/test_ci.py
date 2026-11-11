@@ -9,7 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import yaml
-from test_folder_portable import folder,fixture
+from test_folder_portable import folder,fixture,ffi_fixture
+from test_native_source_delivery import source_fixture
 ROOT=Path(__file__).resolve().parents[1]
 def module(name,file):
     spec=importlib.util.spec_from_file_location(name,ROOT/file);value=importlib.util.module_from_spec(spec);spec.loader.exec_module(value);return value
@@ -125,14 +126,19 @@ class CITests(unittest.TestCase):
     def test_manifest_rejects_corruption_or_different_source(self):
         with tempfile.TemporaryDirectory() as directory:
             directory=Path(directory);file=directory/'AVHub-portable-1.2.3-x64.exe';file.write_bytes(b'MZ-test')
-            archive=directory/artifacts.names('1.2.3')[1];folder.create(fixture(directory),archive,'1.2.3','test-build')
+            archive=directory/artifacts.names('1.2.3')[1]
+            members,index,*_=source_fixture();runtime=fixture(directory)
+            native=runtime/'resources/native-render';ffi_fixture(native/'ffi')
+            (native/'runtime.json').write_bytes(members['RENDER/runtime.json'])
+            independent=runtime/'resources/mpv';independent.mkdir()
+            (independent/'runtime.json').write_bytes(members['INDEPENDENT/runtime.json'])
+            (independent/'mpv.exe').write_bytes(b'MZ-independent');(independent/'LICENSE.GPL').write_bytes(b'GPL fixture')
+            folder.create(runtime,archive,'1.2.3','test-build')
             sources=directory/artifacts.names('1.2.3')[2]
             # Synthetic manifest fixture only; this does not certify native sources.
-            content=b'test source member'
-            index={'applicationBuild':{'version':'1.2.3','build_id':'test-build'},'nativeSourceArchives':22,'controlledCliSourceArchives':11,
-                   'files':[{'path':'APPLICATION/test.py','sha256':hashlib.sha256(content).hexdigest()}]}
             with zipfile.ZipFile(sources,'w') as bundle:
-                bundle.writestr('APPLICATION/test.py',content);bundle.writestr('DELIVERY-INDEX.json',json.dumps(index))
+                for name,content in members.items():bundle.writestr(name,content)
+                bundle.writestr('DELIVERY-INDEX.json',json.dumps(index));bundle.writestr('README-SOURCE.txt','Synthetic source contract')
             records=[{'filename':asset.name,'bytes':asset.stat().st_size,'sha256':artifacts.digest(asset)} for asset in (file,archive,sources)]
             info={'schema':2,'version':'1.2.3','commit':'a'*40,'build_id':'test-build','artifacts':records}
             (directory/'release-build.json').write_text(json.dumps(info));(directory/'SHA256SUMS.txt').write_text(artifacts.checksums(records))

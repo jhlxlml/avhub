@@ -7,11 +7,10 @@ if(!/^render-(?:runtime|selfbuilt|replayed)-candidate-[A-Za-z0-9]{6}$/.test(name
 const folder=path.join(root,'build',name),layout=JSON.parse(fs.readFileSync(path.join(folder,'layout.json'),'utf8'));
 const {renderRuntimeLayout}=require('./dist/renderRuntimeLayout.js');
 const runtime=renderRuntimeLayout(root,false,'',name);
-const expectedScope=runtime.selfBuiltCandidate?'single-display-SDR-D3D11-development-only':'local-runtime-layout-candidate-not-packaged-acceptance';
-// Frozen self-built layouts predate the schema field. Keep that exact local
-// format readable; unknown numbered schemas still fail preflight.
-const knownSchema=layout.schema===1||(runtime.selfBuiltCandidate&&layout.schema===undefined);
-if(!knownSchema||layout.distributionReady!==false||layout.scope!==expectedScope)throw new Error('Expected a local acceptance runtime layout');
+const {renderCandidatePolicy}=require('./render-candidate-policy.cjs');
+const {replayedRenderPin}=require('./dist/replayedRenderPin.js');
+const {mkvIndexRenderPin}=require('./dist/mkvIndexRenderPin.js');
+const identity=renderCandidatePolicy(layout,JSON.parse(fs.readFileSync(runtime.manifest,'utf8')),runtime,[replayedRenderPin,mkvIndexRenderPin]);
 const base=require('../package.json').build;
 const backend=process.env.AVHUB_RENDER_BACKEND_DIR?path.resolve(root,process.env.AVHUB_RENDER_BACKEND_DIR):path.join(root,'build/backend-dist/AVHubServer');
 const backendRelative=path.relative(path.join(root,'build'),backend);
@@ -19,8 +18,7 @@ if(backendRelative.startsWith('..')||path.isAbsolute(backendRelative))throw new 
 let acceptanceResource=[];
 let acceptanceMarker;
 if(runtime.replayedCandidate){
- const {replayedRenderPin}=require('./dist/replayedRenderPin.js');
- acceptanceMarker={schema:1,purpose:'local-render-acceptance',candidate:name,cohort:replayedRenderPin.id,
+ acceptanceMarker={schema:1,purpose:'local-render-acceptance',candidate:name,cohort:identity.cohort,
   manifestSha256:crypto.createHash('sha256').update(fs.readFileSync(runtime.manifest)).digest('hex'),distributionReady:false};
  const markerFolder=fs.mkdtempSync(path.join(root,'build/native-render-acceptance-marker-'));
  const marker=path.join(markerFolder,'local-render-acceptance.json');

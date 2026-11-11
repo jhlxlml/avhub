@@ -13,7 +13,7 @@ import argparse
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def stage(root=ROOT,*,replayed=False):
+def stage(root=ROOT,*,replayed=False,audit_only=False):
     build = root / "build"
     layout = json.loads((build / ("replayed-render-staging.json" if replayed else "selfbuilt-render-staging.json")).read_text())
     candidate = Path(layout["folder"])
@@ -38,6 +38,14 @@ def stage(root=ROOT,*,replayed=False):
         archive = root / source["archive"]
         add(archive, source["archiveSha256"])
         add(archive.with_suffix(".json"))
+    # Compatibility inputs are additional to the historical dependency builds.
+    # Preserve the staged historical receipt, including its original test status.
+    for item in materials['subject'].get('patches', []):
+        add(root / item['path'], item['sha256'])
+    if 'compatibilityBuild' in materials:
+        compatibility = candidate / 'materials/compatibility'
+        for name in ('mkv-reversed-cues.patch', 'build.json', 'build-mkv-index-candidate.py'):
+            add(compatibility / name)
     for source in support["sources"]:
         for item in source["files"]:
             file = root / item["path"]
@@ -76,8 +84,14 @@ def stage(root=ROOT,*,replayed=False):
     add(candidate / "layout.json")
     add(candidate / "runtime.json")
     total = sum(file["size"] for file in inputs.values())
-    if total > 2 * 1024**3 or shutil.disk_usage(build).free < total + 256 * 1024**2:
+    if total > 2 * 1024**3 or not audit_only and shutil.disk_usage(build).free < total + 256 * 1024**2:
         raise OSError("Source review dossier exceeds space/capacity limit")
+    if audit_only:
+        return {'schema':1, 'scope':'read-only-native-source-inventory-not-distribution',
+                'candidate':str(candidate), 'cohort':materials['subject']['id'],
+                'gitSourceArchives':len(materials['sourceArchives']), 'supportSourcePackages':len(support['sources']),
+                'files':[{'path':name, **item} for name,item in sorted(inputs.items())],
+                'totalBytes':total, 'distributionReady':False, 'copiedBytes':0}
     destination = Path(tempfile.mkdtemp(prefix="native-replayed-source-materials-" if replayed else "native-source-materials-", dir=build))
     for name, item in sorted(inputs.items()):
         target = destination / name
@@ -88,6 +102,7 @@ def stage(root=ROOT,*,replayed=False):
             if hashlib.file_digest(stream, "sha256").hexdigest() != item["sha256"]:
                 raise ValueError("Source changed while copying")
     report = {"schema": 1, "folder": str(destination), "cohort": materials["subject"]["id"],
+              "candidate": str(candidate),
               "scope": "Native source review dossier only; not full application corresponding source or build environment",
               "gitSourceArchives": len(materials["sourceArchives"]), "supportSourcePackages": len(support["sources"]),
               "files": [{"path": name, **item} for name, item in sorted(inputs.items())],
@@ -114,6 +129,6 @@ def stage(root=ROOT,*,replayed=False):
 
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser();parser.add_argument('--replayed',action='store_true')
-    report = stage(replayed=parser.parse_args().replayed)
-    print(json.dumps({key: report[key] for key in ["folder", "gitSourceArchives", "supportSourcePackages", "totalBytes", "distributionReady"]}))
+    parser=argparse.ArgumentParser();parser.add_argument('--replayed',action='store_true');parser.add_argument('--audit-only',action='store_true')
+    args=parser.parse_args();report = stage(replayed=args.replayed,audit_only=args.audit_only)
+    print(json.dumps(report if args.audit_only else {key: report[key] for key in ["folder", "gitSourceArchives", "supportSourcePackages", "totalBytes", "distributionReady"]}))

@@ -6,6 +6,7 @@ import subprocess
 import runpy
 import zipfile
 from pathlib import Path
+from native_source_delivery import verify_native_bundle
 ROOT=Path(__file__).resolve().parent.parent
 def digest(file):
     with file.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
@@ -28,11 +29,14 @@ def verify(directory,version,commit):
         index=json.loads(sources.read('DELIVERY-INDEX.json'))
         if (sources.testzip() is not None or index.get('applicationBuild',{}).get('version')!=version
             or index.get('applicationBuild',{}).get('build_id')!=info['build_id']
-            or index.get('nativeSourceArchives',0)<22 or index.get('controlledCliSourceArchives',0)<11):
+            or index.get('controlledCliSourceArchives',0)<11):
             raise ValueError('Corresponding source bundle does not match this application build')
-        for member in index['files']:
-            with sources.open(member['path']) as stream:
-                if hashlib.file_digest(stream,'sha256').hexdigest()!=member['sha256']:raise ValueError('Corresponding source member changed')
+        # Source manifest bytes must describe the actual folder-portable runtime,
+        # not merely another internally consistent source ZIP.
+        with zipfile.ZipFile(directory/names(version)[1]) as portable:
+            prefix=portable.namelist()[0].split('/')[0]+'/'
+            verify_native_bundle(sources,index,portable.read(prefix+'resources/native-render/runtime.json'),
+                                 portable.read(prefix+'resources/mpv/runtime.json'))
     return info
 def main():
     version=json.loads((ROOT/'package.json').read_text())['version']

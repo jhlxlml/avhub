@@ -3,7 +3,7 @@ import path from 'node:path';
 import {randomBytes} from 'node:crypto';
 type Dependencies={data:()=>string;origin:()=>string;token:()=>string;log:(value:string)=>void};
 /** Shared original-resolution PNG publication, independent of window layout. */
-type CaptureClient={snapshot:{phase:string;pendingSeek:number|null;properties:Record<string,any>};command:(args:any[],timeout?:number)=>Promise<any>};
+type CaptureClient={prepareScreenshot?:()=>Promise<void>;snapshot:{phase:string;pendingSeek:number|null;properties:Record<string,any>};command:(args:any[],timeout?:number)=>Promise<any>};
 export async function captureNativeFrame(deps:Dependencies,active:{client:CaptureClient;mediaId:number},frameSaved:()=>void=()=>{}){
   const started=performance.now(),snapshot=active.client.snapshot;let directory:string|undefined;
   try{
@@ -14,6 +14,7 @@ export async function captureNativeFrame(deps:Dependencies,active:{client:Captur
     if(!params?.w||!params.h||params.w*params.h>64*1024**2)throw new Error('画面尚未就绪或超过截图像素限制');
     const free=await statfs(parent);if(Number(free.bavail)*Number(free.bsize)<Math.max(256*1024**2,params.w*params.h*8))throw new Error('数据目录空间不足，未生成临时截图');
     directory=await mkdtemp(path.join(parent,'capture-'));const file=path.join(directory,'frame.png');
+    await active.client.prepareScreenshot?.();
     const point=Number(await active.client.command(['get_property','time-pos'])),encodingStarted=performance.now();
     await active.client.command(['screenshot-to-file',file,'video'],30000);frameSaved();
     const encodingMs=performance.now()-encodingStarted,publishingStarted=performance.now();

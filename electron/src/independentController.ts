@@ -9,11 +9,23 @@ local overlay = mp.create_osd_overlay('ass-events')
 overlay.z = 1000
 local W,H,scale = 960,540,1
 local mx,my,inside = -1,-1,false
+local seek_policy,seek_strategy,seek_observed,seek_smart='exact','exact',false,false
+local relative_goal,relative_direction=nil,0
+local keyframe_forward=false
+local seek_policy_labels={exact='精确',fast='快速（关键帧）',smart='智能'}
+mp.register_script_message('seek-policy',function(value) if seek_policy_labels[value] then seek_policy=value;relative_goal=nil end end)
+mp.register_script_message('seek-smart-evidence',function(value) seek_smart=value=='yes' end)
+local controller_ready=false
 local visible,panel,drag,pressed = true,false,nil,nil
 local startup = mp.get_time()+1
 local toast,capturing=nil,false
 local toast_timer=nil
 local seek_target,seek_timer=nil,nil
+local function trace_seek(kind,delta)
+    if os.getenv('AVHUB_NATIVE_SEEK_TRACE')=='1' then
+        mp.msg.info('avhub-seek '..utils.format_json({kind=kind,delta=delta,clock=mp.get_property_number('time-pos'),target=seek_target,seeking=mp.get_property_bool('seeking'),at=mp.get_time()}))
+    end
+end
 local title = 'AVHub'
 local boxes,parts = {},{}
 local pending,last_state,cursor_locked = nil,'',false
@@ -154,7 +166,13 @@ local function menu_row(id,y,label,value)
     text(x+18,y+17,label,13,white,4);text(x+w-18,y+17,fit(value,w-110,12),12,accent,6)
 end
 render=function()
-    if pending then pending:kill();pending=nil end;if not layout() then return end
+    if pending then pending:kill();pending=nil end
+    if not layout() then
+        -- Initial OSD dimensions may arrive after all startup notifications.
+        -- Retry actual layout/rendering; never announce readiness without it.
+        if not controller_ready then pending=mp.add_timeout(.1,render) end
+        return
+    end
     local hot=inside and (my<58 or my>H-126)
     visible=hot or panel or drag~=nil or mp.get_time()<startup
     local lock=inside and (hot or panel or drag~=nil)
@@ -211,9 +229,9 @@ render=function()
         end
     end
     if panel and visible then
-        local pw=math.min(274,W-36);local px,py=W-pw-18,math.max(8,H-304)
-        box('panel',px,py,pw,190,'播放设置')
-        round(px,py,pw,190,14,panel_bg,8)
+        local pw=math.min(274,W-36);local px,py=W-pw-18,math.max(8,H-338)
+        box('panel',px,py,pw,224,'播放设置')
+        round(px,py,pw,224,14,panel_bg,8)
         menu_row('speed',py+10,'倍速',string.format('%g×',num('speed',1)))
         menu_row('audio',py+44,'音轨',track_label('audio'))
         menu_row('subtitle',py+78,'字幕',track_label('sub'))
@@ -224,6 +242,7 @@ render=function()
         text(px+pw-133,py+129,'−',13,white,5);text(px+pw-27,py+129,'+',13,white,5)
         text(px+pw-78,py+129,string.format('%+.2fs',num('sub-delay')),11,accent,5)
         menu_row('rotate',py+146,'旋转画面',string.format('%d°',num('video-rotate')))
+        menu_row('seek-policy',py+180,'跳播模式',seek_policy_labels[seek_policy])
     end
     local hover=hit()
     if visible and hover and hover.label and hover.id~='timeline' and hover.id~='title' and hover.id~='panel' and not panel and not drag then
@@ -243,30 +262,57 @@ render=function()
     local signature=utils.format_json(state)
     if signature~=last_state then mp.set_property_native('user-data/avhub-ui/layout',state);last_state=signature end
     mp.set_property_native('user-data/avhub-ui/version',1)
+    controller_ready=true
 end
 request=function() if not pending then pending=mp.add_timeout(1/30,render) end end
+mp.register_script_message('show-settings',function() panel=true;request() end)
 local function cycle_track(kind)
     local list=tracks(kind);local prop=kind=='audio' and 'aid' or 'sid';local id=mp.get_property_native(prop);local next_id=kind=='sub' and 'no' or nil
     for i,t in ipairs(list) do if t.id==id then next_id=list[i+1] and list[i+1].id or (kind=='sub' and 'no' or list[1].id);break end end
     if next_id==nil or kind=='sub' and (id==false or id=='no' or id==nil) then next_id=list[1] and list[1].id or 'no' end
     if next_id then mp.set_property_native(prop,next_id) end
 end
-local function seek_to(target)
+local function seek_to(target,direction)
+    local input_started=mp.get_time()
+    local stable=seek_target==nil and not flag('seeking')
     local duration=num('duration')
     if duration<=0 or not target or target~=target then return end
     target=clamp(target,0,math.max(0,duration-.01))
     seek_target=target
+    trace_seek('dispatch')
+    relative_goal=direction and target or nil;relative_direction=direction or 0
     if seek_timer then seek_timer:kill() end
     seek_timer=mp.add_timeout(15,function() seek_target=nil;seek_timer=nil end)
-    mp.commandv('script-message','avhub','seek-intent',string.format('%.9f',target))
-    mp.set_property_number('time-pos',target)
+    local quick=seek_policy=='fast' or seek_policy=='smart' and seek_smart and not flag('pause') and math.abs(target-num('time-pos'))>=10
+    seek_strategy=quick and 'keyframe' or 'exact'
+    seek_observed=false
+    mp.commandv('script-message','avhub','seek-intent',string.format('%.9f',target),seek_strategy,string.format('%.3f',(mp.get_time()-input_started)*1000))
+    keyframe_forward=seek_strategy=='keyframe' and stable and target>num('time-pos')
+    if seek_strategy=='keyframe' then
+        if stable then mp.commandv('seek',tostring(target-num('time-pos')),'relative+keyframes')
+        else mp.commandv('seek',tostring(target),'absolute+keyframes') end
+    else mp.set_property_number('time-pos',target) end
+end
+local function seek_relative(delta)
+    trace_seek('relative',delta)
+    local position=num('time-pos');local direction=delta>0 and 1 or -1
+    local goal=position
+    if seek_policy=='fast' and relative_goal and relative_direction==direction and (delta>0 and position<relative_goal or delta<0 and position>relative_goal) then goal=relative_goal end
+    seek_to((seek_target or goal)+delta,direction)
 end
 mp.register_script_message('seek-relative',function(value)
     local delta=tonumber(value)
-    if delta and math.abs(delta)<=120 then seek_to((seek_target or num('time-pos'))+delta) end
+    if delta and math.abs(delta)<=120 then seek_relative(delta) end
 end)
+mp.register_event('seek',function() seek_observed=true end)
 mp.register_event('playback-restart',function()
-    if seek_target and math.abs(num('time-pos')-seek_target)<=.5 then
+    trace_seek('restart')
+    if seek_target and keyframe_forward and flag('eof-reached') then
+        keyframe_forward=false;seek_observed=false;seek_strategy='exact'
+        mp.commandv('script-message','avhub','seek-exact-fallback',string.format('%.9f',seek_target))
+        mp.commandv('seek',tostring(seek_target),'absolute+exact');return
+    end
+    if seek_target and (seek_strategy=='keyframe' and seek_observed and not flag('seeking') or seek_strategy=='exact' and math.abs(num('time-pos')-seek_target)<=.5) then
         seek_target=nil;if seek_timer then seek_timer:kill();seek_timer=nil end
     end
 end)
@@ -277,7 +323,7 @@ end
 mp.register_script_message('close',close_native)
 local function action(id)
     if id=='play' then mp.commandv('cycle','pause')
-    elseif id=='back' or id=='forward' then seek_to(num('time-pos')+(id=='back' and -5 or 5))
+    elseif id=='back' or id=='forward' then seek_relative(id=='back' and -5 or 5)
     elseif id=='mute' then mp.commandv('cycle','mute')
     elseif id=='screenshot' or id=='previous' or id=='next' then if id~='screenshot' or not capturing then mp.commandv('script-message','avhub',id) end
     elseif id=='fullscreen' then mp.commandv('cycle','fullscreen')
@@ -286,6 +332,10 @@ local function action(id)
     elseif id=='max' then if flag('fullscreen') then mp.set_property_bool('fullscreen',false) else mp.commandv('cycle','window-maximized') end
     elseif id=='close' then close_native()
     elseif id=='settings' then panel=not panel
+    elseif id=='seek-policy' then
+        seek_policy=seek_policy=='exact' and 'fast' or seek_policy=='fast' and 'smart' or 'exact'
+        relative_goal=nil
+        mp.commandv('script-message','avhub','seek-policy',seek_policy)
     elseif id=='speed' then
         local values={.5,.75,1,1.25,1.5,2};local index=1
         for i,v in ipairs(values) do if math.abs(v-num('speed',1))<.01 then index=i%#values+1 end end
@@ -347,7 +397,8 @@ request()
 `;
 
 /** Only validated HEX literals enter owned Lua, never titles or arbitrary settings. */
-export function independentControllerForTheme(colors:NativeColors){
+export function independentControllerForTheme(colors:NativeColors,seekPolicy:'exact'|'fast'|'smart'='exact'){
+ if(!['exact','fast','smart'].includes(seekPolicy))throw new Error('跳播模式无效');
  const encoded=nativeColorsJson(colors);
- return independentController.replace('local theme_rgb = nil -- AVHUB_INITIAL_THEME',`local theme_rgb = utils.parse_json('${encoded}') -- AVHUB_INITIAL_THEME`);
+ return independentController.replace("seek_observed,seek_smart='exact','exact',false,false",`seek_observed,seek_smart='${seekPolicy}','exact',false,false`).replace('local theme_rgb = nil -- AVHUB_INITIAL_THEME',`local theme_rgb = utils.parse_json('${encoded}') -- AVHUB_INITIAL_THEME`);
 }

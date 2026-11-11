@@ -16,6 +16,7 @@ SUITES=[
     'test_native_replayed_source_materials.ReplayedMaterialsTests',
     'test_native_source_materials.NativeSourceMaterialsTests',
     'test_backend_source_replay.BackendSourceReplayTests',
+    'test_native_source_delivery.NativeDeliveryContracts',
 ]
 
 

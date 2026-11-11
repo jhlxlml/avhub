@@ -1,0 +1,127 @@
+import {placeTestMedia} from './media-pool.mjs';
+import {playbackFixture} from './playback-fixtures.mjs';
+// Actual Electron playback-input regression with real MPV clocks and GPU output.
+import assert from 'node:assert/strict';import {_electron,expect} from '@playwright/test';import path from 'node:path';import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,statSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+const root=path.resolve(import.meta.dirname,'../..'),data=mkdtempSync(path.join(root,'build/render-playback-intent-')),media=path.join(data,'media');mkdirSync(media);
+const realMedia=process.argv.includes('--real-media'),source=realMedia?'E:/downloads/The World in HDR in 4K (ULTRA HD).mkv':playbackFixture('basic');
+const identity=()=>({sha256:createHash('sha256').update(readFileSync(source)).digest('hex'),mtime:statSync(source).mtimeMs}),before=identity();
+placeTestMedia(source,path.join(media,'Intent'+path.extname(source)));let desktop,page;const report={kind:'real-Electron-playback-input',realMedia,before,performanceEvidence:false};
+try{
+ desktop=await _electron.launch({args:[root],cwd:data,env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
+ const api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();},{url,method,body});await api('/api/roots','POST',{path:media});await api('/api/scan','POST');await expect.poll(async()=>(await api('/api/scan')).state,{timeout:30000}).toBe('completed');await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',nativeRenderEnabled:true,resumeBehavior:'restart',autoNext:false,audio:{volume:0,muted:true}}});await page.reload();await page.evaluate(()=>window.avhubDesktop.onRenderState(s=>window.__startupIntent=s));await page.getByRole('button',{name:'播放 Intent',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__startupIntent?.phase),{timeout:30000}).toBe('ready');
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent?.properties.pause)).toBe(false);
+ await page.evaluate(()=>{for(let i=0;i<2;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowUp',code:'ArrowUp',bubbles:true,cancelable:true}));});
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.volume)).toBe(10);
+ await page.keyboard.press('ArrowUp');await page.waitForTimeout(40);await page.keyboard.press('ArrowUp');
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.volume)).toBe(20);
+ await page.evaluate(()=>{for(let i=0;i<4;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',code:'ArrowDown',bubbles:true,cancelable:true}));});
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.volume)).toBe(0);
+ await page.evaluate(()=>{for(let i=0;i<2;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:'m',code:'KeyM',bubbles:true,cancelable:true}));});
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.mute)).toBe(false);
+ report.audioInputAccumulated=true;
+
+ // Two distinct non-repeat key presses in one input turn must toggle twice.
+ await page.evaluate(()=>{for(let i=0;i<2;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true}));});
+ await page.waitForTimeout(300);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.playIntent),true,'rapid pause/play must retain the last toggle');
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.pause)).toBe(false);
+ report.rapidToggle=true;
+ const playingPosition=await page.evaluate(()=>window.__startupIntent.positionSec);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.positionSec)).toBeGreaterThan(playingPosition+.1);
+ await page.keyboard.press('Space');await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.pause)).toBe(true);
+ await page.getByRole('button',{name:'播放',exact:true}).evaluate(button=>{button.click();button.click();});
+ await page.waitForTimeout(300);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.playIntent),false,'rapid play-button toggles must end paused');
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.pause)).toBe(true);
+ const target=realMedia?38:4;
+ await page.getByRole('slider',{name:'播放进度',exact:true}).evaluate((el,target)=>{
+  el.value=String(target);el.dispatchEvent(new Event('input',{bubbles:true}));
+  for(let i=0;i<2;i++)document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true}));
+ },target);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.seekDiagnostics?.target),{timeout:15000}).toBe(target);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.pendingSeek)).toBe(null);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties.pause)).toBe(true);
+ let pausedPosition=await page.evaluate(()=>window.__startupIntent.positionSec);
+ await page.waitForTimeout(350);
+ assert.ok(Math.abs(await page.evaluate(()=>window.__startupIntent.positionSec)-pausedPosition)<.05,'paused seek clock must stay stopped');
+ await page.getByRole('button',{name:'跳播与播放设置',exact:true}).click();
+ await page.getByLabel('跳播模式',{exact:true}).selectOption('fast');await page.getByRole('button',{name:'关闭播放设置',exact:true}).click();
+ const thumbSlider=page.getByRole('slider',{name:'播放进度',exact:true});
+ const bounds=await thumbSlider.boundingBox();assert.ok(bounds);
+ const fraction=await thumbSlider.evaluate(el=>(Number(el.value)-Number(el.min))/(Number(el.max)-Number(el.min)));
+ const thumb={x:bounds.x+8+(bounds.width-16)*fraction,y:bounds.y+bounds.height/2};
+ await page.mouse.move(thumb.x,thumb.y);await page.waitForTimeout(50);
+ const beforeThumb=await page.evaluate(()=>({id:window.__startupIntent.seekDiagnostics?.seekId,position:window.__startupIntent.positionSec}));
+ await thumbSlider.evaluate(el=>{window.__thumbInputCount=0;el.addEventListener('input',()=>window.__thumbInputCount++);});
+ await page.mouse.down();await page.mouse.up();await page.waitForTimeout(250);
+ report.thumbAfter=await page.evaluate(()=>({id:window.__startupIntent.seekDiagnostics?.seekId,position:window.__startupIntent.positionSec}));
+ assert.equal(await page.evaluate(()=>window.__thumbInputCount),0,'test must click the existing thumb without selecting a new time');
+ assert.equal(await page.evaluate(()=>window.__startupIntent.seekDiagnostics?.seekId),beforeThumb.id,'clicking a stationary timeline thumb must not trigger another seek');
+ assert.ok(Math.abs(await page.evaluate(()=>window.__startupIntent.positionSec)-beforeThumb.position)<.05);
+ report.stationaryThumb=true;
+ await page.getByRole('button',{name:'跳播与播放设置',exact:true}).click();await page.getByLabel('跳播模式',{exact:true}).selectOption('exact');await page.getByRole('button',{name:'关闭播放设置',exact:true}).click();
+ const pointerTarget=realMedia?42:2;
+ const trackBounds=await thumbSlider.boundingBox();assert.ok(trackBounds);
+ const trackDuration=await thumbSlider.evaluate(el=>Number(el.max));
+ const beforeTrack=await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId);
+ await thumbSlider.evaluate(el=>el.addEventListener('input',()=>window.__lastTimelineInput=Number(el.value)));
+ await page.mouse.click(trackBounds.x+8+(trackBounds.width-16)*pointerTarget/trackDuration,trackBounds.y+trackBounds.height/2);
+ const selectedTarget=await page.evaluate(()=>window.__lastTimelineInput);assert.ok(Number.isFinite(selectedTarget));
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId),{timeout:15000}).toBeGreaterThan(beforeTrack);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.pendingSeek)).toBe(null);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.seekDiagnostics.target),selectedTarget);
+ const afterTrack=await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId);await page.waitForTimeout(250);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId),afterTrack,'native change after pointerup must not duplicate the track seek');
+ pausedPosition=await page.evaluate(()=>window.__startupIntent.positionSec);
+ report.trackPointer={target:selectedTarget,actual:pausedPosition};
+ const dragBounds=await thumbSlider.boundingBox();assert.ok(dragBounds);
+ const dragFraction=await thumbSlider.evaluate(el=>Number(el.value)/Number(el.max));
+ const dragTarget=realMedia?46:3;
+ const beforeDrag=await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId);
+ await page.mouse.move(dragBounds.x+8+(dragBounds.width-16)*dragFraction,dragBounds.y+dragBounds.height/2);
+ await page.mouse.down();
+ await page.mouse.move(dragBounds.x+8+(dragBounds.width-16)*dragTarget/trackDuration,dragBounds.y+dragBounds.height/2,{steps:8});
+ assert.equal(await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId),beforeDrag,'dragging must defer seeking until release');
+ await page.mouse.up();
+ const draggedTarget=await page.evaluate(()=>window.__lastTimelineInput);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId),{timeout:15000}).toBeGreaterThan(beforeDrag);
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.pendingSeek)).toBe(null);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.seekDiagnostics.target),draggedTarget);
+ const afterDrag=await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId);await page.waitForTimeout(250);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.seekDiagnostics.seekId),afterDrag,'drag release must commit only once');
+ pausedPosition=await page.evaluate(()=>window.__startupIntent.positionSec);
+ report.dragPointer={target:draggedTarget,actual:pausedPosition};
+ report.seek=await page.evaluate(()=>window.__startupIntent.seekDiagnostics);
+ assert.equal(await page.evaluate(()=>window.__startupIntent.sourceLoads),1);
+ await page.keyboard.press('Space');
+ await expect.poll(()=>page.evaluate(()=>window.__startupIntent.positionSec)).toBeGreaterThan(pausedPosition+.1);
+ report.buttonToggle=true;report.pauseDuringSeek=true;report.clockRecovered=true;
+ {
+  const end=await page.evaluate(()=>Number(window.__startupIntent.properties.duration)-.2);
+  const timeline=page.getByRole('slider',{name:'播放进度',exact:true});
+  await timeline.evaluate((el,target)=>{el.value=String(target);el.dispatchEvent(new Event('input',{bubbles:true}));},end);
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties['eof-reached']),{timeout:15000}).toBe(true);
+  await page.keyboard.press('Space');
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties['eof-reached'])).toBe(false);
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.positionSec)).toBeGreaterThan(.1);
+  assert.ok(await page.evaluate(()=>window.__startupIntent.positionSec)<2,'play at EOF must restart the movie');
+  report.eofReplay=true;
+  await timeline.evaluate((el,target)=>{el.value=String(target);el.dispatchEvent(new Event('input',{bubbles:true}));},end);
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.properties['eof-reached']),{timeout:15000}).toBe(true);
+  await timeline.evaluate(el=>{
+   el.value='1';el.dispatchEvent(new Event('input',{bubbles:true}));
+   document.dispatchEvent(new KeyboardEvent('keydown',{key:' ',code:'Space',bubbles:true,cancelable:true}));
+  });
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.seekDiagnostics?.target),{timeout:15000}).toBe(1);
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.pendingSeek)).toBe(null);
+  await expect.poll(()=>page.evaluate(()=>window.__startupIntent.positionSec)).toBeGreaterThan(1.1);
+  assert.equal(await page.evaluate(()=>window.__startupIntent.sourceLoads),1);
+  report.eofSelectedSeek=true;
+
+ }
+ assert.deepEqual(identity(),before);
+ await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect(page.locator('.card')).toHaveCount(1);
+ report.passed=true;
+}catch(error){report.passed=false;report.error=String(error.stack||error);if(page)report.body=await page.locator('body').innerText().catch(()=>'<closed>');throw error;}
+finally{if(desktop){await desktop.close().catch(()=>{});}writeFileSync(path.join(data,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({passed:report.passed,report:path.join(data,'report.json')}));}

@@ -4,6 +4,7 @@ import hashlib
 import json
 import zipfile
 from pathlib import Path
+from native_source_delivery import native_inputs, validate_native_members, verify_native_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -91,8 +92,17 @@ def stage():
     for item in native_index['files']:
         add(native / item['path'], 'NATIVE/' + item['path'], item['sha256'])
     add(native / 'inventory.json', 'NATIVE/inventory.json')
+    add(native / 'README.txt', 'NATIVE/README.txt')
     render = ROOT / binding['nativeRoot']
     render_manifest = json.loads((render / 'runtime.json').read_text(encoding='utf-8'))
+    render_materials = json.loads((render / 'materials.json').read_text(encoding='utf-8'))
+    if native_index['cohort'] != render_manifest['cohort']:
+        raise ValueError('Native source dossier cohort differs from selected runtime; regenerate review dossier')
+    # Old dependency records alone cannot describe the patched MPV binary.
+    for patch in render_materials['subject'].get('patches', []):
+        item = next((item for item in native_index['files'] if item['path']==patch['path']), None)
+        if item is None or item['sha256']!=patch['sha256']:
+            raise ValueError('Native dossier omits active MPV patch')
     for name in ('runtime.json','layout.json','materials.json'):
         add(render / name, 'RENDER/' + name)
     for source in render_manifest['sources']:
@@ -127,6 +137,7 @@ def stage():
     add(ROOT / 'build/controlled-cli-source-cache/report.json', 'CLI/build-records/source-recapture.json')
     acceptance = Path(json.loads((ROOT / 'build/controlled-cli-validation-latest.json').read_text(encoding='utf-8'))['folder'])
     add(acceptance / 'report.json', 'CLI/build-records/windows-cli-verification.json')
+    source_inputs = native_inputs(render_materials, render_manifest, manifest) if independent else None
     info = {'schema': 1, 'buildIdentity':identity, 'backendExecutableSha256':hashlib.file_digest((ROOT/ binding['actualBackend']/'AVHubServer.exe').open('rb'),'sha256').hexdigest(), 'scope': 'M5 dual-MPV Windows desktop materials; no sample/HDR admission whitelist; no default-engine promotion or publication',
         'application': str(application.relative_to(ROOT)), 'applicationBuild': app_index.get('buildIdentityReference'),
         'nativeSourceArchives': native_index['gitSourceArchives'] + bool(independent),
@@ -134,6 +145,9 @@ def stage():
         'defaultProjectCliChanged': False, 'files': [{k: v for k, v in item.items() if k != 'file'} for item in entries],
         'sourceBundleOmits': ['user media', 'databases', 'Git configuration', 'node_modules', 'compiled runtime binaries'],
         'legalCertificationClaimed': False, 'published': False}
+    if independent:
+        info['nativeSourceInputs'] = source_inputs
+        validate_native_members(info, render_materials, render_manifest, manifest)
     instructions = '''AVHub M5 source and build materials / M5 源码与构建材料
 
 APPLICATION is a frozen working-tree application snapshot, not a release tag.
@@ -187,7 +201,11 @@ The historical acceptance launcher instructions above describe the old package.
 The current desktop candidate starts AVHub.exe directly and bundles both MPV
 presentations. INDEPENDENT contains the exact Lua-enabled MPV build recipe,
 matching archive metadata, import audit and build logs. Its MPV/dependency
-archives are already in NATIVE; the extra LuaJIT archive brings that count to 22.
+archives are already in NATIVE. Exact archive identities and hashes, including
+LuaJIT, are recorded in nativeSourceInputs; archive count alone is not evidence.
+The active MKV compatibility patch is delivered at its original ci/patches path
+inside NATIVE. Apply that patch using the recorded build recipes; historical
+unpatched MPV receipts do not describe the active binary on their own.
 After rebuilding the existing native dependency chain, run build-desktop-mpv.py
 in Ubuntu WSL, audit-libmpv-imports.py in WSL and Windows, then stage-desktop-mpv.py
 in Windows. All stages are private and do not replace bin/mpv automatically.
@@ -214,6 +232,8 @@ the absence of such verification does not reject ordinary or HDR sources.
             with source.open(item['path']) as stream:
                 if hashlib.file_digest(stream, 'sha256').hexdigest() != item['sha256']:
                     raise ValueError('Source delivery hash mismatch: ' + item['path'])
+        if independent:
+            verify_native_bundle(source, info, (render/'runtime.json').read_bytes(), (runtime/'runtime.json').read_bytes())
     with archive.open('rb') as stream:
         digest = hashlib.file_digest(stream, 'sha256').hexdigest()
     report = {**{k: v for k, v in info.items() if k != 'files'}, 'fileCount': len(entries), 'zip': str(archive),

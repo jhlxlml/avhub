@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from . import startup_trace
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import hashlib
 import hmac
@@ -222,9 +223,14 @@ def read_connection():
 
 
 def bootstrap() -> None:
+    startup_trace.mark('schema-start')
     with database_timing.scope('schema-bootstrap'),connection() as db:
+        with closing(db.execute('PRAGMA journal_mode=WAL')) as cursor:cursor.fetchone()
+        # Python 3.13's explicit transaction mode keeps nested executescript()
+        # calls in one atomic upgrade instead of implicitly committing earlier
+        # DDL and forcing a durability sync for each subsequent schema change.
+        if sys.version_info>=(3,12):db.autocommit=False
         db.executescript("""
-        PRAGMA journal_mode=WAL;
         CREATE TABLE IF NOT EXISTS roots (id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, added_at REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS media (
           id INTEGER PRIMARY KEY, path TEXT UNIQUE NOT NULL, root_id INTEGER, name TEXT NOT NULL,
@@ -266,6 +272,7 @@ def bootstrap() -> None:
           CREATE INDEX IF NOT EXISTS media_favorite_order ON media(COALESCE(last_played,0) DESC,created_at DESC,id DESC) WHERE missing=0 AND favorite=1;
           CREATE INDEX IF NOT EXISTS media_episode_order ON media(COALESCE(last_played,0) DESC,created_at DESC,id DESC) WHERE missing=0 AND kind='episode';
         ''')
+    startup_trace.mark('schema-ready')
 
 
 def parse_title(path: Path) -> tuple[str, str, int | None, int | None]:
@@ -712,7 +719,9 @@ async def background_lifespan(app):
 
 @asynccontextmanager
 async def lifespan(app):
+    startup_trace.mark('lifespan-start')
     with DB_LOCK:db_anchor.start(DB)
+    startup_trace.mark('wal-anchor-ready')
     try:
         async with background_lifespan(app):yield
     finally:
@@ -723,12 +732,14 @@ async def lifespan(app):
 
 
 bootstrap()
+startup_trace.mark('file-recovery-start')
 file_service=file_operations.FileOperations(connection,read_connection,(ROOT,APP_HOME,DATA,Path(os.environ.get('WINDIR','C:/Windows'))))
 file_service.recover()
 identity_service=media_identity.MediaIdentity(file_service,lambda p:parse_title(p)[0],sidecar_subtitles)
 from .recycle_records import RecycleRecords
 recycle_service=RecycleRecords(file_service)
 recycle_service.recover()
+startup_trace.mark('file-recovery-ready')
 with connection() as db:
     checkpoint = db.execute("SELECT root_id FROM scan_checkpoint WHERE id=1").fetchone()
 if checkpoint:
@@ -1011,13 +1022,15 @@ def app_info():
 def health():
     from .sqlite_runtime import status as sqlite_runtime_status
     engine=sqlite_runtime_status()
-    return {"ok": True, "ffmpeg": Path(executable("ffmpeg")).is_file() or shutil.which(executable("ffmpeg")) is not None,
+    result={"ok": True, "ffmpeg": Path(executable("ffmpeg")).is_file() or shutil.which(executable("ffmpeg")) is not None,
             "ffprobe": Path(executable("ffprobe")).is_file() or shutil.which(executable("ffprobe")) is not None,
             "data_dir": str(DATA), "frozen": FROZEN, "port": SERVER_PORT, **BUILD,
             "sqlite_runtime":{key:engine[key] for key in ('version','policy','verified')},
             "desktop_session": bool(SESSION_TOKEN),
             "renderer_test":not FROZEN and getattr(app.state,'renderer_test',False) is True,
             "session_id": hashlib.sha256(SESSION_TOKEN.encode()).hexdigest()[:16] if SESSION_TOKEN else None}
+    startup_trace.ready()
+    return result
 
 
 @app.get('/api/diagnostics')

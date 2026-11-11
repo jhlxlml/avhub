@@ -14,7 +14,7 @@ function fixture(){
  mkdirSync(path.join(resources,'native-render'));
  const manifest=path.join(resources,'native-render/runtime.json'),file=path.join(resources,'local-render-acceptance.json');
  copyFileSync(path.join(stage,'runtime.json'),manifest);
- const marker={schema:1,purpose:'local-render-acceptance',candidate:path.basename(stage),cohort:pin.id,
+ const marker={schema:1,purpose:'local-render-acceptance',candidate:path.basename(stage),cohort:JSON.parse(readFileSync(manifest,'utf8')).cohort,
   manifestSha256:createHash('sha256').update(readFileSync(manifest)).digest('hex'),distributionReady:false};
  writeFileSync(file,JSON.stringify(marker));return {resources,file,manifest,marker};
 }

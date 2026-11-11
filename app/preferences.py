@@ -3,7 +3,7 @@ import math
 import re
 from fastapi import HTTPException
 
-GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','privacyMode','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode','playbackControllerEnabled','nativeRenderEnabled','playbackSessionCoordinatorEnabled'}
+GLOBAL_KEYS = {'audio','playbackSpeed','subtitleAppearance','hoverPreview','queueOpen','autoNext','queueMode','queueScope','screenshots','appearance','privacyMode','nativePrepare','resumeBehavior','librarySort','mouseSeekSeconds','playerEngine','mpvWindowMode','mpvSeekPolicy','playbackControllerEnabled','nativeRenderEnabled','playbackSessionCoordinatorEnabled'}
 
 
 def validate(key, value):
@@ -14,6 +14,8 @@ def validate(key, value):
         valid = value in ('sequential','random','repeat-one')
     elif key == 'playerEngine':
         valid = isinstance(value,str) and value in ('chromium','mpv')
+    elif key == 'mpvSeekPolicy':
+        valid = isinstance(value,str) and value in ('exact','fast','smart')
     elif key == 'mpvWindowMode':
         valid = isinstance(value,str) and value in ('embedded','independent')
     elif key == 'queueScope':

@@ -21,7 +21,9 @@ function readState(input:unknown){
   tracks:{sourceIdentity:typeof v.sourceIdentity==='string'&&/^[a-f0-9]{64}$/.test(v.sourceIdentity)?v.sourceIdentity:null,
    audio:finite(p.aid,1)?String(p.aid):null,subtitle:finite(p.sid,1)?String(p.sid):null,delaySec:finite(p['sub-delay'],-10,10)?p['sub-delay']:0},
  }:null;
- return {session:v.session,mediaId:Number(v.mediaId),revision:Number(v.revision),phase:v.phase,restarts:Number(v.restarts),snapshot,
+ const diagnostic=v.seekDiagnostics;
+ const keyframe=typeof diagnostic==='object'&&diagnostic!==null&&'strategy'in diagnostic&&diagnostic.strategy==='keyframe'&&'target'in diagnostic&&diagnostic.target===v.lastSeekTarget&&'position'in diagnostic&&diagnostic.position===v.lastSeekPosition;
+ return {keyframe,session:v.session,mediaId:Number(v.mediaId),revision:Number(v.revision),phase:v.phase,restarts:Number(v.restarts),snapshot,
   pending:v.pendingSeek!=null||v.seekMode!=null||p.seeking===true,
   target:finite(v.lastSeekTarget)?v.lastSeekTarget:null,position:finite(v.lastSeekPosition)?v.lastSeekPosition:null,
   duration:finite(p.duration)?p.duration:null,error:typeof v.error==='string'?v.error:'',
@@ -85,7 +87,7 @@ export class IndependentSessionAdapter implements SessionAdapter {
   const target=Math.min(seconds,state.duration===null?Number.MAX_SAFE_INTEGER:Math.max(0,state.duration-.01)),before=state.restarts;
   const waitSignal=AbortSignal.any([signal,this.pending.signal]);
   await this.port.invoke('seek',{session:this.nativeSession,value:target});
-  await this.waitFor(s=>!s.pending&&s.restarts>before&&s.target!==null&&Math.abs(s.target-target)<.01&&s.position!==null&&Math.abs(s.position-target)<.3,waitSignal,'seek');
+  await this.waitFor(s=>!s.pending&&s.restarts>before&&s.target!==null&&Math.abs(s.target-target)<.01&&s.position!==null&&(s.keyframe||Math.abs(s.position-target)<.3),waitSignal,'seek');
  }
  async cancelPending(){this.pending.abort();this.pending=new AbortController();}
  async save(){if(this.nativeSession&&!this.retired)await this.port.invoke('flush',this.nativeSession);}

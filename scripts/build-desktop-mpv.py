@@ -31,11 +31,17 @@ def main():
     for file, expected in archives:
         if hashlib.file_digest(file.open('rb'), 'sha256').hexdigest() != expected:
             raise ValueError('Source archive changed')
+    pin = json.loads((ROOT / 'ci/mkv-index-render-runtime.json').read_text())
+    assert pin['sourceRevision'] == prior['source']['revision']
+    patches = pin['patches']
+    for item in patches:
+        assert item['path'] == 'ci/patches/mkv-reversed-cues.patch'
+        assert hashlib.file_digest((ROOT / item['path']).open('rb'), 'sha256').hexdigest() == item['sha256']
     folder = Path(tempfile.mkdtemp(prefix='desktop-mpv-build-', dir=ROOT / 'build'))
     report = {'kind': 'source-built-lua-windows-mpv', 'buildPassed': False,
               'recipeSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'toolchainManifestSha256': hashlib.sha256((ROOT / 'build/native-cross-tools/report.json').read_bytes()).hexdigest(),
-              'mpvSource': prior['source'], 'luaSource': lua,
+              'mpvSource': prior['source'], 'luaSource': lua, 'patches': patches,
               'dependencyStages': prior['dependencyStages'], 'compilerReused': True,
               'installedRuntimeReplaced': False, 'distributionReady': False, 'commands': []}
     (ROOT / 'build/desktop-mpv-build-latest.json').write_text(json.dumps({'folder': str(folder)}))
@@ -54,8 +60,13 @@ def main():
         lua_tree, tree = folder / 'luajit', folder / 'mpv'
         lua_tree.mkdir(); tree.mkdir()
         run('extract-lua', ['tar', '-xf', str(lua_archive), '-C', str(lua_tree)])
-        run('extract-mpv', ['tar', '-xf', str(archives[0][0]), '-C', str(tree)])
-        run('lua-build', ['make', '-j4', 'HOST_CC=/usr/bin/gcc', 'CC=gcc',
+        run('extract-mpv', ['tar', '-xf', str(archives[0][0]), '-C', str(tree), '--no-same-owner', '--no-same-permissions'])
+        report['patchedSources'] = [{'name': name, 'before': hashlib.sha256((tree / name).read_bytes()).hexdigest()} for name in ('demux/ebml.c', 'demux/demux_mkv.c')]
+        for item in patches:
+            run('patch-mkv-index', ['patch', '--batch', '--fuzz=0', '-p1', '-i', str(ROOT / item['path'])], tree)
+        for item in report['patchedSources']:
+            item['after'] = hashlib.sha256((tree / item['name']).read_bytes()).hexdigest()
+        run('lua-build', ['make', '-j8', 'HOST_CC=/usr/bin/gcc', 'CC=gcc',
                           'CROSS=' + str(tools / 'bin/x86_64-w64-mingw32-'),
                           'TARGET_SYS=Windows', 'BUILDMODE=dynamic', 'XCFLAGS=-DLUAJIT_ENABLE_LUA52COMPAT'], lua_tree)
         lua_prefix = folder / 'lua-prefix'
@@ -76,7 +87,7 @@ def main():
         args = ['--prefix=' + str(folder / 'install') if arg.startswith('--prefix=') else
                 '-Dlibmpv=false' if arg == '-Dlibmpv=true' else '-Dlua=luajit' if arg == '-Dlua=disabled' else arg for arg in args]
         run('configure', args)
-        run('compile', [str(tools / 'root/usr/bin/ninja'), '-C', str(folder / 'build'), '-j4'])
+        run('compile', [str(tools / 'root/usr/bin/ninja'), '-C', str(folder / 'build'), '-j8'])
         runtime = folder / 'runtime'; runtime.mkdir()
         shutil.copyfile(folder / 'build/mpv.exe', runtime / 'mpv.exe')
         shutil.copyfile(lua_tree / 'src/lua51.dll', runtime / 'lua51.dll')

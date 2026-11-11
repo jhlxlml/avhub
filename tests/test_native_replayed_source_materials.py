@@ -15,15 +15,21 @@ class ReplayedMaterialsTests(unittest.TestCase):
         cls.inventory=json.loads((cls.folder/'inventory.json').read_text())
 
     def test_exact_cohort_and_corresponding_build_records(self):
-        pin=json.loads((ROOT/'ci/replayed-render-runtime.json').read_text())
+        pins=[json.loads((ROOT/name).read_text(encoding='utf-8')) for name in ('ci/replayed-render-runtime.json','ci/mkv-index-render-runtime.json')]
+        pin=next(item for item in pins if item['id']==self.inventory['cohort'])
         self.assertEqual(self.inventory['cohort'],pin['id'])
         self.assertIn(pin['id'],(self.folder/'README.txt').read_text())
         names={item['path'] for item in self.inventory['files']}
-        materials=json.loads((ROOT/'build/render-replayed-candidate-Aa7Otl/materials.json').read_text())
+        candidate=Path(self.inventory.get('candidate',ROOT/'build/render-replayed-candidate-Aa7Otl'))
+        materials=json.loads((candidate/'materials.json').read_text(encoding='utf-8'))
+        self.assertEqual(materials['subject'],pin)
         self.assertTrue(set(materials['buildRecords']).issubset(names))
         for archive in materials['sourceArchives']:
             self.assertIn(archive['archive'],names)
-        self.assertEqual(self.inventory['gitSourceArchives'],21)
+        for item in pin.get('patches',[]):
+            self.assertIn(item['path'],names)
+            self.assertEqual(hashlib.sha256((self.folder/item['path']).read_bytes()).hexdigest(),item['sha256'])
+        self.assertEqual(self.inventory['gitSourceArchives'],len(materials['sourceArchives']))
         self.assertEqual(self.inventory['supportSourcePackages'],3)
 
     def test_every_copied_byte_matches_inventory_without_media_or_binaries(self):

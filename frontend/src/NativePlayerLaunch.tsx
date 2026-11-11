@@ -30,6 +30,7 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
   const [renderMode]=useState(()=>preference<boolean>('nativeRenderEnabled',false));
   const [coordinatorEnabled]=useState(()=>preference<boolean>('playbackSessionCoordinatorEnabled',false));
   const renderDesktop=useMemo(()=>renderMode&&window.avhubDesktop?createRenderDesktop(window.avhubDesktop,{sessionCoordinatorEnabled:coordinatorEnabled,sessionRoot}):null,[renderMode,coordinatorEnabled,sessionRoot]);
+  const [settingsRequest,setSettingsRequest]=useState(0);
   const [attachedSession,setAttachedSession]=useState<string|null>(null);
   const [independent,setIndependent]=useState(()=>!renderMode&&preference<string>('mpvWindowMode','embedded')==='independent');
   const independentDesktop=useMemo(()=>!renderMode&&independent&&coordinatorEnabled&&window.avhubDesktop?createIndependentDesktop(window.avhubDesktop,sessionRoot):null,[renderMode,independent,coordinatorEnabled,sessionRoot]);
@@ -170,8 +171,13 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
     catch(e){if(alive.current)setError(errorText(e));}
     finally{navigation.current=false;if(alive.current)setQueueBusy(false);}
   }
+  async function copyIndependentDiagnostics(){
+    if(!session.current||!nativeDesktop)return;
+    try{const data=await nativeDesktop.nativePlayer('diagnostics',{session:session.current});await navigator.clipboard.writeText(JSON.stringify(data,null,2));notify('播放诊断已复制');}
+    catch(error){notify(`复制诊断失败：${nativeErrorText(error)}`);}
+  }
   async function independentAction(action:string){
-    try{if(session.current)await nativeDesktop!.nativePlayer(action,action==='screenshot'?{session:session.current}:session.current);}
+    try{if(session.current)await nativeDesktop!.nativePlayer(action,(action==='screenshot'||action==='show-settings')?{session:session.current}:session.current);}
     catch(e){setError(nativeErrorText(e));}
   }
   async function retryNative(){
@@ -202,9 +208,9 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
       <Button icon="favorite" disabled={favoriteBusy} aria-pressed={Boolean(media.favorite)} onClick={()=>void changeFavorite(media)}>{media.favorite?'已收藏':'收藏'}</Button>
       <MediaActions media={media} update={update} notify={notify}/></div>
     <div className={`video-wrap native-embedded-viewport${independent?' native-independent-card':''}`} ref={viewport} aria-label="MPV 原生播放区域" data-playback-session-kind={sessionDesktop?.getSessionState()?.identity?.engineKind} data-playback-session-phase={sessionDesktop?.getSessionState()?.phase} data-playback-session-generation={sessionDesktop?.getSessionState()?.identity?.generation} data-playback-session-root={sessionDesktop?.getSessionState()?.rootId}>
-      {renderDesktop&&attachedSession&&<NativePlayerOverlay desktop={nativeDesktop!} session={attachedSession} inline/>}
+      {renderDesktop&&attachedSession&&<NativePlayerOverlay desktop={nativeDesktop!} session={attachedSession} settingsRequest={settingsRequest} inline/>}
       {independent&&attachedSession&&<section className="native-embedded-placeholder"><Icon name={independentStopped?'info':nativeFailure?'warning':'play'} size={36}/><h2>{independentStopped?'播放窗口已关闭':nativeFailure?'原生播放失败':'正在独立窗口播放'}</h2>
-        {independentStopped?<><p>{recovery==='save'?'播放记录尚未保存，可重试或明确放弃本次未保存内容。':'正在确认退出并清理播放会话。'}</p>{recovery&&<div><Button icon="refresh" busy={recoveryBusy} onClick={()=>void resolveRecovery(false)}>{recovery==='save'?'重试保存并关闭':'重试清理'}</Button>{recovery==='save'&&<> <Button disabled={recoveryBusy} onClick={()=>void resolveRecovery(true)}>放弃未保存进度</Button></>}</div>}</>:nativeFailure?<p>查看下方原因后，可重试同一原文件；不会自动静音、转码或切换引擎。</p>:<><p>原文件原画播放 · 进度与连播由 AVHub 管理</p>{independentProgress&&<p>{independentProgress.paused?'已暂停':'播放中'} · {duration(independentProgress.position)} / {duration(independentProgress.length)}</p>}<p>空格暂停 · ← / → 跳转 · C 截图 · F 全屏</p><div><Button icon="play" onClick={()=>void independentAction('show')}>恢复播放窗口</Button> <Button icon="camera" onClick={()=>void independentAction('screenshot')}>保存截图</Button></div></>}
+        {independentStopped?<><p>{recovery==='save'?'播放记录尚未保存，可重试或明确放弃本次未保存内容。':'正在确认退出并清理播放会话。'}</p>{recovery&&<div><Button icon="refresh" busy={recoveryBusy} onClick={()=>void resolveRecovery(false)}>{recovery==='save'?'重试保存并关闭':'重试清理'}</Button>{recovery==='save'&&<> <Button disabled={recoveryBusy} onClick={()=>void resolveRecovery(true)}>放弃未保存进度</Button></>}</div>}</>:nativeFailure?<p>查看下方原因后，可重试同一原文件；不会自动静音、转码或切换引擎。</p>:<><p>原文件原画播放 · 进度与连播由 AVHub 管理</p>{independentProgress&&<p>{independentProgress.paused?'已暂停':'播放中'} · {duration(independentProgress.position)} / {duration(independentProgress.length)}</p>}<p>空格暂停 · ← / → 跳转 · C 截图 · F 全屏</p><div><Button icon="play" onClick={()=>void independentAction('show')}>恢复播放窗口</Button> <Button icon="camera" onClick={()=>void independentAction('screenshot')}>保存截图</Button> <Button icon="copy" onClick={()=>void copyIndependentDiagnostics()}>复制播放诊断</Button></div></>}
       </section>}
       {!attachedSession&&<section className="native-embedded-placeholder" aria-label="MPV 原生播放"><Icon name="play" size={36}/>
         {start===null?<><p>接着上次进度观看，还是从头开始？</p><Button onClick={()=>setStart(media.progress)}>继续观看</Button> <Button onClick={()=>setStart(0)}>从头播放</Button></>:<p role="status">{state}</p>}
@@ -212,7 +218,7 @@ export function NativePlayerLaunch({media,automatic=false,initialPosition,initia
         {start!==null&&!session.current&&(state==='原生播放已关闭'||error)&&<Button icon="refresh" busy={retryBusy} onClick={()=>void retryNative()}>重新播放</Button>}
       </section>}
     </div>
-    <div className="native-embedded-caption"><span>{state}</span><div className="native-caption-actions">{attachedSession&&nativeFailure&&!independentStopped&&<Button icon="refresh" busy={retryBusy} onClick={()=>void retryNative()}>重试原生播放</Button>}<Button icon="play" disabled={retryBusy} onClick={()=>void back(true)}>切换现有播放器</Button></div></div>
+    <div className="native-embedded-caption"><span>{state}</span><div className="native-caption-actions">{attachedSession&&!independentStopped&&(renderDesktop||independent)&&<Button icon="settings" onClick={()=>{if(renderDesktop)setSettingsRequest(value=>value+1);else void independentAction('show-settings');}}>跳播与播放设置</Button>}{attachedSession&&nativeFailure&&!independentStopped&&<Button icon="refresh" busy={retryBusy} onClick={()=>void retryNative()}>重试原生播放</Button>}<Button icon="play" disabled={retryBusy} onClick={()=>void back(true)}>切换现有播放器</Button></div></div>
     {attachedSession&&error&&<StatusMessage kind="error">{error}</StatusMessage>}
     {attachedSession&&saveError&&saveError!==error&&<StatusMessage kind="error">{saveError}</StatusMessage>}
     <PlaybackQueue media={media} queue={queue} busy={queueBusy} play={target=>void choose(target)} siblings={siblings} setSiblings={setSiblings} reveal={queueReveal}

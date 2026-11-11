@@ -1,6 +1,6 @@
 import {cancelled,type MediaSource,type PlaybackEngine,type PlaybackState,type PlaybackTarget,type Track} from './types';
 
-export type NativeSnapshot={session:string;generation:number;mediaId:number;revision:number;status:PlaybackState['status'];positionSec:number;durationSec:number|null;volume:number;muted:boolean;rate:number;videoSize?:{width:number;height:number};tracks:Track[];error?:PlaybackState['error'];presented?:{serial:number;positionSec:number;seekId:number};sourceIdentity?:string|null;subtitleDelaySec?:number;playIntent?:boolean};
+export type NativeSnapshot={session:string;generation:number;mediaId:number;revision:number;status:PlaybackState['status'];positionSec:number;durationSec:number|null;volume:number;muted:boolean;rate:number;videoSize?:{width:number;height:number};tracks:Track[];error?:PlaybackState['error'];seekDiagnostics?:{seekId:number;strategy:'exact'|'keyframe';target:number};presented?:{serial:number;positionSec:number;seekId:number};sourceIdentity?:string|null;subtitleDelaySec?:number;playIntent?:boolean};
 export type NativeCommand='play'|'pause'|'seek'|'cancel-seek'|'volume'|'mute'|'rate'|'track'|'subtitle-delay';
 export type NativeOpen={mediaId:number;generation:number;startSec:number;autoplay:boolean};
 export interface NativeEnginePort {
@@ -82,13 +82,21 @@ export class MpvEngine implements PlaybackEngine {
   this.state={...this.state,status:value.status,positionSec:value.positionSec,durationSec:value.durationSec,volume:value.volume,muted:value.muted,rate:value.rate,error:value.error,videoSize:value.videoSize?{...value.videoSize}:undefined};
   let seekComplete=false;const frame=value.presented;if(frame&&Number.isSafeInteger(frame.serial)&&frame.serial>this.lastPresented&&finite(frame.positionSec,0)){
    this.lastPresented=frame.serial;const seek=this.seeking;
-   if(seek&&frame.seekId===seek.id&&frame.serial>seek.after&&Math.abs(frame.positionSec-seek.target)<=.1){this.seeking=null;clearTimeout(seek.timer);seekComplete=true;seek.resolve();}
+   if(seek&&frame.seekId===seek.id&&frame.serial>seek.after&&(Math.abs(frame.positionSec-seek.target)<=.1||value.seekDiagnostics?.seekId===seek.id&&value.seekDiagnostics.strategy==='keyframe'&&value.seekDiagnostics.target===seek.target)){this.seeking=null;clearTimeout(seek.timer);seekComplete=true;seek.resolve();}
   }
   if(value.status==='error')this.cancelSeek(new Error(value.error?.message||'原生跳播失败'));this.publish(seekComplete||before!==JSON.stringify([{...this.state,positionSec:0},this.tracks,this.sourceIdentity,this.subtitleDelay,this.playIntent]));
  }
  private current(){if(this.disposed||!this.session||this.state.generation!==this.session.generation)throw cancelled();return this.session;}
  private async command(action:NativeCommand,value?:unknown){const active=this.current();await this.port.command(active.id,active.generation,action,value);if(this.disposed||this.session!==active||this.state.generation!==active.generation)throw cancelled();}
- play(){return this.command('play');}pause(){return this.command('pause');}
+ private playRequest=0;
+ async play(){
+  const request=++this.playRequest;
+  // libmpv keep-open retains EOF; unpausing alone cannot replay it. Preserve
+  // a user-selected pending seek, and wait for a real first frame at zero.
+  if(this.state.status==='ended'&&!this.seeking)await this.seekTo(0);
+  if(request===this.playRequest)await this.command('play');
+ }
+ pause(){this.playRequest++;return this.command('pause');}
  seekTo(seconds:number):Promise<void>{
   if(!finite(seconds,0))return Promise.reject(new RangeError('跳播时间无效'));
   try{this.current();}catch(error){return Promise.reject(error);}

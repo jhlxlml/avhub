@@ -23,4 +23,10 @@ class LocalEvidenceGateTests(unittest.TestCase):
         calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Attribute) and isinstance(node.func.value,ast.Name) and node.func.value.id=='subprocess' and node.func.attr=='run']
         invocation=next(call for call in calls if any(isinstance(node,ast.Constant) and node.value=='scripts/verify-local-build-evidence.py' for node in ast.walk(call)))
         self.assertTrue(any(k.arg=='check' and isinstance(k.value,ast.Constant) and k.value.value is True for k in invocation.keywords))
-        self.assertEqual(len(gate.SUITES),6)
+        self.assertTrue({'test_native_source_replay.ActualReplayEvidenceTests',
+                         'test_native_dependency_replay.ActualRenderingReplayTests',
+                         'test_native_media_replay.ActualMediaReplayTests',
+                         'test_native_replayed_source_materials.ReplayedMaterialsTests',
+                         'test_native_source_materials.NativeSourceMaterialsTests',
+                         'test_backend_source_replay.BackendSourceReplayTests',
+                         'test_native_source_delivery.NativeDeliveryContracts'}.issubset(gate.SUITES))

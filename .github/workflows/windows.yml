@@ -81,6 +81,14 @@ jobs:
         run: |
           node electron/test/mpv-client.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/mpv-write-queue.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-runtime-prepare.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/render-priority.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test electron/test/native-shader-cache.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/native-audio.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node electron/test/native-startup-failure.mjs

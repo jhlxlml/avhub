@@ -7,13 +7,12 @@ import {createHash} from 'node:crypto';
 import path from 'node:path';
 const require=createRequire(import.meta.url),root=path.resolve(import.meta.dirname,'../..');
 const {resolveRenderRuntime}=require('../dist/renderRuntimeLayout.js');
-const {replayedRenderPin:pin}=require('../dist/replayedRenderPin.js');
 const stage=JSON.parse(readFileSync(path.join(root,'build/replayed-render-staging.json'),'utf8')).folder;
 function fixture(){
  const resources=mkdtempSync(path.join(root,'build/render-desktop-policy-'));
  mkdirSync(path.join(resources,'native-render'));
  const manifest=path.join(resources,'native-render/runtime.json');copyFileSync(path.join(stage,'runtime.json'),manifest);
- const marker={schema:1,purpose:'desktop-native-render',candidate:path.basename(stage),cohort:pin.id,
+ const marker={schema:1,purpose:'desktop-native-render',candidate:path.basename(stage),cohort:JSON.parse(readFileSync(manifest,'utf8')).cohort,
   manifestSha256:createHash('sha256').update(readFileSync(manifest)).digest('hex')};
  const file=path.join(resources,'native-render-desktop.json');writeFileSync(file,JSON.stringify(marker));return {resources,file,marker,manifest};
 }

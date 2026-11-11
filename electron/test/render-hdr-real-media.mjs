@@ -1,9 +1,9 @@
+import {placeTestMedia,mediaHash} from './media-pool.mjs';
 // Actual Electron HDR rendering evidence. Original user media stays read-only.
 // Captured pixels are not a colorimetric or physical HDR-output certificate.
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
-import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,statSync,writeFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
+import {mkdirSync,mkdtempSync,readFileSync,statSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {createRequire} from 'node:module';
@@ -14,12 +14,12 @@ const packagedExe=process.env.AVHUB_TEST_PACKAGED_EXE,collectTiming=['1','method
 assert.ok(!packagedExe||path.isAbsolute(packagedExe),'Packaged HDR acceptance requires an explicit absolute executable');
 const source=process.argv[2]??'E:/downloads/The World in HDR in 4K (ULTRA HD).mkv';
 const seconds=Number(process.env.AVHUB_HDR_REPRO_SECONDS??15);assert.ok(Number.isInteger(seconds)&&seconds>=15&&seconds<=1200);
-const identity=()=>({sha256:createHash('sha256').update(readFileSync(source)).digest('hex'),mtime:statSync(source).mtimeMs});
-const before=identity(),folder=mkdtempSync(path.join(root,'build/hdr-real-media-')),media=path.join(folder,'media');mkdirSync(media);copyFileSync(source,path.join(media,'HDR.mkv'));
+const identity=()=>({sha256:mediaHash(source),mtime:statSync(source).mtimeMs});
+const before=identity(),folder=mkdtempSync(path.join(root,'build/hdr-real-media-')),media=path.join(folder,'media');mkdirSync(media);placeTestMedia(source,path.join(media,'HDR.mkv'));
 const report={scope:'actual Electron compositor evidence, not physical HDR certification',source,before,phase:process.env.AVHUB_HDR_REPRO_PHASE??'diagnostic',captures:[],captureCompleted:false};let desktop,page;
 let layoutSession,layoutContext;
 try{
- desktop=await _electron.launch({...(packagedExe?{executablePath:packagedExe,args:[]}:{args:[root]}),cwd:folder,env:{...process.env,AVHUB_DATA_DIR:folder,AVHUB_RENDER_RUNTIME_CANDIDATE:packagedExe?'':'render-replayed-candidate-7wRYRz',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+ desktop=await _electron.launch({...(packagedExe?{executablePath:packagedExe,args:[]}:{args:[root]}),cwd:folder,env:{...process.env,AVHUB_DATA_DIR:folder,AVHUB_RENDER_RUNTIME_CANDIDATE:packagedExe?'':process.env.AVHUB_RENDER_RUNTIME_CANDIDATE??'',AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
  page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();report.subject=await desktopTestSubject(desktop,import.meta.url);
  assert.equal(report.subject.kind,packagedExe?'packaged-desktop':'source-desktop');
  report.timingObserverEnabled=collectTiming;
@@ -36,6 +36,11 @@ try{
  }
  await page.evaluate(()=>{window.__hdrTransitions=[];window.avhubDesktop.onRenderState(state=>{const previous=window.__hdrState;window.__hdrState=state;if(!previous||previous.properties.pause!==state.properties.pause||previous.playIntent!==state.playIntent||previous.clock?.active!==state.clock?.active||previous.properties['frame-drop-count']!==state.properties['frame-drop-count']||previous.properties['decoder-frame-drop-count']!==state.properties['decoder-frame-drop-count']){window.__hdrTransitions.push({atMs:performance.now(),position:state.positionSec,pause:state.properties.pause,intent:state.playIntent,clock:state.clock,decoderDrops:state.properties['decoder-frame-drop-count'],outputDrops:state.properties['frame-drop-count'],serial:state.presented?.serial});if(window.__hdrTransitions.length>128)window.__hdrTransitions.shift();}});});await page.getByRole('button',{name:'播放 HDR',exact:true}).click();
  const canvas=page.locator('.native-render-canvas');await expect(canvas).toBeVisible({timeout:30000});await expect.poll(()=>canvas.getAttribute('data-native-frame'),{timeout:20000}).not.toBeNull();
+ if(process.env.AVHUB_HDR_CACHE_REOPEN==='1'){
+  await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.avhubDesktop.renderPlayer('status'))).toMatchObject({active:false});
+  await page.evaluate(()=>window.__hdrState=null);await page.getByRole('button',{name:'播放 HDR',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__hdrState?.firstFrameMs),{timeout:30000}).toBeGreaterThan(0);report.cacheWarmReopen=true;
+ }
  await page.keyboard.press('Space');await expect.poll(()=>page.evaluate(()=>window.__hdrState.properties.pause)).toBe(true);
  report.displays=await desktop.evaluate(({screen})=>screen.getAllDisplays());
  for(const display of report.displays){

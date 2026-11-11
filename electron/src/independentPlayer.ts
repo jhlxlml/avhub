@@ -32,7 +32,7 @@ export class IndependentPlayer{
     if(this.active!==s||s.closing)return;s.revision++;
     const activity=JSON.stringify(this.activityBody(s,true));
     if(this.activityState.get(s)!==activity){this.activityState.set(s,activity);void this.activity(s,true).catch(()=>this.deps.log('native-independent-priority-not-saved'));}
-    if(s.client.snapshot.phase==='error'&&!s.failed){s.failed=true;this.event(s,'error',s.client.snapshot.error||'独立播放失败，未自动转码');}
+    if(s.client.snapshot.phase==='error'&&!s.failed){s.failed=true;this.deps.log('native-independent-failure '+JSON.stringify({transport:s.client.transport,failureCode:s.client.snapshot.failureCode??null}));this.event(s,'error',s.client.snapshot.error||'独立播放失败，未自动转码');}
     if(s.client.snapshot.phase==='ready')s.ended=false;
     if(s.ready&&s.client.snapshot.phase==='ended'&&s.client.endReason==='natural'&&!s.ended){s.ended=true;this.event(s,'ended');}
     if(!s.publishTimer)s.publishTimer=setTimeout(()=>{s.publishTimer=undefined;if(this.active===s&&!s.closing)this.deps.send('avhub:native-state',this.view(s));},200);
@@ -48,6 +48,7 @@ export class IndependentPlayer{
         if(args[1]==='screenshot')void this.capture(s).catch(()=>{});
         else if(args[1]==='next'||args[1]==='previous')this.event(s,String(args[1]));
       });
+      client.snapshot.seekPolicy=prefs.values?.mpvSeekPolicy??'exact';
       s={client,mediaId,title:String(source.title),owner,closing:false,stopped:false,cleanupError:'',failed:false,ended:false,ready:false,timer:setInterval(()=>{if(s&&!s.closing)void this.save(s).catch(()=>{});},3000),persist:Promise.resolve(),memory,externalSubtitles:(item.external_subtitles??[]).map((v:any)=>String(v.path)),memoryRetired:false,lastMemory:'',lastAudio:'',saveError:'',revision:0,started:performance.now()};
       this.active=s;
       await this.activity(s,true);
@@ -57,7 +58,7 @@ export class IndependentPlayer{
       await writeFile(input,independentInput(prefs.values?.mouseSeekSeconds??5),{encoding:'utf8',flag:'wx'});
       s.theme??=nativeThemeColors(prefs.values?.appearance);
       const initialTheme=s.theme;
-      const controller=path.join(s.directory,'avhub_ui.lua');await writeFile(controller,independentControllerForTheme(initialTheme),{encoding:'utf8',flag:'wx'});
+      const controller=path.join(s.directory,'avhub_ui.lua');await writeFile(controller,independentControllerForTheme(initialTheme,client.snapshot.seekPolicy),{encoding:'utf8',flag:'wx'});
       s.themeSent=nativeColorsJson(initialTheme);
       if(this.cancelled)throw new Error('独立播放启动已取消');
       const restore=async()=>{
@@ -68,13 +69,18 @@ export class IndependentPlayer{
       };
       const audio=prefs.values?.audio||{volume:1,muted:false},style=subtitleStyle(prefs.values?.subtitleAppearance??defaultSubtitleAppearance);
       await client.start(this.deps.runtime(),String(source.path),null,start,[`--volume=${Math.max(0,Math.min(100,Number(audio.volume)*100))}`,`--mute=${audio.muted===true?'yes':'no'}`,`--speed=${Number(prefs.values?.playbackSpeed)||1}`,'--sub-ass-override=no',...subtitleOptions(style).map(([key,value])=>`--${key}=${value}`)],memory.audio!==null||memory.subtitle!==null||memory.delay!==0?restore:undefined,input,controller,!paused);
-      const uiDeadline=performance.now()+2000;let uiReady=false;
+      // OSD cannot render until the native output exists. Keep the source startup
+      // budget while MPV is starting, then allow 2s for the actual controller.
+      const uiStarted=performance.now(),uiDeadline=uiStarted+30000;let uiReady=false,outputReadyDeadline:number|undefined;
       do{
+        if(client.snapshot.phase==='error'||client.snapshot.phase==='closed')break;
+        if(client.snapshot.phase!=='starting')outputReadyDeadline??=performance.now()+2000;
         try{uiReady=await client.command(['get_property','user-data/avhub-ui/version'])===1;}catch{}
         if(uiReady)break;if(s.closing||this.cancelled)throw new Error('独立播放启动已取消');
         await new Promise(resolve=>setTimeout(resolve,25));
-      }while(performance.now()<uiDeadline);
-      if(!uiReady)throw new Error('独立播放控制栏初始化失败，请重试或切回内嵌模式');
+      }while(performance.now()<uiDeadline&&(outputReadyDeadline===undefined||performance.now()<outputReadyDeadline));
+      this.deps.log(`native-controls-startup ready=${uiReady} elapsed_ms=${Math.round(performance.now()-uiStarted)} phase=${client.snapshot.phase}`);
+      if(!uiReady)throw new Error(client.snapshot.error||'独立播放控制栏初始化失败，请重试或切回内嵌模式');
       await client.command(['script-message-to','avhub_ui','title',s.title]);
       if(this.active!==s||s.closing||this.cancelled||['closed','error'].includes(client.snapshot.phase))throw new Error(client.snapshot.error||'独立播放启动已取消');
       s.ready=true;
@@ -177,11 +183,19 @@ export class IndependentPlayer{
       }
       return {ok:true};
     }
-    const request=input as {session?:unknown;value?:unknown};
+    const request=input as {session?:unknown;value?:unknown;inputAt?:unknown};
     if(!request||typeof request!=='object'||request.session!==s.client.session||s.closing)throw new Error('独立播放会话已过期');
+    if(action==='show-settings'){if(s.stopped)throw new Error('播放窗口已关闭');await s.client.command(['script-message-to','avhub_ui','show-settings']);return {ok:true};}
+    if(action==='diagnostics')return {engine:'mpv-exe',transport:s.client.transport,seek:s.client.snapshot.seekDiagnostics??null,sourceLoads:s.client.snapshot.sourceLoads,hardwareDecoder:s.client.snapshot.properties['hwdec-current']??null};
+    if(action==='seek-policy'){
+      const value=request.value;
+      if(s.stopped||(value!=='exact'&&value!=='fast'&&value!=='smart'))throw new Error('跳播模式无效');
+      await s.client.command(['script-message-to','avhub_ui','seek-policy',value]);
+      s.client.snapshot.seekPolicy=value;s.client.emit();return {ok:true};
+    }
     if(action==='seek'){
       if(s.stopped||s.capture||typeof request.value!=='number'||!Number.isFinite(request.value)||request.value<0||request.value>1e8)throw new Error('独立播放跳播参数无效或截图正在保存');
-      s.client.seek(request.value);return {ok:true};
+      const at=request.inputAt,now=Date.now();s.client.seek(request.value,typeof at==='number'&&at>=now-30000&&at<=now+100?at:null);return {ok:true};
     }
     if(action==='screenshot')return this.capture(s);
     throw new Error('此操作由独立 MPV 窗口控制');
@@ -206,7 +220,7 @@ export class IndependentPlayer{
       if(s.directory){const parent=path.join(await realpath(this.deps.data()),'native-inputs');if(!(await lstat(s.directory)).isSymbolicLink()&&await realpath(s.directory)===path.join(parent,path.basename(s.directory)))await rm(s.directory,{recursive:true,force:true});else this.deps.log('native-input-cleanup-refused ownership-changed');}
       s.directory=undefined;
       if(unsaved)throw new Error(s.saveError);
-      this.active=null;this.deps.send('avhub:native-closed',{session:s.client.session,mediaId:s.mediaId,ended:s.client.snapshot.properties['eof-reached']===true});this.deps.log('native-independent-closed');
+      this.active=null;this.deps.send('avhub:native-closed',{session:s.client.session,mediaId:s.mediaId,ended:s.client.snapshot.properties['eof-reached']===true});this.deps.log('native-independent-closed '+JSON.stringify({transport:s.client.transport}));
     })().finally(()=>{if(this.active===s){s.closing=false;if(!s.stopped)s.timer=setInterval(()=>{if(!s.closing)void this.save(s).catch(()=>{});},3000);this.publish(s);}this.closing=null;});return this.closing;
   }
 }

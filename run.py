@@ -1,10 +1,15 @@
+import sys
+from app import startup_trace
+if sys.argv[1:2]!=['--migrate-data']:startup_trace.begin()
 from app.sqlite_runtime import initialize
 initialize()  # Before uvicorn, app imports, migration, or any database access.
+startup_trace.mark('sqlite-runtime-ready')
 
 import argparse
 import os
 import sys
 import uvicorn
+startup_trace.mark('web-framework-ready')
 
 # The dedicated migration command must not import/create a media library.
 # Normal launches keep the established module interface for shutdown tooling.
