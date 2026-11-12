@@ -3,6 +3,22 @@ import {LibraryPageCache} from '../../frontend/src/libraryCache';
 
 test.beforeEach(async({request})=>{expect((await request.post('/test/reset')).ok()).toBe(true);});
 
+test('warm category changes return to the first row without a new media request',async({page})=>{
+  await page.setViewportSize({width:1000,height:650});
+  await page.goto('/');await expect(page.locator('.card')).toHaveCount(48);
+  await Promise.all([page.waitForResponse(r=>new URL(r.url()).pathname==='/api/media'),page.getByRole('button',{name:'电影',exact:true}).click()]);
+  await expect(page.locator('.card')).toHaveCount(48);
+  await page.getByRole('button',{name:'全部视频',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'全部视频',exact:true})).toBeVisible();
+  await page.evaluate(()=>window.scrollTo(0,800));await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(300);
+  let requests=0;page.on('request',r=>{if(new URL(r.url()).pathname==='/api/media')requests++;});
+  // Dispatch without Playwright scrolling the top navigation into view first.
+  await page.getByRole('button',{name:'电影',exact:true}).evaluate(button=>(button as HTMLButtonElement).click());
+  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBe(0);
+  await expect(page.getByRole('heading',{name:'电影',exact:true})).toBeVisible();
+  expect(requests).toBe(0);
+});
+
 test('library cache is revision-aware, expires old data and evicts least-recently-used pages',()=>{
   const cache=new LibraryPageCache(3);
   for(const key of ['a','b','c'])cache.put(key,1,key);

@@ -21,10 +21,10 @@ try{
  if(packagedExe){report.kind='real-packaged-avhub-electron-render-api';report.packaged=await desktop.evaluate(({app})=>({isPackaged:app.isPackaged,appPath:app.getAppPath(),resources:process.resourcesPath,exe:process.execPath}));assert.equal(report.packaged.isPackaged,true);assert.equal(path.resolve(report.packaged.exe).toLowerCase(),path.resolve(packagedExe).toLowerCase());assert.equal(path.resolve(report.packaged.resources).toLowerCase(),path.join(path.dirname(packagedExe),'resources').toLowerCase());}
  report.subject=await desktopTestSubject(desktop,import.meta.url);
  const errors=[];page.on('pageerror',error=>errors.push(String(error)));await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
- if(packagedExe||process.env.AVHUB_RENDER_RUNTIME_CANDIDATE)await desktop.evaluate(({app})=>{const base=app.getAppPath(),require=process.getBuiltinModule('node:module').createRequire(base+'/package.json'),{RenderHostClient}=require(base+'/electron/dist/renderHostClient.js'),open=RenderHostClient.prototype.open;RenderHostClient.prototype.open=function(...args){return open.apply(this,args).then(value=>{globalThis.__renderLayoutPid=this.pid;return value;});};});
+ if(packagedExe||process.env.AVHUB_RENDER_RUNTIME_CANDIDATE)await desktop.evaluate(({app})=>{const base=app.getAppPath(),require=process.getBuiltinModule('node:module').createRequire(base+'/package.json'),{RenderHostClient}=require(base+'/electron/dist/renderHostClient.js'),open=RenderHostClient.prototype.open;RenderHostClient.prototype.open=function(...args){return open.apply(this,args).then(value=>{globalThis.__renderLayoutPid=this.pid;globalThis.__renderFlowClient=this;return value;});};});
  const api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();},{url,method,body});
  await api('/api/roots','POST',{path:media});await api('/api/scan','POST');await expect.poll(async()=>(await api('/api/scan')).state,{timeout:30000}).toBe('completed');
- await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',nativeRenderEnabled:true,...(sessionCoordinator?{playbackSessionCoordinatorEnabled:true}:{}),resumeBehavior:'restart',autoNext:false,audio:{volume:0,muted:true}}});await page.reload();await page.evaluate(()=>window.avhubDesktop.onRenderState(s=>window.__renderFlowState=s));await page.getByRole('button',{name:'播放 '+title,exact:true}).click();
+ await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',mpvSeekPolicy:'exact',nativeRenderEnabled:true,...(sessionCoordinator?{playbackSessionCoordinatorEnabled:true}:{}),resumeBehavior:'restart',autoNext:false,audio:{volume:0,muted:true}}});await page.reload();await page.evaluate(()=>window.avhubDesktop.onRenderState(s=>window.__renderFlowState=s));await page.getByRole('button',{name:'播放 '+title,exact:true}).click();
  const canvas=page.locator('.native-render-canvas');await expect(canvas).toBeVisible({timeout:30000});await expect.poll(()=>canvas.getAttribute('data-native-frame'),{timeout:20000}).not.toBeNull();
  const sessionRegion=page.getByLabel('MPV 原生播放区域',{exact:true});
  if(sessionCoordinator){await expect(sessionRegion).toHaveAttribute('data-playback-session-phase','ready');report.sessionGeneration=Number(await sessionRegion.getAttribute('data-playback-session-generation'));assert.ok(Number.isSafeInteger(report.sessionGeneration)&&report.sessionGeneration>0);}
@@ -44,6 +44,29 @@ try{
   await reveal();await timeline.evaluate((node,target)=>{node.value=String(target);node.dispatchEvent(new Event('input',{bubbles:true}));},frame/25);
   await expect.poll(async()=>(await pixels()).code,{timeout:15000}).toBe(frame);const proof=await pixels();assert.ok(proof.values.every(([r,g,b])=>Math.abs(r-g)<12&&Math.abs(r-b)<12&&(r<60||r>180)));report.pixelSeeks.push({requestedFrame:frame,proof});
  }
+ // Exercise the real renderer adapter/export action without changing OS clipboard.
+ if(process.env.AVHUB_TEST_CONTROL_SETTINGS==='1')await page.evaluate(()=>{
+  window.__controlEvents=[];const record=value=>{window.__controlEvents.push({at:performance.now(),...value});if(window.__controlEvents.length>128)window.__controlEvents.shift();};
+  for(const kind of ['mousemove','mouseout','mouseleave','scroll'])document.addEventListener(kind,event=>{const node=event.target;record({kind,target:node instanceof Element?node.tagName+'.'+node.getAttribute('class'):null,related:event.relatedTarget instanceof Element?event.relatedTarget.tagName+'.'+event.relatedTarget.getAttribute('class'):null,x:event.clientX,y:event.clientY});},true);
+  new MutationObserver(()=>record({kind:'stage-class',value:document.querySelector('.native-stage')?.className})).observe(document.querySelector('.native-stage'),{attributes:true,attributeFilter:['class']});
+ });
+ await page.evaluate(()=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>{window.__renderDiagnosticExport=JSON.parse(text);}}}));
+ const settingsButton=page.getByRole('button',{name:'播放设置与信息',exact:true});
+ for(let turn=0;turn<3;turn++){
+  const bounds=await sessionRegion.boundingBox();assert.ok(bounds);
+  await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
+  await expect(page.getByRole('region',{name:'原生视频播放器',exact:true})).not.toHaveClass(/controls-visible/);
+  await reveal('播放设置与信息');await page.waitForTimeout(650);
+  await expect(page.getByRole('region',{name:'原生视频播放器',exact:true})).toHaveClass(/controls-visible/);
+  await settingsButton.click({timeout:5000});
+  if(turn<2)await page.getByRole('button',{name:'关闭播放设置',exact:true}).click();
+ }
+ if(packagedExe||process.env.AVHUB_RENDER_RUNTIME_CANDIDATE){report.frameNotifications=await desktop.evaluate(()=>typeof globalThis.__renderFlowClient.frameNotificationStats==='function'?globalThis.__renderFlowClient.frameNotificationStats():null);if(process.env.AVHUB_TEST_EXPECT_FRAME_NOTIFICATIONS==='1')assert.ok(report.frameNotifications?.received>0);if(process.env.AVHUB_TEST_EXPECT_FRAME_NOTIFICATIONS==='0')assert.equal(report.frameNotifications?.received,0);}
+ report.settingsControl={hoverRetentionMs:650,cycles:3,entry:'actual-control-bar-normal-click'};
+ await page.getByRole('button',{name:'复制播放诊断',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>window.__renderDiagnosticExport?.dropCounterScope)).toBe('current-mpv-reading-may-reset-on-seek');
+ const diagnostics=await page.evaluate(()=>window.__renderDiagnosticExport);assert.equal(diagnostics.engine,'libmpv-render-d3d11');assert.equal(diagnostics.dropped,await page.evaluate(()=>window.__renderFlowState.properties['frame-drop-count']??null));assert.equal(diagnostics.decoderDropped,await page.evaluate(()=>window.__renderFlowState.properties['decoder-frame-drop-count']??null));report.controlEvents=await page.evaluate(()=>window.__controlEvents??[]);report.dropCounterExport={scope:diagnostics.dropCounterScope,dropped:diagnostics.dropped,decoderDropped:diagnostics.decoderDropped};
+ await page.getByRole('button',{name:'关闭播放设置',exact:true}).click();
  await page.evaluate(()=>{window.__captureNotices=[];new MutationObserver(()=>{const text=document.querySelector('.native-notice')?.textContent;if(text&&window.__captureNotices.at(-1)!==text)window.__captureNotices.push(text);}).observe(document.body,{subtree:true,childList:true,characterData:true});});
  await reveal();await page.getByRole('button',{name:'截图（C）',exact:true}).click();await expect.poll(async()=>page.evaluate(()=>window.__captureNotices.some(s=>s.includes('截图已保存：'))),{timeout:30000}).toBe(true);report.screenshotSaved=true;const screenshotDir=path.join(data,'screenshots'),pngFile=readdirSync(screenshotDir).find(n=>n.endsWith('.png'));assert.ok(pngFile);const png=readFileSync(path.join(screenshotDir,pngFile));assert.equal(png.readUInt32BE(16),width);assert.equal(png.readUInt32BE(20),height);report.screenshot={width,height,bitDepth:png[24]};if(depth===10)assert.equal(png[24],16,'SDR10 PNG must retain high bit depth');
  await page.keyboard.press('Space');await expect.poll(async()=>(await pixels()).code,{timeout:10000}).toBeGreaterThan(10);await timeline.evaluate(node=>{node.value='4';node.dispatchEvent(new Event('input',{bubbles:true}));});await expect.poll(async()=>{const code=(await pixels()).code;return code>=100&&code<120;},{timeout:10000}).toBe(true);await expect.poll(()=>page.evaluate(()=>window.__renderFlowState.pendingSeek)).toBe(null);await page.keyboard.press('Space');await expect.poll(()=>page.evaluate(()=>window.__renderFlowState.properties.pause)).toBe(true);report.playingSeekAndSpace=true;
@@ -74,7 +97,7 @@ try{
   await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect(page.locator('.card')).toHaveCount(1);
  }
  assert.deepEqual(identity(),before);assert.deepEqual(errors,[]);report.passed=true;report.sourceAfter=identity();await page.screenshot({path:path.join(data,'library-after.png')});
-}catch(error){report.passed=false;report.error=String(error.stack||error);if(page){report.body=await page.locator('body').innerText().catch(()=>'<closed>');report.notices=await page.evaluate(()=>window.__captureNotices).catch(()=>[]);await page.screenshot({path:path.join(data,'failure.png')}).catch(()=>{});}throw error;}
+}catch(error){report.passed=false;report.error=String(error.stack||error);if(page){report.body=await page.locator('body').innerText().catch(()=>'<closed>');report.controlEvents=await page.evaluate(()=>window.__controlEvents??[]).catch(()=>[]);report.notices=await page.evaluate(()=>window.__captureNotices).catch(()=>[]);await page.screenshot({path:path.join(data,'failure.png')}).catch(()=>{});}throw error;}
 finally{
  writeFileSync(path.join(data,'report.json'),JSON.stringify(report,null,2));
  if(desktop){

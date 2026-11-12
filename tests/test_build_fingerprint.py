@@ -27,6 +27,7 @@ class NestedUIBuildFingerprintTests(unittest.TestCase):
                 'frontend/src/components/ui/button.tsx': 'export const button=1',
                 'frontend/src/lib/utils.ts': 'export const cn=1',
                 'electron/src/main.ts': 'export const desktop=1',
+                'electron/native/render/RenderHost.cs': '// native host',
                 'app/static/assets/generated.css': 'body{color:red}',
                 'frontend/public/fonts/owned.woff2':'fixture font',
             }
@@ -58,10 +59,13 @@ class NestedUIBuildFingerprintTests(unittest.TestCase):
             self.assertNotEqual(first, second)
             (root / 'app/static/assets/generated.css').write_text('body{color:blue}')
             self.assertEqual(second, capture())
-            for relative in ('package-lock.json','requirements.txt','frontend/public/fonts/owned.woff2','scripts/frontend-notices.mjs'):
+            for relative in ('package-lock.json','requirements.txt','frontend/public/fonts/owned.woff2','scripts/frontend-notices.mjs','electron/native/render/RenderHost.cs','scripts/write-build-info.mjs'):
                 previous=capture()
-                with (root/relative).open('a',encoding='utf-8') as file:file.write('\nchanged')
+                with (root/relative).open('a',encoding='utf-8') as file:file.write('\n// changed' if relative.endswith(('.mjs','.cs')) else '\nchanged')
                 self.assertNotEqual(previous,capture(),relative)
+            previous=capture()
+            (root/'electron/native/render/generated.exe').write_bytes(b'generated output')
+            self.assertEqual(previous,capture())
             previous=capture()
             (root/'frontend/public/new-image.svg').write_text('<svg/>',encoding='utf-8')
             self.assertNotEqual(previous,capture())

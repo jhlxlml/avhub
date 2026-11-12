@@ -5,7 +5,7 @@ import {Icon} from './Icon';
 import {Button,StatusMessage} from './ui';
 
 export function NativePlayerSettings({busy,changeBusy}:{busy:boolean;changeBusy:(value:boolean)=>void}){
-  const [seekPolicy,setSeekPolicy]=useState(()=>preference('mpvSeekPolicy','exact'));
+  const [seekPolicy,setSeekPolicy]=useState(()=>preference('mpvSeekPolicy','fast'));
   const [renderRuntime,setRenderRuntime]=useState('');
   const [engine,setEngine]=useState(()=>preference('playerEngine','chromium'));
   // Preserve legacy MPV defaults; first-time opt-in recommends the native

@@ -55,7 +55,9 @@ sealed class D3dSurface : IDisposable {
   var id=new Guid("30961379-4609-4a41-998e-54fe567ee0c1");Hr(Com<Query>(texture,0)(texture,ref id,out resource),"Query shared resource");Hr(Com<Share>(resource,13)(resource,IntPtr.Zero,0x80000001,IntPtr.Zero,out share),"Create shared NT handle");
  }
  public void LockForDraw(){if(AwaitingRelease)throw new Exception("Previous GPU readers remain");long now=System.Diagnostics.Stopwatch.GetTimestamp();if(FloatingPoint&&now-lastBudgetCheck>System.Diagnostics.Stopwatch.Frequency){CheckBudget(false);lastBudgetCheck=now;}}
- public void UnlockAfterDraw(){Com<EndQuery>(context,28)(context,query);Com<Flush>(context,111)(context);var data=Marshal.AllocHGlobal(4);try{int status,count=0;while((status=Com<QueryData>(context,29)(context,query,data,4,0))==1){if(++count>1000)throw new Exception("D3D11 GPU completion timeout");Thread.Sleep(1);}Hr(status,"D3D11 GPU completion");}finally{Marshal.FreeHGlobal(data);}Interlocked.Increment(ref frame);AwaitingRelease=true;}
+ public void WaitForDrawCompletion(){Com<EndQuery>(context,28)(context,query);Com<Flush>(context,111)(context);var data=Marshal.AllocHGlobal(4);try{int status,count=0;while((status=Com<QueryData>(context,29)(context,query,data,4,0))==1){if(++count>1000)throw new Exception("D3D11 GPU completion timeout");Thread.Sleep(1);}Hr(status,"D3D11 GPU completion");}finally{Marshal.FreeHGlobal(data);}}
+ public void PublishCompletedDraw(){Interlocked.Increment(ref frame);AwaitingRelease=true;}
+ public void UnlockAfterDraw(){WaitForDrawCompletion();PublishCompletedDraw();}
  public void BindForDiagnostics(){}
  static float Half(ushort value){int exponent=(value>>10)&31,mantissa=value&1023;double sign=(value&32768)==0?1:-1;return (float)(exponent==0?sign*mantissa*Math.Pow(2,-24):exponent==31?double.NaN:sign*(1+mantissa/1024.0)*Math.Pow(2,exponent-15));}
  public float[] ReadDiagnosticRow(){

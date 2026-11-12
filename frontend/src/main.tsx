@@ -311,6 +311,14 @@ function App() {
   function close() {
     setAutomaticMedia(null);restore.current=true;router.close();
   }
+  const browseKey=mediaQuery(filters)+`:${grouped}:${filters.show}:${filters.season}`;
+  const previousBrowseKey=useRef(browseKey);
+  useLayoutEffect(()=>{
+    const changed=previousBrowseKey.current!==browseKey;previousBrowseKey.current=browseKey;
+    // Warm cached categories keep their full height, so the browser will not
+    // reset a previous deep scroll itself. History/player return owns restoration.
+    if(changed&&!selected&&!restore.current)scrollPageTo(0);
+  },[browseKey,selected]);
   useLayoutEffect(() => {
     if (!selected && !loading && restore.current) { scrollPageTo(scroll.current); restore.current = false; }
   }, [selected, loading]);

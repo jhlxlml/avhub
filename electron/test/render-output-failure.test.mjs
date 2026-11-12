@@ -22,3 +22,8 @@ test('native read timeout and decoder error retain their different diagnostics',
  const timeout=await check({frame:async()=>{throw Error('原生控制超时：frame');}});assert.equal(timeout.failure.kind,'command-timeout');assert.match(timeout.active.error,/控制响应超时/);
  const decoder=await check({frame:async()=>({waiting:false,error:'NATIVE_DECODE_-12'})});assert.equal(decoder.failure.nativeCode,'NATIVE_DECODE_-12');assert.match(decoder.active.error,/解码或画面读取失败/);
 });
+
+test('missing texture release remains actionable after GPU completion',async()=>{
+ const result=await check({frame:async()=>({waiting:true,serial:1,error:null}),present:async()=>{throw Error('原生画面纹理引用释放超时');}});
+ assert.equal(result.failure.stage,'gpu');assert.equal(result.failure.kind,'texture-release-timeout');assert.match(result.active.error,/纹理引用释放超时/);
+});

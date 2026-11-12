@@ -397,7 +397,7 @@ request()
 `;
 
 /** Only validated HEX literals enter owned Lua, never titles or arbitrary settings. */
-export function independentControllerForTheme(colors:NativeColors,seekPolicy:'exact'|'fast'|'smart'='exact'){
+export function independentControllerForTheme(colors:NativeColors,seekPolicy:'exact'|'fast'|'smart'='fast'){
  if(!['exact','fast','smart'].includes(seekPolicy))throw new Error('跳播模式无效');
  const encoded=nativeColorsJson(colors);
  return independentController.replace("seek_observed,seek_smart='exact','exact',false,false",`seek_observed,seek_smart='${seekPolicy}','exact',false,false`).replace('local theme_rgb = nil -- AVHUB_INITIAL_THEME',`local theme_rgb = utils.parse_json('${encoded}') -- AVHUB_INITIAL_THEME`);

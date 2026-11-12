@@ -1,15 +1,16 @@
 // Real packaged app. Settings/UI drive both MPV presentations; no runtime,
 // coordinator or playback API implementation is mocked or replaced.
 import {desktopTestSubject} from './desktop-test-subject.mjs';
+import {placeTestMedia} from './media-pool.mjs';
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
-import {mkdtempSync,mkdirSync,copyFileSync,readFileSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'../..'),exe=process.env.AVHUB_TEST_PACKAGED_EXE;
 assert.ok(exe&&path.isAbsolute(exe),'Actual packaged EXE required');
 const data=mkdtempSync(path.join(root,'build/mpv-window-coexistence-')),media=path.join(data,'media');mkdirSync(media);
-const source=path.join(media,'Modes.mp4');copyFileSync(path.join(root,'build/libmpv-render-spike/samples/Framecode-v2-640x360.mp4'),source);
+const source=path.join(media,'Modes.mp4');placeTestMedia(path.join(root,'build/libmpv-render-spike/samples/Framecode-v2-640x360.mp4'),source,{ownedGenerated:true});
 const hash=()=>createHash('sha256').update(readFileSync(source)).digest('hex'),before=hash();
 const packagedRuntime=path.join(path.dirname(exe),'resources/mpv/mpv.exe');
 const runtimeHash=createHash('sha256').update(readFileSync(packagedRuntime)).digest('hex');

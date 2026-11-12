@@ -54,7 +54,13 @@ export class RenderTextureBridge {
   void receipt.catch(()=>{});
   try{await sharedTexture.sendSharedTexture({frame:this.web.mainFrame,importedSharedTexture:texture},{session:this.session,surface,serial:frame.serial,token,width:frame.width,height:frame.height,outputTransfer:transfer});}
   finally{texture.release();}
-  const [gpuAt]=await Promise.all([receipt,resource]);return {serial:frame.serial,positionSec:frame.positionSec,seekId:frame.seekId,gpuAt};
+  // GPU completion does not guarantee that Chromium released every reader.
+  // Bound this second wait too, without removing the still-live resource or
+  // acknowledging the native surface when its release callback is missing.
+  let releaseTimer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   const [gpuAt]=await Promise.all([receipt,Promise.race([resource,new Promise<never>((_,reject)=>{releaseTimer=setTimeout(()=>reject(new Error('原生画面纹理引用释放超时')),5000);})])]);return {serial:frame.serial,positionSec:frame.positionSec,seekId:frame.seekId,gpuAt};
+  }finally{clearTimeout(releaseTimer);}
  }
  async drain(){
   this.closed=true;this.clock.setActive(false);let timer:ReturnType<typeof setTimeout>|undefined;

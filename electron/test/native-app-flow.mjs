@@ -41,7 +41,7 @@ try{
   assert.equal(index,undefined,'metadata mutation is restricted to owned generated fixtures');
   const cleared=spawnSync('python',['-c',"import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); db.execute(\"UPDATE media SET video_color='{}',video_codec=NULL\"); db.commit(); db.close()",path.join(data,'library.db')],{windowsHide:true,timeout:10000});assert.equal(cleared.status,0,String(cleared.stderr));
  }
- await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true}}});
+ await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',mpvSeekPolicy:'exact',resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true}}});
  await page.reload();await (index?page.locator('.open-video').first():page.getByRole('button',{name:'播放 A',exact:true})).click();
  await expect(page.getByText('MPV · 原文件直接播放',{exact:true})).toBeVisible({timeout:30000});
  let overlay=desktop.windows().find(w=>w.url().includes('nativePlayer='));assert.ok(overlay);

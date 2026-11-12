@@ -60,7 +60,7 @@ try{
  await expect.poll(async()=>(await api('/api/preferences')).values.mpvWindowMode).toBe('independent');
  await page.getByRole('button',{name:'关闭设置',exact:true}).click();
  const coordinated=process.env.AVHUB_TEST_SESSION_COORDINATOR==='1';
- await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',mpvWindowMode:'independent',playbackSessionCoordinatorEnabled:coordinated,resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true},screenshots:{directory:captures,shortcut:'C'}}});
+ await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',mpvSeekPolicy:'exact',mpvWindowMode:'independent',playbackSessionCoordinatorEnabled:coordinated,resumeBehavior:'restart',autoNext:true,queueScope:'directory',queueMode:'sequential',audio:{volume:0,muted:true},screenshots:{directory:captures,shortcut:'C'}}});
  await page.reload();const started=performance.now();await page.getByRole('button',{name:'播放 A',exact:true}).click();
  await expect(page.getByText('MPV · 独立窗口播放原文件',{exact:true})).toBeVisible({timeout:30000});
  if(coordinated)await expect(page.getByLabel('MPV 原生播放区域',{exact:true})).toHaveAttribute('data-playback-session-phase','ready');

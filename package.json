@@ -1,7 +1,7 @@
 {
   "name": "avhub",
   "private": true,
-  "version": "0.2.20",
+  "version": "0.2.21",
   "main": "electron/dist/main.js",
   "scripts": {
     "postinstall": "node scripts/patch-build-toolchain.cjs",
@@ -28,6 +28,8 @@
     "check:mpv": "node scripts/check-mpv-readiness.mjs",
     "check:mpv:dual": "node scripts/check-dual-mpv-runtime.mjs",
     "check:mpv:sources": "python scripts/audit-dual-mpv-sources.py",
+    "check:release:plan": "node scripts/desktop-release-check.mjs --plan",
+    "check:release:local": "node scripts/desktop-release-check.mjs --run",
     "test:electron:mpv": "npm run build && npm run build:electron && node electron/test/mpv-client.mjs && node electron/test/native-coordination.mjs && node electron/test/native-track-memory.mjs && node electron/test/native-embedding.mjs && node electron/test/window-placement.mjs && node electron/test/native-player.mjs",
     "test:electron:mpv:app": "npm run build && npm run build:electron && node electron/test/native-app-flow.mjs",
     "test:electron:mpv:audio": "npm run build && npm run build:electron && node electron/test/native-audio.mjs && node electron/test/native-audio-recovery.mjs",

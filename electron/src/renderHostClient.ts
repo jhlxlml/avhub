@@ -74,6 +74,11 @@ async function checkRenderRuntime(runtime:Runtime){
 /** Trusted-main-only typed pipe. No shell, URLs, renderer paths, or libmpv API
  * pointers cross public IPC. A failed command pipe retires the entire host. */
 export class RenderHostClient extends EventEmitter {
+ // Prefer real ready hints; old hosts retain the polling fallback until one
+ // is actually observed. Explicit 0 restores the legacy path for diagnosis.
+ private readonly frameNotifications=process.env.AVHUB_RENDER_FRAME_NOTIFICATIONS!=='0';private lastReadySerial=0;private readyNotifications=0;
+ get frameNotificationsActive(){return this.frameNotifications&&this.lastReadySerial>0;}
+ frameNotificationStats(){return {requested:this.frameNotifications,received:this.readyNotifications,lastSerial:this.lastReadySerial};}
  private child:ChildProcessWithoutNullStreams|null=null;private pending=new Map<number,Pending>();private sequence=0;private bytes=Buffer.alloc(0);
  private failure:Error|null=null;private stopping:Promise<void>|null=null;private opening:Promise<void>|null=null;private retired=false;private exited:Promise<void>=Promise.resolve();private exitCode:number|null|undefined;
  private stderrBytes=0;private stderrTail='';private spawnError:string|null=null;
@@ -96,7 +101,7 @@ export class RenderHostClient extends EventEmitter {
   child.once('close',(code,signal)=>this.emit('diagnostic',renderHostTermination(code,signal,this.stderrTail,this.stderrBytes,this.spawnError)));
   child.stdout.on('data',(chunk:Buffer)=>this.accept(chunk));child.stdout.on('error',()=>this.fail(new Error('原生状态管道异常')));
   child.stdin.on('error',()=>this.fail(new Error('原生控制管道异常')));child.stderr.on('data',(chunk:Buffer)=>{this.stderrBytes+=chunk.length;this.stderrTail=(this.stderrTail+chunk.toString('utf8')).slice(-4096);if(this.stderrBytes>64*1024)this.fail(new Error('原生宿主错误输出超过限制'));});child.stderr.on('error',()=>{});
-  const response:unknown=await this.send('open',{path:source.path,...c,startSec:source.startSec,autoplay:source.autoplay,windowHandle:source.windowHandle??'0',...(source.shaderCache?{shaderCache:source.shaderCache}:{})});this.startupTimings.hostOpenMs=performance.now()-hostStarted;
+  const response:unknown=await this.send('open',{path:source.path,...c,startSec:source.startSec,autoplay:source.autoplay,windowHandle:source.windowHandle??'0',...(this.frameNotifications?{frameNotifications:true}:{}),...(source.shaderCache?{shaderCache:source.shaderCache}:{})});this.startupTimings.hostOpenMs=performance.now()-hostStarted;
   if(response&&typeof response==='object'&&'startupMs'in response){
    const timings=response.startupMs;
    if(!timings||typeof timings!=='object'||Array.isArray(timings))throw new Error('原生启动计时无效');
@@ -110,7 +115,12 @@ export class RenderHostClient extends EventEmitter {
   if(this.bytes.length+chunk.length>512*1024){this.fail(new Error('原生状态响应超过限制'));return;}
   this.bytes=Buffer.concat([this.bytes,chunk]);let at:number;
   while((at=this.bytes.indexOf(10))>=0){const line=this.bytes.subarray(0,at);this.bytes=this.bytes.subarray(at+1);try{
-   if(line.length>262144)throw new Error();const response=JSON.parse(line.toString('utf8'));if(!Number.isSafeInteger(response.id))throw new Error();const pending=this.pending.get(response.id);if(!pending)continue;
+   if(line.length>262144)throw new Error();const response=JSON.parse(line.toString('utf8'));
+   if(response?.event!==undefined){
+    if(!this.frameNotifications||response.event!=='frame-ready'||Object.keys(response).length!==2||!Number.isSafeInteger(response.serial)||response.serial<1)throw new Error();
+    if(!this.retired&&response.serial>this.lastReadySerial){this.lastReadySerial=response.serial;this.readyNotifications++;this.emit('frame-ready',response.serial);}continue;
+   }
+   if(!Number.isSafeInteger(response.id))throw new Error();const pending=this.pending.get(response.id);if(!pending)continue;
    this.pending.delete(response.id);clearTimeout(pending.timer);response.error?pending.reject(new Error(String(response.error).slice(0,200))):pending.resolve(response.result);
   }catch{this.fail(new Error('原生状态协议无效'));return;}}
  }

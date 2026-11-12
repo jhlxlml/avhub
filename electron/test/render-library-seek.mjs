@@ -5,7 +5,9 @@ import {spawnSync} from 'node:child_process';
 import {mkdtempSync,readFileSync,writeFileSync,statSync,createReadStream} from 'node:fs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
+import {desktopTestSubject} from './desktop-test-subject.mjs';
 const root=path.resolve(import.meta.dirname,'../..'),index=path.resolve(process.argv[2]??''),ids=process.argv.slice(3).map(Number);
+const packagedExe=process.env.AVHUB_TEST_PACKAGED_EXE;
 assert.ok(process.argv[2]&&ids.length>0&&ids.length<=12&&ids.every(id=>Number.isSafeInteger(id)&&id>0));
 const openOnly=process.env.AVHUB_TEST_OPEN_ONLY==='1',repeats=Number(process.env.AVHUB_TEST_OPEN_REPEATS??1);assert.ok(Number.isInteger(repeats)&&repeats>=1&&repeats<=5);
 const prioritySeconds=Number(process.env.AVHUB_TEST_PRIORITY_SECONDS??0);assert.ok(prioritySeconds===0||prioritySeconds>=22&&prioritySeconds<=60);
@@ -21,11 +23,13 @@ t.execute('DELETE FROM thumbnail_jobs')
 t.execute('UPDATE media SET progress=0,watched=0,custom_cover=NULL');t.commit();t.close()`],{env:{...process.env,SEEK_INDEX:index,SEEK_DATA:data,SEEK_IDS:JSON.stringify(ids)},encoding:'utf8',windowsHide:true,timeout:30000});
 assert.equal(clone.status,0,clone.stderr);
 const identity=async file=>{const s=statSync(file),hash=createHash('sha256');for await(const bytes of createReadStream(file))hash.update(bytes);return {size:s.size,mtimeMs:s.mtimeMs,sha256:hash.digest('hex')};};
-const runtimeCandidate=process.env.AVHUB_RENDER_RUNTIME_CANDIDATE??'native-render';
-const report={kind:'real-Electron-multi-source-render-seek',openOnly,repeats,prioritySeconds,stressGroups,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')),runtimeCandidate,runtime:JSON.parse(readFileSync(path.join(root,'build',runtimeCandidate,'runtime.json'),'utf8')),scope:'Original read-only media. GPU completion receipts, not physical scanout. OS/driver caches uncontrolled. Input events are dispatched through application controls, not OS input latency.',rows:[],completed:false};
+const runtimeCandidate=packagedExe?'bundled-desktop':process.env.AVHUB_RENDER_RUNTIME_CANDIDATE??'native-render';
+const manifest=packagedExe?path.join(path.dirname(packagedExe),'resources/native-render/runtime.json'):path.join(root,'build',runtimeCandidate,'runtime.json');
+const report={kind:'real-Electron-multi-source-render-seek',openOnly,repeats,prioritySeconds,stressGroups,build:JSON.parse(readFileSync(path.join(root,'app/build-info.json'),'utf8')),runtimeCandidate,runtime:JSON.parse(readFileSync(manifest,'utf8')),scope:'Original read-only media. GPU completion receipts, not physical scanout. OS/driver caches uncontrolled. Input events are dispatched through application controls, not OS input latency.',rows:[],completed:false};
 let desktop,page;
 try{
- desktop=await _electron.launch({args:[root],cwd:data,env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
+ desktop=await _electron.launch({...(packagedExe?{executablePath:packagedExe,args:[]}:{args:[root]}),cwd:data,env:{...process.env,...(packagedExe?{AVHUB_RENDER_RUNTIME_CANDIDATE:'',AVHUB_RENDER_LOCAL_ACCEPTANCE:''}:{}),AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
+ report.subject=await desktopTestSubject(desktop,import.meta.url);assert.equal(report.subject.kind,packagedExe?'packaged-desktop':'source-desktop');assert.equal(report.subject.buildId,report.build.build_id);
  await desktop.evaluate(({app})=>{
   const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),{RenderHostClient}=require(app.getAppPath()+'/electron/dist/renderHostClient.js'),{RenderTextureBridge}=require(app.getAppPath()+'/electron/dist/renderTexture.js'),{RenderPlayer}=require(app.getAppPath()+'/electron/dist/renderPlayer.js');globalThis.__libraryOpenTimings=[];const seen=new WeakSet();
   for(const method of ['open','control','setSubtitleStyle','snapshot']){const original=RenderHostClient.prototype[method];RenderHostClient.prototype[method]=async function(...args){const began=performance.now(),result=await original.apply(this,args);if(globalThis.__libraryOpenTimings.length<256)globalThis.__libraryOpenTimings.push({method:method==='control'?'control:'+args[0]:method,atMs:began-globalThis.__libraryOpenBegin,ms:performance.now()-began,...(method==='open'?{phases:this.startupTimings}:{})});return result;};}
@@ -34,7 +38,7 @@ try{
  });
  const api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();},{url,method,body});
  await api('/api/thumbnails/pause','POST');
- await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',nativeRenderEnabled:true,mpvSeekPolicy:'fast',resumeBehavior:'restart',autoNext:false,hoverPreview:false,audio:{volume:0,muted:true}}});await page.reload();
+ await api('/api/preferences','PATCH',{values:{playerEngine:'mpv',nativeRenderEnabled:true,mpvSeekPolicy:'fast',resumeBehavior:'restart',autoNext:false,queueMode:'sequential',queueScope:'directory',hoverPreview:false,audio:{volume:0,muted:true}}});await page.reload();
  await page.evaluate(()=>{window.__librarySeek=null;window.__librarySeekCompleted=null;window.__librarySeekStates=[];window.avhubDesktop.onRenderState(s=>{window.__librarySeek=s;if(s.phase==='ready'&&s.pendingSeek===null&&s.seekDiagnostics&&s.presented?.seekId===s.seekDiagnostics.seekId)window.__librarySeekCompleted=s;window.__librarySeekStates.push({at:performance.now(),pending:s.pendingSeek,presented:s.presented,phase:s.phase,error:s.error,diagnostic:s.seekDiagnostics,properties:{seeking:s.properties.seeking,pause:s.properties.pause,clock:s.properties['time-pos']}});if(window.__librarySeekStates.length>64)window.__librarySeekStates.shift();});});
  for(const {id,iteration} of ids.flatMap(id=>Array.from({length:repeats},(_,iteration)=>({id,iteration})))){
   const media=await api('/api/media/'+id);assert.ok(path.isAbsolute(media.path)&&statSync(media.path).isFile());
@@ -43,6 +47,24 @@ try{
    await page.evaluate(()=>{window.__librarySeek=null;window.__librarySeekCompleted=null;window.__librarySeekStates=[];});await desktop.evaluate(()=>{globalThis.__libraryOpenTimings=[];globalThis.__libraryOpenBegin=performance.now();});const opened=performance.now();await page.getByRole('button',{name:'播放 '+media.title,exact:true}).click();
    await expect.poll(()=>page.evaluate(id=>window.__librarySeek?.mediaId===id?window.__librarySeek.phase:'waiting',id),{timeout:30000}).toBe('ready');row.openObservedMs=performance.now()-opened;row.initial=await page.evaluate(()=>window.__librarySeek);assert.equal(row.initial.mediaId,id);
    row.openTimings=await desktop.evaluate(()=>globalThis.__libraryOpenTimings);
+   if(process.env.AVHUB_TEST_RELATIVE_INPUT==='1'){
+    row.relativeSteps=[];
+    // Actual keyboard input immediately after first presentation, then rapid
+    // direction changes and paused stepping. Keep short clips in the normal
+    // matrix; this sequence needs space away from EOF for clock assertions.
+    if(media.duration>30){
+     for(const {key,count,paused} of [{key:'ArrowLeft',count:1,paused:false},{key:'ArrowRight',count:1,paused:false},{key:'ArrowRight',count:3,paused:false},{key:'ArrowLeft',count:3,paused:false},{key:'ArrowRight',count:1,paused:true},{key:'ArrowLeft',count:1,paused:true}]){
+      if((await page.evaluate(()=>window.__librarySeek.properties.pause))!==paused)await page.keyboard.press('Space');
+      await expect.poll(()=>page.evaluate(()=>window.__librarySeek.properties.pause)).toBe(paused);
+      const previous=await page.evaluate(()=>window.__librarySeek.seekDiagnostics?.seekId??0),before=await page.evaluate(()=>window.__librarySeek.positionSec),began=performance.now();
+      for(let n=0;n<count;n++){await page.keyboard.press(key);if(n+1<count)await page.waitForTimeout(25);}
+      await expect.poll(()=>page.evaluate(previous=>window.__librarySeek.phase==='error'?'error':window.__librarySeekCompleted?.seekDiagnostics.seekId>previous&&window.__librarySeek.pendingSeek===null?'done':'waiting',previous),{timeout:20000,intervals:[10,20,40,80]}).toBe('done');
+      const s=await page.evaluate(()=>window.__librarySeekCompleted);assert.equal(s.properties.pause,paused);assert.equal(s.sourceLoads,1);assert.equal(s.presented.seekId,s.seekDiagnostics.seekId);
+      if(!paused){const serial=s.presented.serial;await expect.poll(()=>page.evaluate(serial=>window.__librarySeek.presented.serial>serial,serial),{timeout:5000}).toBe(true);}
+      row.relativeSteps.push({key,count,paused,before,observedMs:performance.now()-began,...s.seekDiagnostics});
+     }
+    }else row.relativeSkip='Clip under30s: relative burst requires distance from EOF; absolute matrix still runs';
+   }
    if(prioritySeconds){
     row.priority={before:(await api('/api/diagnostics')).thumbnail_service};
     await api('/api/media/'+id+'/thumbnail/retry','POST',{frame_time:Math.min(12,media.duration*.1)});await api('/api/thumbnails/resume','POST');
@@ -105,6 +127,24 @@ try{
    writeFileSync(path.join(data,'report.json'),JSON.stringify(report,null,2));
   }
  }
+ if(process.env.AVHUB_TEST_QUEUE_NAVIGATION==='1'){
+  report.navigation=[];const initial=await api('/api/media/'+ids[0]);await page.evaluate(()=>window.__librarySeek=null);await page.getByRole('button',{name:'播放 '+initial.title,exact:true}).click();
+  await expect.poll(()=>page.evaluate(id=>window.__librarySeek?.mediaId===id?window.__librarySeek.phase:'waiting',initial.id),{timeout:30000}).toBe('ready');
+  for(let step=0;step<6;step++){
+   const current=await page.evaluate(()=>window.__librarySeek),neighbors=await api('/api/media/'+current.mediaId+'/siblings?scope=directory&page_size=1'),direction=neighbors.next?'next':'previous',target=neighbors[direction];assert.ok(target,'The copied library must contain a same-directory neighbor');assert.ok(ids.includes(target.id));
+   const stage=await page.getByRole('region',{name:'原生视频播放器',exact:true}).boundingBox();await page.mouse.move(stage.x+stage.width/2,stage.y+stage.height-25);
+   if(step%2===0){await page.getByRole('button',{name:'跳播与播放设置',exact:true}).click();await page.getByLabel('跳播模式',{exact:true}).selectOption('exact');await page.getByRole('button',{name:'关闭播放设置',exact:true}).click();const duration=current.durationSec;
+    await page.getByRole('slider',{name:'播放进度',exact:true}).evaluate((slider,value)=>{slider.value=String(value);slider.dispatchEvent(new Event('input',{bubbles:true}));},duration*.509);
+   }
+   const pending=await page.evaluate(()=>window.__librarySeek.pendingSeek!==null),began=performance.now();await page.getByRole('button',{name:direction==='next'?'下一视频':'上一视频',exact:true}).click();
+   await expect.poll(()=>page.evaluate(id=>window.__librarySeek?.mediaId===id?window.__librarySeek.phase:'waiting',target.id),{timeout:30000}).toBe('ready');
+   const actual=await page.evaluate(()=>window.__librarySeek);assert.notEqual(actual.session,current.session);assert.equal(actual.sourceLoads,1);assert.equal(actual.error,undefined);const serial=actual.presented.serial;await expect.poll(()=>page.evaluate(serial=>window.__librarySeek.presented.serial>serial,serial),{timeout:5000}).toBe(true);
+   report.navigation.push({from:current.mediaId,to:target.id,direction,seekWasPending:pending,observedMs:performance.now()-began,firstFrameMs:actual.firstFrameMs});
+  }
+  assert.ok(report.navigation.some(s=>s.seekWasPending),'At least one real navigation must begin during an outstanding seek');
+  await page.getByRole('button',{name:'返回媒体库',exact:true}).click();await expect(page.locator('.card')).toHaveCount(ids.length);
+  for(const id of ids){const source=await api('/api/media/'+id),before=report.rows.find(row=>row.id===id).source;assert.deepEqual(await identity(source.path),before);}
+ }
  report.completed=true;report.passed=report.rows.every(row=>row.passed);if(!report.passed)process.exitCode=1;
-}catch(error){report.error=String(error.stack??error);process.exitCode=1;}
+}catch(error){report.error=String(error.stack??error);report.lastState=await page?.evaluate(()=>window.__librarySeek).catch(()=>null);report.body=await page?.locator('body').innerText().catch(()=>null);process.exitCode=1;}
 finally{await desktop?.close();writeFileSync(path.join(data,'report.json'),JSON.stringify(report,null,2));console.log(path.join(data,'report.json'));}

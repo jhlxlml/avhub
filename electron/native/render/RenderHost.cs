@@ -6,7 +6,7 @@ sealed class RenderHost : Form {
  [DllImport("user32")]static extern bool SetProcessDpiAwarenessContext(IntPtr context);
  [StructLayout(LayoutKind.Sequential)]struct IoCounters {public ulong ReadOperations,WriteOperations,OtherOperations,ReadBytes,WriteBytes,OtherBytes;}
  [DllImport("kernel32",SetLastError=true)]static extern bool GetProcessIoCounters(IntPtr process,out IoCounters counters);
- readonly string dll,source,shaderCache;int width,height;long surfaceGeneration;readonly double start;readonly bool autoplay;readonly object openId;readonly IntPtr displayWindow;
+ readonly string dll,source,shaderCache;int width,height;long surfaceGeneration;readonly double start;readonly bool autoplay,notifyFrames;readonly object openId;readonly IntPtr displayWindow;
  readonly System.Diagnostics.Stopwatch seekClock=new System.Diagnostics.Stopwatch();
  double? seekEventMs,restartMs,correctionStartedMs;
  bool keyframeSeek,keyframeForward,exactEndFallback,cachePaused;
@@ -31,6 +31,7 @@ sealed class RenderHost : Form {
  static Dictionary<string,object> Object(object value){var r=value as Dictionary<string,object>;if(r==null)throw new Exception("Invalid native request");return r;}
  public RenderHost(string library,Dictionary<string,object> request){
   dll=library;openId=request["id"];if((string)request["action"]!="open")throw new Exception("First request must open an authorized source");object window;displayWindow=new IntPtr(request.TryGetValue("windowHandle",out window)?long.Parse((string)window):0);
+  object notifications;notifyFrames=request.TryGetValue("frameNotifications",out notifications)&&Boolean(notifications);
   object cache;if(request.TryGetValue("shaderCache",out cache)&&cache!=null){shaderCache=(string)cache;if(!Path.IsPathRooted(shaderCache)||!Directory.Exists(shaderCache))throw new Exception("Invalid shader cache directory");}
   source=Path.GetFullPath((string)request["path"]);if(!Path.IsPathRooted((string)request["path"])||!File.Exists(source))throw new Exception("Authorized source unavailable");
   // The decoder, not a separate FFprobe admission pass, supplies geometry.
@@ -54,7 +55,14 @@ sealed class RenderHost : Form {
    long epoch=Interlocked.Read(ref frameEpoch);ulong flags=mpv.FrameFlags();bool content=(flags&1)!=0||requestedRedraw&&contentEver;surface.LockForDraw();mpv.Draw(surface.Texture);contentEver=contentEver||content;
    // Publish readiness and metadata under the same lock: a poll must never
    // observe a newly completed texture with the previous frame's identity.
-   lock(frameGate){surface.UnlockAfterDraw();pendingSerial=++serial;pendingEpoch=epoch;pendingContent=content;}pending=false;requestedRedraw=false;
+   // The ready-notification client wakes after publication, so it need not
+   // block its command pipe on a GPU wait just to discover readiness. Retain
+   // the old lock/poll behavior for clients that did not opt into notifications.
+   if(notifyFrames)surface.WaitForDrawCompletion();
+   lock(frameGate){if(notifyFrames)surface.PublishCompletedDraw();else surface.UnlockAfterDraw();pendingSerial=++serial;pendingEpoch=epoch;pendingContent=content;}pending=false;requestedRedraw=false;
+   // A hint after real GPU completion and atomic publication, never a receipt.
+   // Console.Out synchronizes each complete line with command responses.
+   if(notifyFrames&&!admissionClosed&&!stopping)Console.WriteLine("{\"event\":\"frame-ready\",\"serial\":"+serial.ToString(CultureInfo.InvariantCulture)+"}");
   }
  }catch(Exception ex){renderError=ex.GetType().Name;ready.Set();}finally{if(mpv!=null)mpv.FreeRenderer();if(surface!=null)surface.Dispose();}}
  void DrainEvents(){if(mpv==null)return;for(int i=0;i<256;i++){

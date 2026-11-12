@@ -6,12 +6,15 @@ import {mkdtempSync,mkdirSync,readFileSync,writeFileSync,readdirSync} from 'node
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 import {playbackFixture} from './playback-fixtures.mjs';
+import {desktopTestSubject} from './desktop-test-subject.mjs';
 const root=path.resolve(import.meta.dirname,'../..'),data=mkdtempSync(path.join(root,'build/playback-path-cycle-')),media=path.join(data,'media'),shots=path.join(data,'shots');
+const packagedExe=process.env.AVHUB_TEST_PACKAGED_EXE;
 mkdirSync(media);mkdirSync(shots);const source=path.join(media,'Cycle.mp4');placeTestMedia(playbackFixture('basic'),source);
 const hash=()=>createHash('sha256').update(readFileSync(source)).digest('hex'),before=hash();
 const report={kind:'real-Electron-three-path-cycle',rows:[],passed:false};let desktop,page;
 try{
- desktop=await _electron.launch({args:[root],cwd:data,env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+ desktop=await _electron.launch({...(packagedExe?{executablePath:packagedExe,args:[]}:{args:[root]}),cwd:data,env:{...process.env,...(packagedExe?{AVHUB_RENDER_RUNTIME_CANDIDATE:'',AVHUB_RENDER_LOCAL_ACCEPTANCE:''}:{}),AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+ report.subject=await desktopTestSubject(desktop,import.meta.url);assert.equal(report.subject.kind,packagedExe?'packaged-desktop':'source-desktop');
  page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();
  await desktop.evaluate(({app})=>{const require=process.getBuiltinModule('module').createRequire(app.getAppPath()+'/package.json'),{MpvClient}=require(app.getAppPath()+'/electron/dist/mpvClient.js'),start=MpvClient.prototype.start;MpvClient.prototype.start=function(...args){globalThis.__cycleMpv=this;return start.apply(this,args);};});
  const api=(url,method='GET',body)=>page.evaluate(async({url,method,body})=>{const r=await fetch(url,{method,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error(await r.text());return r.json();},{url,method,body});

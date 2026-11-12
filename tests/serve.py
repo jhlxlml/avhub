@@ -13,7 +13,9 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.sqlite_runtime import initialize
 initialize()
-temp = tempfile.TemporaryDirectory(prefix="avhub-regression-")
+test_build=Path(__file__).resolve().parents[1]/'build'
+test_build.mkdir(exist_ok=True)
+temp = tempfile.TemporaryDirectory(prefix="renderer-fixture-",dir=test_build)
 # Hosted Windows TEMP can use RUNNER~1. Match production canonical paths once,
 # before seeding the database or exposing fixture directories to UI assertions.
 fixture_root = Path(temp.name).resolve()
@@ -25,19 +27,25 @@ frontend_route = next(r for r in m.app.routes if r.path == '/{path:path}')
 m.app.router.routes.remove(frontend_route)
 
 source = fixture_root / "source.mp4"
-subprocess.run([m.executable("ffmpeg"), "-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=320x180:r=25",
+def fixture_media(arguments):
+    # Shared immutable recipes; this destructive renderer fixture needs private
+    # mutable copies, never writable hardlinks to the central catalogue.
+    subprocess.run(['node','--input-type=module','-e',
+                    "import {generateTestMedia} from './electron/test/media-pool.mjs'; generateTestMedia(JSON.parse(process.argv[1]),{mutable:true});",
+                    json.dumps([str(value) for value in arguments])],cwd=Path(__file__).resolve().parents[1],check=True,timeout=180)
+
+fixture_media(["-v", "error", "-f", "lavfi", "-i", "color=c=navy:s=320x180:r=25",
                 "-f", "lavfi", "-i", "sine=frequency=440", "-t", "120", "-c:v", "libx264", "-preset", "ultrafast",
-                "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", str(source)], check=True)
+                "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", source])
 transport_stream = fixture_root / "source.ts"
-subprocess.run([m.executable("ffmpeg"), "-v", "error", "-i", str(source), "-map", "0", "-c", "copy",
-                "-f", "mpegts", str(transport_stream)], check=True)
+fixture_media(["-v", "error", "-i", source, "-map", "0", "-c", "copy", "-f", "mpegts", transport_stream])
 source.with_suffix('.srt').write_text('1\n00:00:02,000 --> 00:00:04,000\n测试字幕：离线正常\n', encoding='utf-8')
 second = fixture_root / "second.mp4"
 shutil.copyfile(source, second)
 third = fixture_root / "third.mkv"
-subprocess.run([m.executable("ffmpeg"), "-v", "error", "-i", str(source), "-i", str(source.with_suffix('.srt')),
+fixture_media(["-v", "error", "-i", source, "-i", source.with_suffix('.srt'),
                 "-map", "0:v:0", "-map", "0:a:0", "-map", "1:s:0", "-c:v", "copy", "-c:a", "copy",
-                "-c:s", "srt", str(third)], check=True)
+                "-c:s", "srt", third])
 invalid = fixture_root / "broken.mkv"
 invalid.write_bytes(b"invalid video fixture")
 scan_source = fixture_root / 'scan-source'

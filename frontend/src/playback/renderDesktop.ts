@@ -109,7 +109,7 @@ export function createRenderDesktop(base:Desktop,options:{sessionCoordinatorEnab
   if(action==='track'){await controller.selectTrack(value.kind==='sub'?'subtitle':'audio',value.id==='no'?null:String(value.id));return {ok:true};}if(action==='sub-delay'){await controller.setSubtitleDelay(value);return {ok:true};}
   if(action==='navigate'){if(!['next','previous','queue','retry'].includes(value))throw new Error('队列操作无效');for(const fn of events)fn({session:engine.getSession()!.id,kind:value});return {ok:true};}
   if(action==='replay'){await seek(0);await controller.play();return {ok:true};}
-  if(action==='diagnostics')return {engine:'libmpv-render-d3d11',phase:latest?.phase,firstFrameMs:latest?.firstFrameMs,lastSeekMs:latest?.lastSeekMs,sourceLoads:latest?.sourceLoads,seek:latest?.seekDiagnostics??null,hardwareDecoder:latest?.properties?.['hwdec-current']??null,transport:latest?.transport,dimensions:engine.getState().videoSize,sessionCoordinator:coordinator?.getState()??null};
+  if(action==='diagnostics')return {engine:'libmpv-render-d3d11',phase:latest?.phase,firstFrameMs:latest?.firstFrameMs,lastSeekMs:latest?.lastSeekMs,sourceLoads:latest?.sourceLoads,seek:latest?.seekDiagnostics??null,hardwareDecoder:latest?.properties?.['hwdec-current']??null,dropped:latest?.properties?.['frame-drop-count']??null,decoderDropped:latest?.properties?.['decoder-frame-drop-count']??null,dropCounterScope:'current-mpv-reading-may-reset-on-seek',transport:latest?.transport,dimensions:engine.getState().videoSize,sessionCoordinator:coordinator?.getState()??null};
   if(['seek-policy','screenshot','subtitle-import','subtitle-style','transform','rotate','window'].includes(action))return request(action,value);
   throw new Error('此原生操作尚未接通');
  };

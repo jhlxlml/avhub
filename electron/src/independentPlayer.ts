@@ -48,7 +48,7 @@ export class IndependentPlayer{
         if(args[1]==='screenshot')void this.capture(s).catch(()=>{});
         else if(args[1]==='next'||args[1]==='previous')this.event(s,String(args[1]));
       });
-      client.snapshot.seekPolicy=prefs.values?.mpvSeekPolicy??'exact';
+      client.snapshot.seekPolicy=prefs.values?.mpvSeekPolicy??'fast';
       s={client,mediaId,title:String(source.title),owner,closing:false,stopped:false,cleanupError:'',failed:false,ended:false,ready:false,timer:setInterval(()=>{if(s&&!s.closing)void this.save(s).catch(()=>{});},3000),persist:Promise.resolve(),memory,externalSubtitles:(item.external_subtitles??[]).map((v:any)=>String(v.path)),memoryRetired:false,lastMemory:'',lastAudio:'',saveError:'',revision:0,started:performance.now()};
       this.active=s;
       await this.activity(s,true);

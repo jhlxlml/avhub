@@ -3,13 +3,13 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const files = ['run.py', 'package.json', 'package-lock.json', 'requirements.txt', 'vite.config.ts', 'scripts/frontend-notices.mjs', 'app/sqlite-runtime.json'];
-for (const directory of ['app', 'frontend/src', 'electron/src']) {
+const files = ['run.py', 'package.json', 'package-lock.json', 'requirements.txt', 'vite.config.ts', 'scripts/frontend-notices.mjs', 'scripts/write-build-info.mjs', 'app/sqlite-runtime.json'];
+for (const directory of ['app', 'frontend/src', 'electron/src', 'electron/native']) {
   function collect(folder) {
     for (const entry of readdirSync(path.join(root, folder), {withFileTypes:true})) {
       const name=`${folder}/${entry.name}`;
       if (entry.isDirectory() && directory !== 'app') collect(name);
-      else if (entry.isFile() && /\.(py|ts|tsx|css)$/.test(entry.name)) files.push(name);
+      else if (entry.isFile() && /\.(py|ts|tsx|css|cs)$/.test(entry.name)) files.push(name);
     }
   }
   collect(directory);

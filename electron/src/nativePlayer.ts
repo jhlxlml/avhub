@@ -229,7 +229,7 @@ export class NativePlayer {
         recentLayouts:this.layoutHistory.get(active)??[],
         window:main&&!main.isDestroyed()?{content:main.getContentBounds(),scale:screen.getDisplayMatching(main.getBounds()).scaleFactor,...this.deps.windowState()}:null,
         host:active.host.isDestroyed()?null:active.host.getContentBounds(),controls:active.overlay.isDestroyed()?null:active.overlay.getBounds(),
-        seek:active.client.snapshot.seekDiagnostics??null,hardwareDecoder:p['hwdec-current']??null,dropped:p['frame-drop-count']??null,decoderDropped:p['decoder-frame-drop-count']??null,bufferingEvents:active.client.snapshot.bufferingEvents};
+        seek:active.client.snapshot.seekDiagnostics??null,hardwareDecoder:p['hwdec-current']??null,dropped:p['frame-drop-count']??null,decoderDropped:p['decoder-frame-drop-count']??null,dropCounterScope:'current-mpv-reading-may-reset-on-seek',bufferingEvents:active.client.snapshot.bufferingEvents};
     }
     if(action==='window-drag'){
       const point=value as {phase?:string;x?:number;y?:number},main=this.deps.main();
@@ -509,7 +509,7 @@ export class NativePlayer {
       void controlsReady.catch(()=>{});
       const handle=host.getNativeWindowHandle();
       const hwnd=handle.length===8?handle.readBigUInt64LE().toString():String(handle.readUInt32LE());
-      client.snapshot.seekPolicy=prefs.values?.mpvSeekPolicy??'exact';
+      client.snapshot.seekPolicy=prefs.values?.mpvSeekPolicy??'fast';
       const audio=prefs.values?.audio||{volume:1,muted:false};
       active.subtitleAppearance=subtitleStyle(prefs.values?.subtitleAppearance??defaultSubtitleAppearance);
       this.trackMemory.set(active,{state:memory,changes:{},revision:0,saved:0});
