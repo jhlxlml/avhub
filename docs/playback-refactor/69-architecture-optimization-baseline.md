@@ -623,3 +623,6 @@ IPC follow-up (94), 2026-11-09: new real-Electron stress reproduced ERR_MULTIPLE
 
 
 2026-11-12 (119): User-authorized local folder-portable acceptance only. Frozen current source replay WFbKrJ (npmci/audit0/build/exact JS), rebuilt/started backend, staged verified controlled CLI without touching default backend. Local desktop config retains hashes and publish:none; old formal receipt build3b48... intentionally not reused for current6bd... Package m5-final-desktop-20261112 includes current43JS/21static/91native bytes. Added actual-packaged branches/subject checks to real-library and three-path harnesses; no production/version/remote changes. See119.
+
+
+2026-11-12 (120): Explicit user authorization for stable0.2.21/local-build publication. Synced package/lock/fallback/Release notes, no README changelog/archive changes. User AGENTS/planning files excluded from application commit. Current code260db0e independently rebuilt as3ac1d0855c94a2aa; new actual dual-MPV packaged evidence and formal schema2 binding obtained, never relabel0.2.20 proof. Final binary/source upload is separate from Actions; user monitors Actions. See120.
