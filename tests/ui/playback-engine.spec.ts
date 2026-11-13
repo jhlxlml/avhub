@@ -25,7 +25,7 @@ test('flag is optional, strictly boolean and never changes the legacy native pre
  expect(values.playerEngine).toBe('mpv');expect(values.playbackControllerEnabled).toBe(false);
 });
 test('settings toggle persists and old controls remain reachable without changing layout',async({page,request})=>{
- await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
+ await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();await page.getByText('播放控制高级选项',{exact:true}).click();
  const flag=page.getByRole('checkbox',{name:'统一播放控制（试验）',exact:true});await expect(flag).toBeChecked();await flag.uncheck();
  await expect.poll(async()=>(await(await request.get('/api/preferences')).json()).values.playbackControllerEnabled).toBe(false);
  await page.getByRole('button',{name:'关闭设置',exact:true}).click();await page.goto('/?video=2');await expect(page.locator('.player-shell')).toHaveAttribute('data-playback-controller','legacy');
@@ -42,7 +42,7 @@ test('unified resume and source-bound subtitle delay retain existing persistence
  await expect.poll(async()=>(await(await request.get('/api/media/3/playback-state')).json()).subtitle).toBe('');
 });
 test('failed flag save rolls back visible state and preserves default engine',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
+ await page.goto('/');await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();await page.getByText('播放控制高级选项',{exact:true}).click();
  await page.route('**/api/preferences',route=>route.request().method()==='PATCH'?route.fulfill({status:503,json:{detail:'test flag save failed'}}):route.continue());
  const flag=page.getByRole('checkbox',{name:'统一播放控制（试验）',exact:true});await flag.click();await expect(flag).toBeChecked();await expect(page.getByText('test flag save failed',{exact:true})).toBeVisible();
  await expect(page.getByLabel('默认播放引擎',{exact:true})).toHaveValue('chromium');

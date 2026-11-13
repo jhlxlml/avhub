@@ -24,6 +24,7 @@ const cases=[
  ['electron-build',['node_modules/typescript/bin/tsc','-p','electron/tsconfig.json']],
  ['independent-runtime',['--test','electron/test/independent-runtime-layout.test.mjs','electron/test/native-runtime.test.mjs','electron/test/development-independent-runtime.test.mjs']],
  ['client',['electron/test/mpv-client.mjs']],
+ ['render-experience',['electron/test/render-experience.mjs']],
  ['write-queue',['--test','electron/test/mpv-write-queue.test.mjs']],
  ['runtime-prepare',['--test','electron/test/render-runtime-prepare.test.mjs']],
  ['release-journal',['--test','electron/test/desktop-release-check.test.mjs']],

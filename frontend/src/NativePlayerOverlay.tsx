@@ -13,7 +13,7 @@ type State={session:string;seekPolicy?:'exact'|'fast'|'smart';seekDiagnostics?:{
 const empty:State={session:'',title:'AVHub · 原生播放',phase:'starting',pure:false,pinned:false,fullscreen:false,maximized:false,properties:{},firstFrameMs:null,lastSeekMs:null,pendingSeek:null,restarts:0,seeks:0};
 function controlPaused(s:State){const byIntent=s.phase==='starting'||s.pendingSeek!==null||s.presentation==='render'&&s.phase!=='error'&&s.properties['eof-reached']!==true;return byIntent&&typeof s.playIntent==='boolean'?!s.playIntent:s.properties.pause!==false;}
 
-export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSession,inline=false,settingsRequest=0}:{settingsRequest?:number;desktop?:NonNullable<Window['avhubDesktop']>;session?:string;inline?:boolean}={}){
+export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSession,inline=false,settingsRequest=0,navigation}:{settingsRequest?:number;desktop?:NonNullable<Window['avhubDesktop']>;session?:string;inline?:boolean;navigation?:{previous:boolean;next:boolean;busy:boolean}}={}){
   const desktop=providedDesktop??window.avhubDesktop!;
   const stage=useRef<HTMLDivElement>(null);
   const extent=()=>({width:inline?(stage.current?.clientWidth||1):innerWidth,height:inline?(stage.current?.clientHeight||1):innerHeight});
@@ -24,6 +24,12 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
   const [visible,setVisible]=useState(true),[cursor,setCursor]=useState(true),[dragPosition,setDragPosition]=useState<number|null>(null);
   const [captureBusy,setCaptureBusy]=useState(false),capturePending=useRef(false);
   const current=useRef(state),lastRevision=useRef(-1),hover=useRef(false),held=useRef(false),timer=useRef<number|undefined>(undefined),toast=useRef<number|undefined>(undefined);
+  const navigationState=useRef(navigation);navigationState.current=navigation;
+  function navigate(direction:'previous'|'next'){
+    const value=navigationState.current;
+    if(value&&(value.busy||!value[direction]))return;
+    void command('navigate',direction);
+  }
   const transform=useRef({zoom:0,x:0,y:0}),drag=useRef<{x:number;y:number;panX:number;panY:number;moved:boolean}|null>(null);
   const transformTimer=useRef<number|undefined>(undefined),pendingTransform=useRef(false);
   const transformBusy=useRef(false),transformRevision=useRef(0),mounted=useRef(true);
@@ -34,6 +40,17 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
   const timelinePointer=useRef<number|null>(null);
   const timelineTarget=useRef<number|null>(null);
   const acceptMouseSeek=useRef(mouseSeekDeduper());
+  const pressedMouseSeek=useRef(new Set<number>());
+  function sideButton(event:React.MouseEvent|React.PointerEvent){
+    if(event.button!==3&&event.button!==4)return;
+    event.preventDefault();event.stopPropagation();
+    if(event.type==='pointerdown'||event.type==='mousedown'){
+      if(pressedMouseSeek.current.has(event.button))return;
+      pressedMouseSeek.current.add(event.button);
+      const delta=event.button===3?-1:1;
+      if(!panelOpen.current&&!document.querySelector('[role="dialog"],[role="menu"]')&&acceptMouseSeek.current('dom',delta))seekBy(delta*readMouseSeekSeconds());
+    }else if(event.type==='pointerup'||event.type==='mouseup')pressedMouseSeek.current.delete(event.button);
+  }
   const pauseRequest=useRef<{id:number;paused:boolean}|null>(null),pauseRevision=useRef(0);
   const volumeRequest=useRef<{id:number;value:number}|null>(null),muteRequest=useRef<{id:number;value:boolean}|null>(null),audioRevision=useRef(0);
   current.current=state;
@@ -164,7 +181,7 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       current.current=value;setState(value);if(!pendingTransform.current)transform.current={zoom:Number(value.properties['video-zoom']||0),x:Number(value.properties['video-pan-x']||0),y:Number(value.properties['video-pan-y']||0)};
     };
     const unsubscribe=desktop.onNativeState(update);
-    const mouseSeek=desktop.onMouseSeek?.(direction=>{const delta=direction==='back'?-1:1;if(!panelOpen.current&&acceptMouseSeek.current('native',delta))seekBy(delta*readMouseSeekSeconds());});
+    const mouseSeek=desktop.onMouseSeek?.(direction=>{const delta=direction==='back'?-1:1;if(stage.current?.matches(':hover')&&!panelOpen.current&&!document.querySelector('[role="dialog"],[role="menu"]')&&acceptMouseSeek.current('native',delta))seekBy(delta*readMouseSeekSeconds());});
     void desktop.nativePlayer('snapshot').then(update).catch(e=>message(errorText(e)));
     const keys=(event:KeyboardEvent)=>{
       if(inline&&(document.querySelector('[role="dialog"]')||document.querySelector('[data-modal-open="true"]')))return;
@@ -182,7 +199,7 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
         else if(intent==='forward5'||intent==='forward10')seekBy(intent==='forward10'?10:5);
         else if(intent==='volumeUp'||intent==='volumeDown'){void command('volume',Math.max(0,Math.min(100,Number(volumeRequest.current?.value??p.volume??0)+(intent==='volumeUp'?5:-5))));if(intent==='volumeUp')void command('mute',false);}
         else if(intent==='mute')toggleMute();
-        else if(intent==='next')void command('navigate','next');
+        else if(intent==='next')navigate('next');
         else if(intent==='screenshot')void capture();
         else if(intent==='rotate')void command('rotate',(Number(p['video-rotate']||0)+90)%360);
         else if(intent==='fullscreen')void command('window','fullscreen');
@@ -208,16 +225,18 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       transform.current=boundTransform(Math.log2(next),transform.current.x+dx*(1/next-1/previous),transform.current.y+dy*(1/next-1/previous));
       sendTransform();
     };
+    const resetSideButtons=()=>pressedMouseSeek.current.clear();
+    document.addEventListener('pointercancel',resetSideButtons,true);window.addEventListener('blur',resetSideButtons);
     document.addEventListener('keydown',keys,true);document.addEventListener('wheel',wheel,{passive:false});window.addEventListener('resize',constrainTransform);
     schedule();
-    return()=>{mounted.current=false;unsubscribe();mouseSeek?.();shortcut?.();document.removeEventListener('keydown',keys,true);document.removeEventListener('wheel',wheel);window.removeEventListener('resize',constrainTransform);clearTimeout(timer.current);clearTimeout(toast.current);clearTimeout(transformTimer.current);if(!inline)document.documentElement.classList.remove('native-player-overlay');};
+    return()=>{mounted.current=false;unsubscribe();mouseSeek?.();shortcut?.();document.removeEventListener('pointercancel',resetSideButtons,true);window.removeEventListener('blur',resetSideButtons);document.removeEventListener('keydown',keys,true);document.removeEventListener('wheel',wheel);window.removeEventListener('resize',constrainTransform);clearTimeout(timer.current);clearTimeout(toast.current);clearTimeout(transformTimer.current);if(!inline)document.documentElement.classList.remove('native-player-overlay');};
   },[]);
   useEffect(()=>{constrainTransform();},[state.pure,props['video-params']?.dw,props['video-params']?.dh,props['video-params']?.rotate]);
   useEffect(()=>{if(panel){setVisible(true);clearTimeout(timer.current);}else schedule();},[panel]);
-  function button(icon:IconName,label:string,onClick:()=>void,active=false){return <button type="button" aria-label={label} title={label} aria-pressed={active||undefined} onClick={onClick}><Icon name={icon}/></button>;}
+  function button(icon:IconName,label:string,onClick:()=>void,active=false,disabled=false){return <button type="button" aria-label={label} title={label} aria-pressed={active||undefined} disabled={disabled} onClick={onClick}><Icon name={icon}/></button>;}
   const tracks=Array.isArray(props['track-list'])?props['track-list'] as Track[]:[];
   const appearance=state.subtitleAppearance??{size:30,color:'#ffffff',background:.65};
-  return <div ref={stage} role="region" aria-label="原生视频播放器" className={`native-stage${inline?' native-inline-stage':''}${visible||panel?' controls-visible':''}${cursor?'':' cursor-hidden'}`} onPointerDownCapture={event=>{pointerFocus.current=true;pointerRange.current=event.target instanceof HTMLInputElement&&event.target.type==='range'?event.target:null;}} onMouseMove={move} onMouseLeave={()=>{if(!held.current){hover.current=false;setVisible(false);setCursor(false);}}}
+  return <div ref={stage} role="region" aria-label="原生视频播放器" className={`native-stage${inline?' native-inline-stage':''}${visible||panel?' controls-visible':''}${cursor?'':' cursor-hidden'}`} onPointerDownCapture={event=>{sideButton(event);pointerFocus.current=true;pointerRange.current=event.target instanceof HTMLInputElement&&event.target.type==='range'?event.target:null;}} onMouseDownCapture={sideButton} onPointerUpCapture={sideButton} onMouseUpCapture={sideButton} onMouseMove={move} onMouseLeave={()=>{pressedMouseSeek.current.clear();if(!held.current){hover.current=false;setVisible(false);setCursor(false);}}}
     onPointerDown={event=>{
       if(event.button!==0||event.target!==event.currentTarget)return;
       event.currentTarget.setPointerCapture(event.pointerId);held.current=true;
@@ -231,7 +250,7 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
       if(!moved)togglePause();schedule();
     }} onPointerCancel={()=>{drag.current=null;held.current=false;schedule();}}
-    onAuxClick={event=>{if(event.button===3||event.button===4){event.preventDefault();const delta=event.button===3?-1:1;if(!panelOpen.current&&acceptMouseSeek.current('dom',delta))seekBy(delta*readMouseSeekSeconds());}}}
+    onAuxClick={sideButton}
     onDoubleClick={event=>{if(event.target===event.currentTarget)void command('window','fullscreen');}}>
     {(inline?state.pure:(!state.embedded||state.pure))&&<div className="native-top" onMouseEnter={showControls} onMouseLeave={leaveControls}
       onPointerDown={event=>{if(inline||!state.embedded||event.button!==0||(event.target as HTMLElement).closest('button'))return;event.preventDefault();draggingWindow.current=true;event.currentTarget.setPointerCapture(event.pointerId);void command('window-drag',{phase:'start',x:event.screenX,y:event.screenY});}}
@@ -254,7 +273,7 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
         <input className="native-volume" aria-label="音量" type="range" min="0" max="100" value={Number(props.volume||0)} onChange={e=>void command('volume',Number(e.target.value))}/>
         {button('rotate','旋转画面',()=>void command('rotate',(Number(props['video-rotate']||0)+90)%360))}{button('zoomReset','还原缩放',reset)}<button type="button" aria-label="截图（C）" title={captureBusy?'正在保存原分辨率截图…':'截图（C）'} disabled={captureBusy} aria-busy={captureBusy} onClick={()=>void capture()}><Icon name={captureBusy?'refresh':'camera'} className={captureBusy?'native-capture-spinner':''}/></button>
         <span className="native-spacer"/>
-        {button('previous','上一视频',()=>void command('navigate','previous'))}{button('next','下一视频',()=>void command('navigate','next'))}
+        {button('previous','上一视频',()=>navigate('previous'),false,Boolean(navigation&&(navigation.busy||!navigation.previous)))}{button('next','下一视频',()=>navigate('next'),false,Boolean(navigation&&(navigation.busy||!navigation.next)))}
         {button('playlist','待播队列',()=>void command('navigate','queue'))}
         {button('settings','播放设置与信息',()=>setPanel(value=>!value),panel)}
         {button(state.pure?'exitPurePlayback':'purePlayback',state.pure?'退出纯净播放':'纯净播放',()=>void command('window','pure'),state.pure)}
@@ -277,8 +296,9 @@ export function NativePlayerOverlay({desktop:providedDesktop,session:inlineSessi
       <label>字幕底色<select aria-label="字幕背景透明度" value={appearance.background} onChange={e=>changeSubtitle({background:Number(e.target.value)})}>{[0,.35,.65,.85].map(value=><option key={value} value={value}>{Math.round(value*100)}%</option>)}</select></label>
       <small>外观与现有播放器共用保存；MPV 字号按窗口高度缩放。ASS/SSA 保留原有排版，图像字幕不应用文字外观。</small>
       <h3 className="native-panel-section"><Icon name="quality" size={14}/>播放诊断</h3>
-      <dl>{props['avhub-hdr-status']&&<><dt>HDR 验证</dt><dd>{props['avhub-hdr-status']}</dd></>}{props['avhub-output-transfer']&&<><dt>纹理传递函数</dt><dd>{props['avhub-output-transfer']}</dd></>}{props['avhub-source-color']&&<><dt>源色彩</dt><dd>{props['avhub-source-color']}</dd></>}<dt>视频编码</dt><dd>{props['video-codec']||'待解码'}</dd><dt>解码分辨率</dt><dd>{props['video-params']?.w||'—'} × {props['video-params']?.h||'—'}</dd><dt>像素格式</dt><dd>{props['video-params']?.pixelformat||'—'}</dd><dt>硬件解码</dt><dd>{props['hwdec-current']||'软件解码'}</dd><dt>视频首帧信号</dt><dd>{state.firstFrameMs===null?'—':`${Math.round(state.firstFrameMs)} ms`}</dd><dt>音视频输出就绪</dt><dd>{state.readyMs==null?'—':`${Math.round(state.readyMs)} ms`}</dd><dt>最近目标定位</dt><dd>{state.lastSeekMs===null?'—':`${Math.round(state.lastSeekMs)} ms`}</dd><dt title="MPV 当前读数，跳播可能重置，不代表整段累计">显示丢帧</dt><dd>{props['frame-drop-count']??'—'}</dd><dt>解码丢帧</dt><dd>{props['decoder-frame-drop-count']??'—'}</dd></dl>
-      <dl><dt>最近跳播总等待（含排队）</dt><dd>{state.lastSeekTotalMs==null?'—':`${Math.round(state.lastSeekTotalMs)} ms`}</dd><dt>源文件加载次数</dt><dd>{state.sourceLoads??'—'}</dd><dt>缓存等待事件</dt><dd>{state.bufferingEvents??'—'}</dd><dt>已结束缓存等待累计</dt><dd>{state.bufferingMs==null?'—':`${Math.round(state.bufferingMs)} ms`}</dd></dl>
+      <dl>{props['avhub-hdr-status']&&<><dt>HDR 验证</dt><dd>{props['avhub-hdr-status']}</dd></>}{props['avhub-output-transfer']&&<><dt>纹理传递函数</dt><dd>{props['avhub-output-transfer']}</dd></>}{props['avhub-source-color']&&<><dt>源色彩</dt><dd>{props['avhub-source-color']}</dd></>}<dt>视频编码</dt><dd>{props['video-codec']||(state.phase==='starting'?'待解码':'未报告')}</dd><dt>解码分辨率</dt><dd>{props['video-params']?.w||'—'} × {props['video-params']?.h||'—'}</dd><dt>像素格式</dt><dd>{props['video-params']?.pixelformat||'—'}</dd><dt>硬件解码</dt><dd>{props['hwdec-current']||'软件解码'}</dd><dt>视频首帧信号</dt><dd>{state.firstFrameMs===null?'—':`${Math.round(state.firstFrameMs)} ms`}</dd>{state.presentation!=='render'&&<><dt>音视频输出就绪</dt><dd>{state.readyMs==null?'—':`${Math.round(state.readyMs)} ms`}</dd></>}<dt>最近目标定位</dt><dd>{state.lastSeekMs===null?'—':`${Math.round(state.lastSeekMs)} ms`}</dd><dt title="MPV 当前读数，跳播可能重置，不代表整段累计">显示丢帧</dt><dd>{props['frame-drop-count']??'—'}</dd><dt>解码丢帧</dt><dd>{props['decoder-frame-drop-count']??'—'}</dd></dl>
+      <dl><dt>最近跳播总等待（含排队）</dt><dd>{state.lastSeekTotalMs==null?'—':`${Math.round(state.lastSeekTotalMs)} ms`}</dd><dt>源文件加载次数</dt><dd>{state.sourceLoads??'—'}</dd>{state.presentation!=='render'&&<><dt>缓存等待事件</dt><dd>{state.bufferingEvents??'—'}</dd><dt>已结束缓存等待累计</dt><dd>{state.bufferingMs==null?'—':`${Math.round(state.bufferingMs)} ms`}</dd></>}</dl>
+      {state.presentation==='render'&&<small>首帧计时包含 GPU 提交、纹理释放与确认；此路径尚未采集完整缓存等待累计。</small>}
       {state.seekDiagnostics&&<small>最近跳播：{state.seekDiagnostics.strategy==='keyframe'?'关键帧落点':'精确定位'} · 与目标相差 {Math.abs(state.seekDiagnostics.errorSec).toFixed(2)} 秒</small>}
       <small>不转码、不降低源视频分辨率。时间来自 MPV 播放事件，并非屏幕逐像素验收。HDR 允许播放，实体显示与动态元数据效果仍待验证。</small>
       <small>音轨、已识别字幕与延迟按视频保存；源文件或轨道变化后重新选择。媒体库以外的临时字幕、关闭音轨仅作用于本次播放。</small>

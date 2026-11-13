@@ -31,6 +31,7 @@ let applicationStarted = false;
 let backendPort = 0;
 let sessionToken = '';
 let mainWindow: BrowserWindow | null = null;
+let mouseSeekSurface=false;
 let shuttingDown = false;
 let allowQuit = false;
 let backendExitCode: number | null | undefined;
@@ -57,6 +58,10 @@ const nativePlayer=new NativePlayer({origin:()=>`http://127.0.0.1:${backendPort}
 const renderPlayer=new RenderPlayer({root:projectRoot,origin:()=>`http://127.0.0.1:${backendPort}`,token:()=>sessionToken,data:()=>dataDir,main:()=>mainWindow,log:line=>appendDesktopLog(line),mode:value=>applyWindowMode(mainWindow!,value),windowAction:value=>applyWindowAction(mainWindow!,value),settled:()=>waitForWindowPlacement(mainWindow!),windowState:()=>windowState(mainWindow!)});
 ipcMain.handle('avhub:render-player',(event,action:unknown,input:unknown)=>{if(shuttingDown&&action==='open')throw new Error('应用正在退出');return renderPlayer.invoke(event,action,input);});
 ipcMain.on('avhub:render-surface-error',(event,value)=>renderPlayer.surfaceFailure(event,value));
+ipcMain.on('avhub:mouse-seek-surface',(event,value:unknown)=>{
+ if(typeof value!=='boolean'||event.sender!==mainWindow?.webContents||event.senderFrame!==event.sender.mainFrame)return;
+ mouseSeekSurface=value;
+});
 ipcMain.handle('avhub:native-player',(event,action:unknown,input:unknown)=>{
   if(shuttingDown&&action==='open')throw new Error('应用正在退出，不能打开新视频');
   return nativePlayer.invoke(event,action,input);
@@ -589,6 +594,7 @@ function createWindow(): BrowserWindow {
   window.on('app-command',(event,command)=>{
     if(command!=='browser-backward'&&command!=='browser-forward')return;
     if(shuttingDown||allowQuit||window.isDestroyed())return;
+    if(!mouseSeekSurface)return;
     try {
       const current=new URL(window.webContents.getURL());
       const mediaId=Number(current.searchParams.get('video'));

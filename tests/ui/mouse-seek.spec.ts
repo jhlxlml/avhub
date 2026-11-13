@@ -18,10 +18,26 @@ async function player(page:any) {
 }
 const time=(page:any)=>page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentTime);
 async function side(page:any,button:number) {
+  const bounds=await page.locator('.video-wrap').boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
   return page.locator('video').evaluate((v:HTMLVideoElement,button:number)=>{
     const event=new MouseEvent('mousedown',{button,bubbles:true,cancelable:true});v.dispatchEvent(event);v.dispatchEvent(new MouseEvent('mouseup',{button,bubbles:true,cancelable:true}));return event.defaultPrevented;
   },button);
 }
+
+test('side keys outside the video surface retain default handling and never seek',async({page})=>{
+ await player(page);
+ const outside=page.locator('.player-info h2');await outside.scrollIntoViewIfNeeded();await outside.hover();
+ const prevented=await outside.evaluate(node=>{
+  const event=new MouseEvent('mousedown',{button:4,bubbles:true,cancelable:true});node.dispatchEvent(event);return event.defaultPrevented;
+ });
+ expect(prevented).toBe(false);expect(await time(page)).toBeCloseTo(40,1);
+ await page.evaluate(()=>(window as any).nativeSide('forward'));expect(await time(page)).toBeCloseTo(40,1);
+ await side(page,4);await expect.poll(()=>time(page)).toBeCloseTo(45,1);
+ await page.locator('video').evaluate(node=>node.dispatchEvent(new MouseEvent('mousedown',{button:3,bubbles:true,cancelable:true})));
+ await expect.poll(()=>time(page)).toBeCloseTo(40,1);
+ await outside.evaluate(node=>node.dispatchEvent(new MouseEvent('mouseup',{button:3,bubbles:true,cancelable:true})));
+ await side(page,3);await expect.poll(()=>time(page)).toBeCloseTo(35,1);
+});
 test('default mouse side buttons seek 5 seconds without navigating, reloading or resuming',async({page})=>{
   await player(page);const url=page.url(),src=await page.locator('video').evaluate((v:HTMLVideoElement)=>v.currentSrc);
   expect(await side(page,4)).toBe(true);await expect.poll(()=>time(page)).toBeCloseTo(45,1);

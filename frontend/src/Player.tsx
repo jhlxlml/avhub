@@ -1050,6 +1050,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
   const mouseSkip=useRef(skip);mouseSkip.current=skip;
   useEffect(()=>{
     function seek(direction:number,source:'dom'|'native') {
+      if(source==='native'&&!videoWrap.current?.matches(':hover'))return;
       if(desktopQuitting.current||closing||nextStarting||controlsPressed.current||dragSession.current||!['ready','preparing'].includes(phase)||openSetting||document.querySelector('[role="dialog"], [role="menu"], .setting-popover'))return;
       const focused=document.activeElement;
       if(focused instanceof HTMLElement&&focused.closest('input:not([type="range"]),textarea,select,[contenteditable="true"]'))return;
@@ -1058,6 +1059,8 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
     const side=(event:Event)=>{
       if(!(event instanceof MouseEvent))return;
       if(event.button!==3&&event.button!==4)return;
+      if(event.type==='pointerup'||event.type==='mouseup')pressedMouseSeek.current.delete(event.button);
+      if(!(event.target instanceof Node)||!videoWrap.current?.contains(event.target))return;
       event.preventDefault();event.stopPropagation();
       if(event.type==='pointerdown'||event.type==='mousedown') {
         // Cancelling pointerdown can suppress the compatibility mousedown.
@@ -1065,7 +1068,7 @@ function ChromiumPlayer({ media, automatic=false, initialPosition,initialPaused,
         if(!pressedMouseSeek.current.has(event.button)) {
           pressedMouseSeek.current.add(event.button);seek(event.button===4?1:-1,'dom');
         }
-      } else if(event.type==='pointerup'||event.type==='mouseup')pressedMouseSeek.current.delete(event.button);
+      }
     };
     const reset=()=>pressedMouseSeek.current.clear();
     for(const type of ['pointerdown','mousedown','pointerup','mouseup','auxclick'])document.addEventListener(type,side,true);

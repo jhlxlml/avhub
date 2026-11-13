@@ -25,6 +25,7 @@ export class RenderPlayer {
  private activityWrites=new WeakMap<Active,Promise<void>>();
  private activityWanted=new WeakMap<Active,RenderActivity>();
  private activityState=new WeakMap<Active,string>();
+ private captureFrames=new WeakMap<Active,Promise<void>>();
  constructor(private deps:Deps){}
  async prepareRuntime(){
   if(this.active||this.opening)return;
@@ -71,7 +72,11 @@ export class RenderPlayer {
   }
   if(action==='command'){
    if(a.error)throw new Error('原生画面异常，请重试播放或切换现有播放器');
-   if(!commands.has(input.action)||a.capture)throw new Error('原生操作无效或截图正在保存');
+   if(!commands.has(input.action))throw new Error('原生操作无效');
+   // Only protect the frame read. Publishing the already encoded PNG must not
+   // keep transport controls locked while the file is saved to its destination.
+   await this.captureFrames.get(a);
+   if(a.closing||this.active!==a)throw new Error('原生播放正在关闭');
    if(input.action==='play')a.intent=true;if(input.action==='pause'){a.intent=false;a.bridge?.setClockActive(false);}
    // GPU initialization must not consume the beginning of the source or let
    // audio run ahead. A pre-first-frame play is intent, not a decoder start.
@@ -104,7 +109,10 @@ export class RenderPlayer {
   if(action==='screenshot'){
    if(a.capture||a.pendingSeek!==null||!a.presented)throw new Error('画面尚未就绪或正在截图');
    const client={snapshot:{phase:a.error?'error':'ready',pendingSeek:a.pendingSeek,properties:a.props},command:async(args:any[])=>{if(args[0]==='get_property'&&args[1]==='time-pos'){const fresh=await a.client.snapshot();if(fresh.error||fresh.properties.seeking===true||fresh.properties['avhub-subtitle-refresh']===true)throw new Error('画面仍在定位或源参数已变化，请稍后截图');return fresh.properties['time-pos'];}if(args[0]==='screenshot-to-file'&&args[2]==='video')return a.client.captureOwnedPng(args[1]);throw new Error('截图命令无效');}};
-   const task=captureNativeFrame(this.deps,{client,mediaId:a.mediaId});a.capture=task;try{return await task;}finally{a.capture=undefined;}
+   let frameSaved!:()=>void;
+   this.captureFrames.set(a,new Promise<void>(resolve=>{frameSaved=resolve;}));
+   const task=captureNativeFrame(this.deps,{client,mediaId:a.mediaId},frameSaved);a.capture=task;
+   try{return await task;}finally{frameSaved();this.captureFrames.delete(a);a.capture=undefined;}
   }
   if(action==='subtitle-style'){if(a.capture)throw new Error('截图正在保存');const value=subtitleStyle(input.value);await a.client.setSubtitleStyle(value);a.prefs.subtitleAppearance=value;a.dirty++;this.publish(a);return {ok:true};}
   if(action==='subtitle-import'){
@@ -193,9 +201,10 @@ export class RenderPlayer {
  private view(a:Active){
   const p=a.props,w=this.deps.windowState(),tracks=Array.isArray(p['track-list'])?p['track-list']:[],status=a.error?'error':!a.presented?'loading':p['eof-reached']===true?'ended':p['paused-for-cache']===true?'buffering':p.pause===false?'playing':'paused';
   const safe:Record<string,any>={};for(const key of ['time-pos','duration','pause','volume','mute','speed','eof-reached','seeking','paused-for-cache','aid','sid','sub-delay','video-params','hwdec-current','current-demuxer','decoder-frame-drop-count','frame-drop-count','avhub-seek-corrections','avhub-seek-dispatches','avhub-seek-coalesced','avhub-subtitle-refresh','avhub-output-transfer','avhub-native-seek-trace'])safe[key]=p[key];safe['track-list']=tracks.map((t:any)=>({id:t.id,type:t.type,title:t.title,lang:t.lang,codec:t.codec,selected:t.selected,external:t.external}));safe['video-params']={...p['video-params'],rotate:a.rotation};Object.assign(safe,{'video-rotate':a.rotation,'video-zoom':a.transform.zoom,'video-pan-x':a.transform.x,'video-pan-y':a.transform.y});
+  safe['video-codec']=p['video-codec']??tracks.find((t: {type:string;selected?:boolean;albumart?:boolean})=>t.type==='video'&&t.selected===true&&!t.albumart)?.codec;
   if(a.sourceColor?.hdr||a.sourceColor?.dynamic_hdr||p['avhub-output-transfer']==='pq'||p['avhub-output-transfer']==='hlg')safe['avhub-hdr-status']='HDR 播放 · 显示及动态元数据效果待验证';
   safe['avhub-source-color']=['primaries','transfer','matrix','range'].every(key=>a.sourceColor?.[key]&&a.sourceColor[key]!=='unknown')?'源色彩标记完整':'源色彩标记不完整 · MPV 自动解释';
-  return {sourceIdentity:a.memory?.source??null,subtitleDelaySec:number(p['sub-delay'],-10,10)?p['sub-delay']:0,session:a.session,surface:a.surface,generation:a.generation,mediaId:a.mediaId,revision:++a.revision,status,positionSec:p['avhub-subtitle-refresh']===true&&a.presented?a.presented.positionSec:number(p['time-pos'],0,Number.MAX_VALUE)?p['time-pos']:0,durationSec:number(p.duration,0,Number.MAX_VALUE)?p.duration:null,volume:number(p.volume,0,100)?p.volume/100:1,muted:p.mute===true,rate:number(p.speed,.25,4)?p.speed:1,tracks:tracks.filter((t:any)=>['audio','sub'].includes(t.type)).map((t:any)=>({id:String(t.id),type:t.type==='sub'?'subtitle':'audio',title:t.title,language:t.lang,selected:t.selected===true,external:t.external===true})),videoSize:a.videoSize,presented:a.presented,error:a.error?{code:'NATIVE_RENDER',message:a.error,recoverable:true}:undefined,properties:safe,title:a.title,phase:a.error?'error':a.presented?'ready':'starting',embedded:true,playIntent:a.intent,pure:w.purePlayback,pinned:w.alwaysOnTop,fullscreen:w.fullScreen,maximized:w.maximized,firstFrameMs:a.firstFrame,lastSeekMs:a.lastSeek,pendingSeek:a.pendingSeek===null?null:a.seekTarget,seekPolicy:a.seekPolicy??'fast',seekDiagnostics:a.seekDiagnostics,sourceLoads:p['avhub-source-loads']??0,restarts:0,seeks:0,saveError:a.saveError,clock:a.bridge?.clockState()??null,subtitleAppearance:a.prefs.subtitleAppearance,transport:a.bridge?{...a.bridge.stats}:null};
+  return {sourceIdentity:a.memory?.source??null,subtitleDelaySec:number(p['sub-delay'],-10,10)?p['sub-delay']:0,session:a.session,surface:a.surface,generation:a.generation,mediaId:a.mediaId,revision:++a.revision,status,positionSec:p['avhub-subtitle-refresh']===true&&a.presented?a.presented.positionSec:number(p['time-pos'],0,Number.MAX_VALUE)?p['time-pos']:0,durationSec:number(p.duration,0,Number.MAX_VALUE)?p.duration:null,volume:number(p.volume,0,100)?p.volume/100:1,muted:p.mute===true,rate:number(p.speed,.25,4)?p.speed:1,tracks:tracks.filter((t:any)=>['audio','sub'].includes(t.type)).map((t:any)=>({id:String(t.id),type:t.type==='sub'?'subtitle':'audio',title:t.title,language:t.lang,selected:t.selected===true,external:t.external===true})),videoSize:a.videoSize,presented:a.presented,error:a.error?{code:'NATIVE_RENDER',message:a.error,recoverable:true}:undefined,properties:safe,title:a.title,phase:a.error?'error':a.presented?'ready':'starting',embedded:true,playIntent:a.intent,pure:w.purePlayback,pinned:w.alwaysOnTop,fullscreen:w.fullScreen,maximized:w.maximized,firstFrameMs:a.firstFrame,lastSeekMs:a.seekDiagnostics?.confirmationMs??null,lastSeekTotalMs:a.lastSeek,pendingSeek:a.pendingSeek===null?null:a.seekTarget,seekPolicy:a.seekPolicy??'fast',seekDiagnostics:a.seekDiagnostics,sourceLoads:p['avhub-source-loads']??0,restarts:0,seeks:0,saveError:a.saveError,clock:a.bridge?.clockState()??null,subtitleAppearance:a.prefs.subtitleAppearance,transport:a.bridge?{...a.bridge.stats}:null};
  }
  private activityBody(a:Active,present:boolean){
   const live=present&&!a.closing&&!a.error,preparing=live&&(a.firstFrame===null||a.pendingSeek!==null||a.props.seeking===true);

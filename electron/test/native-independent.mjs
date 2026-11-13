@@ -95,6 +95,9 @@ try{
  const relativeSeekMs=performance.now()-seekStarted;
  await expect.poll(async()=>(await snapshot()).pendingSeek).toBe(null);
  const tracked=await snapshot();assert.equal(tracked.seeks,first.seeks+1);assert.equal(tracked.seekMode,null);assert.ok(tracked.lastSeekMs!==null);assert.ok(Math.abs(tracked.lastSeekTarget-at-5)<.03);assert.ok(Math.abs(tracked.lastSeekPosition-tracked.lastSeekTarget)<.3);
+ await command(['keypress','MBTN_BACK']);await expect.poll(async()=>Math.abs(Number((await snapshot()).properties['time-pos'])-at),{timeout:15000}).toBeLessThan(.3);
+ await command(['keypress','MBTN_FORWARD']);await expect.poll(async()=>Math.abs(Number((await snapshot()).properties['time-pos'])-at-5),{timeout:15000}).toBeLessThan(.3);
+ assert.equal((await snapshot()).properties.pause,true);assert.equal((await snapshot()).sourceLoads,tracked.sourceLoads);
  assert.equal(await desktop.evaluate(()=>globalThis.__independentActivities.some(v=>v.preparing&&v.playing&&v.paused)),true,'paused native seek receives bounded background-read priority');
  await command(['keypress','LEFT']);await expect.poll(async()=>Math.abs(Number((await snapshot()).properties['time-pos'])-at),{timeout:15000}).toBeLessThan(.3);
  await expect.poll(async()=>(await snapshot()).seekMode).toBe(null);

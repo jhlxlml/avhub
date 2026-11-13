@@ -11,15 +11,15 @@ try{
  await page.evaluate(async()=>{const r=await fetch('/api/preferences',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({values:{playerEngine:'mpv',nativeRenderEnabled:true}})});if(!r.ok)throw new Error(await r.text());});
  await page.reload();await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
  const section=page.getByRole('region',{name:'播放引擎设置',exact:true});
- await expect(section.getByText('D3D11 验收运行库已检测到',{exact:true})).toBeVisible();
+ await expect(section.getByText('D3D11 运行库已检测到',{exact:true})).toBeVisible();
  await expect(section.getByText('MPV 运行库已验证',{exact:true})).toHaveCount(0);
- const toggle=section.getByRole('checkbox',{name:'D3D11 原生嵌入（SDR 试验）',exact:true});
+ const toggle=section.getByLabel('MPV 播放窗口',{exact:true});
  const offSaved=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/preferences'&&r.request().method()==='PATCH');
- await toggle.click();assert.equal((await offSaved).ok(),true);await expect(toggle).not.toBeChecked();
- await expect(section.getByText('D3D11 验收运行库已检测到',{exact:true})).toHaveCount(0);
+ await toggle.selectOption('independent');assert.equal((await offSaved).ok(),true);await expect(toggle).toHaveValue('independent');
+ await expect(section.getByText('D3D11 运行库已检测到',{exact:true})).toHaveCount(0);
  const onSaved=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/preferences'&&r.request().method()==='PATCH');
- await toggle.click();assert.equal((await onSaved).ok(),true);await expect(toggle).toBeChecked();
- await expect(section.getByText('D3D11 验收运行库已检测到',{exact:true})).toBeVisible();
+ await toggle.selectOption('d3d11');assert.equal((await onSaved).ok(),true);await expect(toggle).toHaveValue('d3d11');
+ await expect(section.getByText('D3D11 运行库已检测到',{exact:true})).toBeVisible();
  const preferences=await page.evaluate(async()=>{const r=await fetch('/api/preferences');return r.json();});
  assert.equal(preferences.values.playerEngine,'mpv');assert.equal(preferences.values.nativeRenderEnabled,true);report.passed=true;
 }catch(error){report.error=String(error.stack||error);throw error;}

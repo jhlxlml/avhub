@@ -24,7 +24,7 @@ test.beforeEach(async({page,request})=>{
         if(action==='seek-relative')state.properties['time-pos']=Math.max(0,Math.min(99.99,state.properties['time-pos']+input.value));
         if(action==='transform')Object.assign(state.properties,{'video-zoom':input.value.zoom,'video-pan-x':input.value.x,'video-pan-y':input.value.y});
         listener?.(structuredClone(state));return {ok:true};
-      },onNativeState:callback=>{listener=callback;return()=>{listener=undefined;};},onMouseSeek:()=>()=>{},
+      },onNativeState:callback=>{listener=callback;return()=>{listener=undefined;};},onMouseSeek:callback=>{Reflect.set(window,'__nativeSide',callback);return()=>{Reflect.deleteProperty(window,'__nativeSide');};},
     } as any;
   });
   await page.goto('/?nativePlayer=fixture');
@@ -36,6 +36,27 @@ test('fatal native error has an accessible retry action on the video overlay',as
  const retry=page.getByRole('button',{name:'重试原生播放',exact:true});await expect(retry).toBeVisible();
  await retry.hover();await page.waitForTimeout(500);await expect(page.locator('.native-stage')).not.toHaveClass(/cursor-hidden/);
  await retry.click();expect(await page.evaluate(()=>(window as any).__nativeCommands.some((c:any)=>c.action==='navigate'&&c.input.value==='retry'))).toBe(true);
+});
+
+test('native side buttons consume down events and deduplicate compatibility and OS input',async({page})=>{
+ const stage=page.getByRole('region',{name:'原生视频播放器',exact:true});await stage.hover();
+ const cancelled=await stage.evaluate(node=>{
+  const pointer=new PointerEvent('pointerdown',{button:4,bubbles:true,cancelable:true});node.dispatchEvent(pointer);
+  const mouse=new MouseEvent('mousedown',{button:4,bubbles:true,cancelable:true});node.dispatchEvent(mouse);
+  Reflect.get(window,'__nativeSide')('forward');
+  node.dispatchEvent(new PointerEvent('pointerup',{button:4,bubbles:true,cancelable:true}));
+  node.dispatchEvent(new MouseEvent('mouseup',{button:4,bubbles:true,cancelable:true}));
+  node.dispatchEvent(new MouseEvent('auxclick',{button:4,bubbles:true,cancelable:true}));
+  return {pointer:pointer.defaultPrevented,mouse:mouse.defaultPrevented};
+ });
+ expect(cancelled).toEqual({pointer:true,mouse:true});
+ await expect.poll(()=>page.evaluate(()=>Reflect.get(window,'__nativeCommands').filter((c:{action:string})=>c.action==='seek-relative').length)).toBe(1);
+ await stage.evaluate(node=>{
+  node.dispatchEvent(new MouseEvent('mousedown',{button:3,bubbles:true,cancelable:true}));
+  node.dispatchEvent(new MouseEvent('mouseup',{button:3,bubbles:true,cancelable:true}));
+ });
+ const values=await page.evaluate(()=>Reflect.get(window,'__nativeCommands').filter((c:{action:string})=>c.action==='seek-relative').map((c:{input:{value:number}})=>c.input.value));
+ expect(values).toEqual([5,-5]);
 });
 
 test('hover keeps controls visible; keyboard does not reveal hidden controls',async({page})=>{

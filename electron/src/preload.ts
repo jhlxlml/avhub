@@ -1,5 +1,24 @@
 import { contextBridge, ipcRenderer, sharedTexture } from 'electron';
 
+// OS app-command has no DOM target. Report only hover-boundary changes so the
+// main window can leave history buttons alone outside an actual video surface.
+let mouseSeekSurface=false,mousePoint:{x:number;y:number}|null=null;
+ipcRenderer.send('avhub:mouse-seek-surface',false);
+function updateMouseSeekSurface(){
+ const target=mousePoint?document.elementFromPoint(mousePoint.x,mousePoint.y):null;
+ const active=Boolean(target?.closest('.video-wrap:not(.native-independent-card),.native-stage'));
+ if(active===mouseSeekSurface)return;
+ mouseSeekSurface=active;ipcRenderer.send('avhub:mouse-seek-surface',active);
+}
+window.addEventListener('DOMContentLoaded',()=>{
+ const pointer=(event:MouseEvent)=>{mousePoint={x:event.clientX,y:event.clientY};updateMouseSeekSurface();};
+ const leave=()=>{mousePoint=null;updateMouseSeekSurface();};
+ document.addEventListener('mousemove',pointer,true);document.addEventListener('pointerdown',pointer,true);
+ document.addEventListener('mouseleave',leave);window.addEventListener('blur',leave);
+ document.addEventListener('scroll',updateMouseSeekSurface,true);window.addEventListener('resize',updateMouseSeekSurface);
+ new MutationObserver(updateMouseSeekSurface).observe(document.body,{childList:true,subtree:true});
+});
+
 // Kept in this sandbox preload: importing a local CommonJS helper would require
 // relaxing sandbox rules. The renderer receives neither VideoFrame nor handles.
 let renderSurface:{id:string;node:HTMLElement;canvas:HTMLCanvasElement;gpu?:Promise<any>;work:Promise<void>;closed:boolean;rotation:number;zoom:number;x:number;y:number;resize:ResizeObserver}|null=null;

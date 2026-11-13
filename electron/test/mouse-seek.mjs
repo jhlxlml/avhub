@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict';
 import {_electron,expect} from '@playwright/test';
 import {mkdirSync,mkdtempSync,readFileSync} from 'node:fs';
-import {spawnSync} from 'node:child_process';
+import {generateTestMedia} from './media-pool.mjs';
 import {createHash} from 'node:crypto';
 import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'../..');mkdirSync(path.join(root,'build'),{recursive:true});
 const data=mkdtempSync(path.join(root,'build','electron-mouse-seek-')),media=path.join(data,'media');mkdirSync(media);
 const file=path.join(media,'Mouse seek demo.mp4');
-assert.equal(spawnSync(path.join(root,'bin/ffmpeg.exe'),['-v','error','-f','lavfi','-i','color=c=navy:s=320x180:r=25','-t','60','-c:v','libx264','-pix_fmt','yuv420p',file],{windowsHide:true,timeout:15000}).status,0);
+generateTestMedia(['-v','error','-f','lavfi','-i','color=c=navy:s=320x180:r=25','-t','60','-c:v','libx264','-pix_fmt','yuv420p',file]);
 const hash=()=>createHash('sha256').update(readFileSync(file)).digest('hex'),before=hash();
 let desktop;
 async function launch(){
-  desktop=await _electron.launch({args:[root,'--in-process-gpu','--disable-gpu','--no-sandbox'],cwd:data,
-    env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'1',AVHUB_SMOKE_TEST:'0'},timeout:60000});
+  desktop=await _electron.launch({args:[root],cwd:data,
+    env:{...process.env,AVHUB_DATA_DIR:data,AVHUB_HEADLESS_TEST:'0',AVHUB_SMOKE_TEST:'0'},timeout:60000});
   const page=await desktop.firstWindow();await page.getByRole('button',{name:'媒体库设置',exact:true}).waitFor();return page;
 }
 async function command(direction){
@@ -26,7 +26,7 @@ async function open(page,id,point){
   await expect(resume.or(page.getByRole('button',{name:'暂停',exact:true})).first()).toBeVisible();if(await resume.isVisible())await resume.click();
   await expect.poll(()=>page.locator('video').evaluate(v=>v.readyState>=2)).toBe(true);
   await page.locator('video').evaluate((v,p)=>{v.pause();v.currentTime=p;v.dataset.mouseSeek='same-original-decoder';},point);
-  await expect.poll(()=>page.locator('video').evaluate(v=>!v.seeking)).toBe(true);
+  await expect.poll(()=>page.locator('video').evaluate(v=>!v.seeking)).toBe(true);const bounds=await page.locator('.video-wrap').boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);
 }
 try {
   let page=await launch();
@@ -47,11 +47,18 @@ try {
   assert.equal(await command('back'),true);await expect.poll(time).toBeCloseTo(40,1);
   assert.equal(page.url(),url);assert.equal(await page.locator('video').evaluate(v=>v.currentSrc),src);
   assert.equal(await page.evaluate(()=>window.mouseSourceReloads),0);
+  const outside=await page.locator('.player-top').boundingBox();await page.mouse.move(outside.x+outside.width/2,outside.y+outside.height/2);
+  assert.equal(await command('forward'),false,'OS app-command outside the surface is not intercepted');
+  await page.waitForTimeout(100);assert.equal(await time(),40);
+  await page.mouse.move(stage.x+100,stage.y+100);
   await expect(page.locator('video')).toHaveAttribute('data-mouse-seek','same-original-decoder');assert.equal(await page.locator('video').evaluate(v=>v.paused),true);
   await page.locator('.media-more').first().click();await expect(page.getByRole('menu')).toBeVisible();
   await page.keyboard.press('ArrowRight');await command('forward');await page.waitForTimeout(150);assert.equal(await time(),40);
   await page.keyboard.press('Escape');await page.keyboard.press('Tab');await page.getByRole('button',{name:'窗口置顶',exact:true}).focus();await page.keyboard.press('Space');
   await expect(page.locator('.window-pin')).toHaveAttribute('aria-pressed','true');assert.equal(await page.locator('video').evaluate(v=>v.paused),true);
+  // Window-mode writes temporarily disable the control. Explicitly focus the
+  // enabled button for this second keyboard-activation assertion as well.
+  await expect(page.locator('.window-pin')).toBeEnabled();await page.locator('.window-pin').focus();
   await page.keyboard.press('Space');await expect(page.locator('.window-pin')).toHaveAttribute('aria-pressed','false');
   await page.goto(new URL('/',page.url()).href);assert.equal(await command('back'),false);
   await page.getByRole('button',{name:'媒体库设置',exact:true}).click();await page.getByRole('tab',{name:'播放偏好',exact:true}).click();
